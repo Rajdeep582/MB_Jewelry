@@ -1,0 +1,232 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Variables ─────────────────────────────────────── */
+:root {
+  --gold:       #D4AF37;
+  --gold-light: #F2C94C;
+  --gold-dark:  #C5973B;
+  --dark:       #0D0D0D;
+  --dark-card:  #141414;
+  --dark-hover: #1a1a1a;
+  --cream:      #F8F3E8;
+  --text-muted: #9e9e9e;
+}
+
+/* ─── Base Styles ───────────────────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-dark-900 text-white font-sans;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display leading-tight;
+  }
+
+  a {
+    @apply no-underline;
+  }
+
+  img {
+    @apply max-w-full;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #141414;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--gold-dark);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--gold);
+  }
+}
+
+/* ─── Component Styles ──────────────────────────────────── */
+@layer components {
+
+  /* Buttons */
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-dark-900 bg-gold-gradient transition-all duration-300 hover:shadow-gold-lg hover:scale-[1.02] active:scale-[0.98] cursor-pointer;
+  }
+
+  .btn-outline-gold {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-gold-500 border border-gold-500/50 transition-all duration-300 hover:bg-gold-500/10 hover:border-gold-500 hover:shadow-gold cursor-pointer;
+  }
+
+  .btn-dark {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-dark-700 transition-all duration-300 hover:bg-dark-600 cursor-pointer;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-dark-800 rounded-2xl border border-white/5 shadow-card overflow-hidden transition-all duration-300;
+  }
+
+  .card-hover {
+    @apply card hover:border-gold-500/30 hover:shadow-card-hover hover:-translate-y-1;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(20, 20, 20, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .glass-gold {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: rgba(212, 175, 55, 0.08);
+    border: 1px solid rgba(212, 175, 55, 0.2);
+  }
+
+  /* Gold Text */
+  .text-gradient-gold {
+    background: linear-gradient(135deg, #D4AF37 0%, #F2C94C 50%, #C5973B 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Section Title */
+  .section-title {
+    @apply text-3xl md:text-4xl lg:text-5xl font-display font-medium text-white leading-tight;
+  }
+
+  .section-subtitle {
+    @apply text-gold-500 text-sm uppercase tracking-[0.2em] font-sans font-medium;
+  }
+
+  /* Divider */
+  .gold-divider {
+    @apply w-16 h-0.5 bg-gold-gradient mx-auto;
+  }
+
+  /* Form Elements */
+  .input-dark {
+    @apply w-full px-4 py-3 rounded-xl bg-dark-800 border border-white/10 text-white placeholder-dark-400 focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500/50 transition-all duration-200;
+  }
+
+  .label-dark {
+    @apply block text-sm font-medium text-dark-300 mb-1.5;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold;
+  }
+
+  .badge-gold {
+    @apply badge bg-gold-500/15 text-gold-400 border border-gold-500/30;
+  }
+
+  .badge-green {
+    @apply badge bg-green-500/15 text-green-400 border border-green-500/30;
+  }
+
+  .badge-red {
+    @apply badge bg-red-500/15 text-red-400 border border-red-500/30;
+  }
+
+  .badge-blue {
+    @apply badge bg-blue-500/15 text-blue-400 border border-blue-500/30;
+  }
+
+  /* Skeleton Shimmer */
+  .skeleton {
+    background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+    background-size: 500px 100%;
+    @apply animate-shimmer rounded-xl;
+  }
+
+  /* Nav Link */
+  .nav-link {
+    @apply relative text-dark-300 hover:text-white transition-colors duration-200 text-sm font-medium after:absolute after:bottom-[-4px] after:left-0 after:w-0 after:h-0.5 after:bg-gold-500 after:transition-all after:duration-300 hover:after:w-full;
+  }
+
+  .nav-link-active {
+    @apply text-gold-500 after:w-full;
+  }
+
+  /* Product Card Image */
+  .product-img-wrapper {
+    @apply relative overflow-hidden bg-dark-800 aspect-square;
+  }
+
+  .product-img-wrapper img {
+    @apply w-full h-full object-cover transition-transform duration-500;
+  }
+
+  .product-img-wrapper:hover img {
+    @apply scale-110;
+  }
+
+  /* Price */
+  .price-tag {
+    @apply text-gold-500 font-semibold font-sans;
+  }
+
+  .price-original {
+    @apply text-dark-400 line-through text-sm;
+  }
+
+  /* Overlay gradient for hero */
+  .hero-overlay {
+    background: linear-gradient(
+      to bottom,
+      rgba(13, 13, 13, 0.4) 0%,
+      rgba(13, 13, 13, 0.2) 40%,
+      rgba(13, 13, 13, 0.8) 100%
+    );
+  }
+
+  /* Star rating */
+  .star-filled { @apply text-gold-400; }
+  .star-empty  { @apply text-dark-600; }
+}
+
+/* ─── Utilities ─────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}
