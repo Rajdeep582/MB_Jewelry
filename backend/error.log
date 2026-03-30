@@ -1,0 +1,16 @@
+﻿node : (node:12616) [MONGOOSE] Warning: Duplicate schema index on {"email":1} found. This is often due to declaring an index using both "index: true" and 
+"schema.index()". Please remove the duplicate index definition.
+At line:1 char:1
++ node server.js 2>&1 | Out-File -FilePath error.log -Encoding utf8; Ge ...
++ ~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo              : NotSpecified: ((    node:12616) [M...dex     definition.:String) [    ], RemoteException
+    + FullyQualifiedError    Id : NativeCommandErr    or
+ 
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12616) [MONGOOSE] Warning: Duplicate schema index on {"slug":1} found. This is often due to declaring an index using both "index: true" and "schema.index()". 
+Please remove the duplicate index definition.
+(node:12616) [MONGODB DRIVER] Warning: useNewUrlParser is a deprecated option: useNewUrlParser has no effect since Node.js Driver version 4.0.0 and will be removed in 
+the next major version
+(node:12616) [MONGODB DRIVER] Warning: useUnifiedTopology is a deprecated option: useUnifiedTopology has no effect since Node.js Driver version 4.0.0 and will be 
+removed in the next major version
+2026-03-30 22:36:35 [[31merror[39m]: Uncaught Exception:

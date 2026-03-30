@@ -37,11 +37,13 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'admin'],
+      enum: ['user', 'admin', 'delivery'],
       default: 'user',
     },
     phone: { type: String, default: '' },
     avatar: { type: String, default: '' },
+    vehicleNumber: { type: String, default: '' },
+    dispatchZone: { type: String, default: '' },
     addresses: [addressSchema],
     refreshToken: { type: String, select: false },
     isActive: { type: Boolean, default: true },
@@ -64,7 +66,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 };
 
 // Index for faster lookups
-userSchema.index({ email: 1 });
+
 userSchema.index({ role: 1 });
 
 module.exports = mongoose.model('User', userSchema);

@@ -29,7 +29,7 @@ export default function AdminLayout() {
     toast.success('Logged out');
   };
 
-  const Sidebar = ({ mobile = false }) => (
+  const renderSidebar = ({ mobile = false }) => (
     <div className={`flex flex-col h-full ${mobile ? '' : 'w-60 flex-shrink-0'}`}>
       <div className="p-5 border-b border-white/10">
         <Link to="/" className="flex items-center gap-2">
@@ -84,7 +84,7 @@ export default function AdminLayout() {
     <div className="min-h-screen flex bg-dark-950">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col glass border-r border-white/10 sticky top-0 h-screen">
-        <Sidebar />
+        {renderSidebar({})}
       </aside>
 
       {/* Mobile Sidebar */}
@@ -97,7 +97,7 @@ export default function AdminLayout() {
             exit={{ x: -240 }}
             className="relative w-60 h-full glass border-r border-white/10 flex flex-col"
           >
-            <Sidebar mobile />
+            {renderSidebar({ mobile: true })}
           </motion.aside>
         </div>
       )}

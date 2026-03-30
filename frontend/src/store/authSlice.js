@@ -52,7 +52,7 @@ const loadAuthFromStorage = () => {
     const token = localStorage.getItem('mb_access_token');
     const user = localStorage.getItem('mb_user');
     if (token && user) return { accessToken: token, user: JSON.parse(user) };
-  } catch {}
+  } catch (e) {}
   return { accessToken: null, user: null };
 };
 

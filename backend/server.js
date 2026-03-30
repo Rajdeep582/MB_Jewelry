@@ -98,14 +98,17 @@ const server = app.listen(PORT, () => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection:', err.message);
+  logger.error(`Unhandled Rejection: ${err.stack}`);
   server.close(() => process.exit(1));
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err.message);
+  logger.error(`Uncaught Exception: ${err.stack}`);
   process.exit(1);
 });
+
+
+
 
 module.exports = app;

@@ -35,6 +35,8 @@
     overflow-x: hidden;
   }
 
+
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-display leading-tight;
   }
@@ -68,15 +70,15 @@
 
   /* Buttons */
   .btn-gold {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-dark-900 bg-gold-gradient transition-all duration-300 hover:shadow-gold-lg hover:scale-[1.02] active:scale-[0.98] cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-dark-900 bg-gold-gradient transition-all duration-200 hover:shadow-gold-lg hover:-translate-y-1 active:translate-y-1 active:scale-95 active:shadow-inner cursor-pointer;
   }
 
   .btn-outline-gold {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-gold-500 border border-gold-500/50 transition-all duration-300 hover:bg-gold-500/10 hover:border-gold-500 hover:shadow-gold cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-gold-500 border border-gold-500/50 transition-all duration-200 hover:bg-gold-500/10 hover:border-gold-500 hover:shadow-gold hover:-translate-y-1 active:translate-y-1 active:scale-95 active:shadow-inner cursor-pointer;
   }
 
   .btn-dark {
-    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-dark-700 transition-all duration-300 hover:bg-dark-600 cursor-pointer;
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white bg-dark-700 transition-all duration-200 hover:bg-dark-600 hover:shadow-lg hover:-translate-y-1 active:translate-y-1 active:scale-95 active:shadow-inner cursor-pointer;
   }
 
   /* Cards */

@@ -7,6 +7,7 @@ import { ProtectedRoute, AdminRoute } from './components/common/ProtectedRoute';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
 import CartDrawer from './components/common/CartDrawer';
+import ScrollToTop from './components/common/ScrollToTop';
 
 // Pages
 import Home from './pages/Home';
@@ -43,6 +44,7 @@ export default function App() {
   return (
     <Provider store={store}>
       <BrowserRouter>
+        <ScrollToTop />
         <ErrorBoundary>
           <Toaster
             position="top-right"

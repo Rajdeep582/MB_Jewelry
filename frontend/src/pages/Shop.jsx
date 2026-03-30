@@ -1,9 +1,9 @@
 import { useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiGrid, FiList } from 'react-icons/fi';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { fetchProducts, selectProducts, selectProductsLoading, selectProductsPagination, selectProductsFilter, setFilters } from '../store/productSlice';
 import ProductCard from '../components/shop/ProductCard';
 import FilterSidebar from '../components/shop/FilterSidebar';
@@ -27,6 +27,19 @@ export default function Shop() {
   const filters = useSelector(selectProductsFilter);
   const [search, setSearch] = useState(filters.search || '');
   const [view, setView] = useState('grid');
+  const location = useLocation();
+  const searchInputRef = useRef(null);
+
+  useEffect(() => {
+    if (location.state?.focusSearch && searchInputRef.current) {
+      // Small timeout to ensure DOM is ready and scrolling is done
+      setTimeout(() => {
+        searchInputRef.current.focus();
+        // Clear state so it doesn't refocus on re-renders
+        window.history.replaceState({}, document.title);
+      }, 100);
+    }
+  }, [location.state]);
 
   useEffect(() => {
     document.title = 'Shop — M&B Jewelry';
@@ -67,17 +80,7 @@ export default function Shop() {
           <div className="gold-divider mt-3 mx-0" />
         </div>
 
-        {/* Search Bar */}
-        <div className="mb-8">
-          <input
-            id="shop-search"
-            type="text"
-            value={search}
-            onChange={handleSearchChange}
-            placeholder="Search rings, necklaces, gold jewelry..."
-            className="input-dark max-w-xl text-sm"
-          />
-        </div>
+
 
         <div className="flex gap-6 lg:gap-8">
           {/* Sidebar */}
@@ -85,6 +88,19 @@ export default function Shop() {
 
           {/* Main Content */}
           <div className="flex-1 min-w-0">
+            {/* Search Bar */}
+            <div className="mb-6 relative">
+              <input
+                id="shop-search"
+                ref={searchInputRef}
+                type="text"
+                value={search}
+                onChange={handleSearchChange}
+                placeholder="Search rings, necklaces, gold jewelry..."
+                className="input-dark w-full text-sm py-4"
+              />
+            </div>
+
             {/* Toolbar */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <p className="text-dark-400 text-sm">

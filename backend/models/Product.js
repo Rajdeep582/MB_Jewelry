@@ -1,14 +1,5 @@
 const mongoose = require('mongoose');
 
-const ratingSchema = new mongoose.Schema(
-  {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    rating: { type: Number, min: 1, max: 5, required: true },
-    comment: { type: String, maxlength: 500 },
-  },
-  { timestamps: true }
-);
-
 const productSchema = new mongoose.Schema(
   {
     name: {
@@ -61,7 +52,7 @@ const productSchema = new mongoose.Schema(
     sold: { type: Number, default: 0 },
     isFeatured: { type: Boolean, default: false },
     tags: [{ type: String, trim: true }],
-    ratings: [ratingSchema],
+
     averageRating: { type: Number, default: 0, min: 0, max: 5 },
     numReviews: { type: Number, default: 0 },
     weight: { type: String, default: '' },
@@ -70,17 +61,7 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Compute averageRating before save
-productSchema.methods.calculateAverageRating = function () {
-  if (this.ratings.length === 0) {
-    this.averageRating = 0;
-    this.numReviews = 0;
-  } else {
-    const total = this.ratings.reduce((sum, r) => sum + r.rating, 0);
-    this.averageRating = Math.round((total / this.ratings.length) * 10) / 10;
-    this.numReviews = this.ratings.length;
-  }
-};
+
 
 // Indexes for performance
 productSchema.index({ category: 1 });

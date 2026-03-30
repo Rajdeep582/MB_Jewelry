@@ -1,12 +1,16 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import DEMO_PRODUCTS from '../data/demoProducts';
 import api from '../services/api';
 
 export const fetchProducts = createAsyncThunk('products/fetchAll', async (params, { rejectWithValue }) => {
   try {
     const res = await api.get('/products', { params });
-    return res.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Failed to load products');
+    // If API returns products use them, otherwise fall back to demo data
+    if (res.data?.products?.length > 0) return res.data;
+    // Fallback: filter + paginate demo products locally
+    return buildDemoPage(params);
+  } catch {
+    return buildDemoPage(params);
   }
 });
 
@@ -14,19 +18,51 @@ export const fetchProduct = createAsyncThunk('products/fetchOne', async (id, { r
   try {
     const res = await api.get(`/products/${id}`);
     return res.data.product;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message || 'Product not found');
+  } catch {
+    // Fall back to local demo data
+    const demo = DEMO_PRODUCTS.find((p) => p._id === id);
+    if (demo) return demo;
+    return rejectWithValue('Product not found');
   }
 });
 
 export const fetchFeaturedProducts = createAsyncThunk('products/fetchFeatured', async (_, { rejectWithValue }) => {
   try {
     const res = await api.get('/products', { params: { featured: true, limit: 8 } });
-    return res.data.products;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.message);
+    if (res.data?.products?.length > 0) return res.data.products;
+    return DEMO_PRODUCTS.filter((p) => p.featured).slice(0, 8);
+  } catch {
+    return DEMO_PRODUCTS.filter((p) => p.featured).slice(0, 8);
   }
 });
+
+// ── Helper: filter & paginate DEMO_PRODUCTS locally ──────────────────────
+function buildDemoPage(params = {}) {
+  const { search = '', category = '', material = '', type = '', minPrice = '', maxPrice = '', sort = '', page = 1, limit = 12 } = params;
+  let list = [...DEMO_PRODUCTS];
+
+  if (search) {
+    const q = search.toLowerCase();
+    list = list.filter((p) => p.name.toLowerCase().includes(q) || p.type.toLowerCase().includes(q) || p.material.toLowerCase().includes(q));
+  }
+  if (material) list = list.filter((p) => p.material.toLowerCase() === material.toLowerCase());
+  if (type)     list = list.filter((p) => p.type.toLowerCase() === type.toLowerCase());
+  if (minPrice) list = list.filter((p) => (p.discountedPrice || p.price) >= Number(minPrice));
+  if (maxPrice) list = list.filter((p) => (p.discountedPrice || p.price) <= Number(maxPrice));
+
+  if (sort === 'price-asc')  list.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
+  if (sort === 'price-desc') list.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
+  if (sort === 'rating')     list.sort((a, b) => b.averageRating - a.averageRating);
+  if (sort === 'popular')    list.sort((a, b) => b.numReviews - a.numReviews);
+
+  const total = list.length;
+  const lim = Number(limit) || 12;
+  const pages = Math.max(1, Math.ceil(total / lim));
+  const p = Math.min(Number(page) || 1, pages);
+  const products = list.slice((p - 1) * lim, p * lim);
+
+  return { products, pagination: { total, page: p, pages, limit: lim } };
+}
 
 const productSlice = createSlice({
   name: 'products',

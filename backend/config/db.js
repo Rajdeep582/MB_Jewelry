@@ -5,10 +5,7 @@ const connectDB = async () => {
   let retries = 5;
   while (retries) {
     try {
-      const conn = await mongoose.connect(process.env.MONGO_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
-      });
+      const conn = await mongoose.connect(process.env.MONGO_URI);
       logger.info(`✅ MongoDB Connected: ${conn.connection.host}`);
       break;
     } catch (error) {

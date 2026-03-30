@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiFilter, FiX, FiChevronDown } from 'react-icons/fi';
 import { setFilters, resetFilters, selectProductsFilter } from '../../store/productSlice';
 import { categoryService } from '../../services/services';
+import { debounce } from '../../utils/helpers';
 
 const MATERIALS = ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'];
 const TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Brooch', 'Set'];
@@ -45,23 +46,44 @@ export default function FilterSidebar({ onApply }) {
   const [categories, setCategories] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const [minPrice, setMinPrice] = useState(filters.minPrice || '');
+  const [maxPrice, setMaxPrice] = useState(filters.maxPrice || '');
+
   useEffect(() => {
     categoryService.getCategories().then((res) => setCategories(res.data.categories));
   }, []);
+
+  useEffect(() => {
+    setMinPrice(filters.minPrice || '');
+    setMaxPrice(filters.maxPrice || '');
+  }, [filters.minPrice, filters.maxPrice]);
 
   const handleChange = (key, value) => {
     dispatch(setFilters({ [key]: filters[key] === value ? '' : value }));
   };
 
-  const handlePriceChange = (key, value) => {
-    dispatch(setFilters({ [key]: value }));
+  const debouncedPriceChange = useCallback(
+    debounce((key, val) => {
+      dispatch(setFilters({ [key]: val }));
+    }, 600),
+    []
+  );
+
+  const handleMinChange = (e) => {
+    setMinPrice(e.target.value);
+    debouncedPriceChange('minPrice', e.target.value);
+  };
+
+  const handleMaxChange = (e) => {
+    setMaxPrice(e.target.value);
+    debouncedPriceChange('maxPrice', e.target.value);
   };
 
   const handleReset = () => {
     dispatch(resetFilters());
   };
 
-  const FilterContent = () => (
+  const renderFilterContent = () => (
     <div>
       {/* Price Range */}
       <FilterSection title="Price Range">
@@ -69,15 +91,15 @@ export default function FilterSidebar({ onApply }) {
           <input
             type="number"
             placeholder="Min ₹"
-            value={filters.minPrice}
-            onChange={(e) => handlePriceChange('minPrice', e.target.value)}
+            value={minPrice}
+            onChange={handleMinChange}
             className="input-dark text-sm py-2 flex-1"
           />
           <input
             type="number"
             placeholder="Max ₹"
-            value={filters.maxPrice}
-            onChange={(e) => handlePriceChange('maxPrice', e.target.value)}
+            value={maxPrice}
+            onChange={handleMaxChange}
             className="input-dark text-sm py-2 flex-1"
           />
         </div>
@@ -163,7 +185,7 @@ export default function FilterSidebar({ onApply }) {
             <h2 className="font-display text-white text-lg">Filters</h2>
             <FiFilter size={16} className="text-gold-500" />
           </div>
-          <FilterContent />
+          {renderFilterContent()}
         </div>
       </aside>
 
@@ -199,7 +221,7 @@ export default function FilterSidebar({ onApply }) {
                   <FiX size={20} />
                 </button>
               </div>
-              <FilterContent />
+              {renderFilterContent()}
               <button
                 onClick={() => setMobileOpen(false)}
                 className="btn-gold w-full mt-6"

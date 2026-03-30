@@ -55,8 +55,8 @@ export default function Navbar() {
       initial={{ y: -80 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? 'glass shadow-xl' : 'bg-transparent'
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 border-b ${
+        scrolled ? 'bg-dark-900/90 backdrop-blur-md border-white/10 shadow-xl' : 'bg-transparent border-transparent'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -93,7 +93,7 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             {/* Search */}
             <button
-              onClick={() => navigate('/shop')}
+              onClick={() => navigate('/shop', { state: { focusSearch: true } })}
               className="p-2 text-dark-300 hover:text-gold-500 transition-colors duration-200"
               aria-label="Search"
             >

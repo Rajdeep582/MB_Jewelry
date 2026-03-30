@@ -1,210 +1,162 @@
-# 💎 M&B Jewelry — Luxury E-Commerce Platform
+<div align="center">
+  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewelry Banner" width="100%" />
 
-A production-ready, full-stack jewelry e-commerce platform built with the MERN stack (MongoDB, Express.js, React.js, Node.js).
+  <h1>💎 M&B Jewelry | Luxury E-Commerce Platform</h1>
+  
+  <p>
+    A production-ready, full-stack jewelry e-commerce platform crafted with elegance. Built exclusively with the MERN stack emphasizing high-end UI design, robust backend security, and seamless user experiences.
+  </p>
 
-![M&B Jewelry](https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80)
-
-## ✨ Features
-
-- **User Authentication** — JWT with refresh tokens (httpOnly cookies)
-- **Product Catalog** — Filters, search, sorting, and pagination
-- **Shopping Cart** — Persistent localStorage + Redux state
-- **Checkout** — Full Razorpay payment gateway integration with HMAC verification
-- **Admin Panel** — Product/Order/User management with analytics
-- **Cloudinary** — Image upload and optimization
-- **Responsive UI** — Luxury dark theme with gold accents (Tailwind CSS v3)
-- **Animations** — Framer Motion throughout
-- **SEO-ready** — Meta tags, Open Graph, semantic HTML
+<!-- Badges -->
+<p>
+  <img src="https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
+  <img src="https://img.shields.io/badge/Express.js-%23404d59.svg?style=for-the-badge&logo=express&logoColor=%2361DAFB" alt="Express.js" />
+  <img src="https://img.shields.io/badge/React-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/Node.js-6DA55F?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" alt="Tailwind CSS" />
+</p>
+</div>
 
 ---
 
-## 🗂 Project Structure
+## 🌟 Key Features
 
-```
-M_B_Jewelry/
-├── backend/        # Node.js + Express REST API
-│   ├── config/        # DB, Cloudinary, Razorpay config
-│   ├── controllers/   # Route handlers (MVC)
-│   ├── middleware/    # Auth, error handler, upload
-│   ├── models/        # Mongoose schemas
-│   ├── routes/        # Express routers
-│   ├── utils/         # JWT, logger, helpers
-│   └── server.js      # Entry point
+* **Secure Authentication:** JWT implementation with HTTP-only refresh cookies for optimal security.
+* **Premium User Interface:** Responsive, luxury dark theme enriched with gold accents and Framer Motion micro-animations.
+* **Complete Shopping Journey:** Featuring a persistent shopping cart (Redux + LocalStorage) and sophisticated product filtering/sorting.
+* **Seamless Payments:** Integrated Razorpay payment gateway handling with backend HMAC signature verification.
+* **Media Optimization:** Cloudinary integration for scalable product image uploads and optimizations.
+* **Admin Dashboard:** Full-fledged control panel for product catalogs, user management, and order tracking.
+
+---
+
+## 🏗️ Architecture & Stack
+
+### Frontend Application (Client)
+- **Framework:** React 18, Vite
+- **Styling:** Tailwind CSS v3, Vanilla CSS for intricate layouts
+- **State Management:** Redux Toolkit
+- **Routing:** React Router DOM
+- **Interactions:** Framer Motion, React Hot Toast
+
+### Backend API (Server)
+- **Runtime:** Node.js
+- **Framework:** Express.js
+- **Database:** MongoDB (Mongoose ODM)
+- **Security:** Helmet, CORS, Express Validator
+- **Payment Gateway:** Razorpay API Integration
+- **Storage:** Cloudinary
+
+---
+
+## 📁 Repository Structure
+
+```text
+MB_Jewelry/
+├── backend/                  # Server-side logic & APIs
+│   ├── config/               # Database & service configurations
+│   ├── controllers/          # Request handlers
+│   ├── models/               # MongoDB schema definitions
+│   ├── routes/               # API endpoint definitions
+│   └── seed.js               # Database population script
 │
-└── frontend/       # React + Vite SPA
-    ├── src/
-    │   ├── components/  # Navbar, Footer, ProductCard, etc.
-    │   ├── pages/       # Route-level pages
-    │   ├── store/       # Redux slices
-    │   ├── services/    # Axios API layer
-    │   └── utils/       # Helpers
-    └── index.html
+└── frontend/                 # Client UI application
+    ├── public/               # Static assets
+    ├── src/                  # React source code
+    │   ├── components/       # Reusable UI components
+    │   ├── pages/            # Application views/routes
+    │   └── store/            # Redux global state configuration
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- MongoDB (local or Atlas)
-- Razorpay account (for payments)
-- Cloudinary account (for images)
 
-### 1. Clone and Setup
+Ensure you have the following installed before starting:
+- **Node.js** (v18+)
+- **MongoDB** (Local instance or Atlas cluster URI)
+- Credentials for **Razorpay** and **Cloudinary**
+
+### 1. Verification & Installation
+
+Clone the repository and install necessary dependencies for both ends:
 
 ```bash
-git clone <repo-url>
-cd M_B_Jewelry
+# Clone the repository
+git clone https://github.com/Rajdeep582/MB_Jewelry.git
+cd MB_Jewelry
+
+# Install Backend dependencies
+cd backend && npm install
+
+# Install Frontend dependencies
+cd ../frontend && npm install
 ```
 
-### 2. Backend Setup
+### 2. Environment Configuration
+
+Variables are managed securely. Example files (`.env.example`) are provided.
+
+**Backend `.env`:**
+```env
+PORT=5000
+NODE_ENV=development
+MONGO_URI=<Your MongoDB Connection String>
+JWT_SECRET=<Random 32 Chars>
+JWT_REFRESH_SECRET=<Random 32 Chars>
+RAZORPAY_KEY_ID=<Your Razorpay ID>
+RAZORPAY_KEY_SECRET=<Your Razorpay Secret>
+CLOUDINARY_CLOUD_NAME=<Cloud Name>
+CLOUDINARY_API_KEY=<Cloudinary Key>
+CLOUDINARY_API_SECRET=<Cloudinary Secret>
+```
+
+**Frontend `.env`:**
+```env
+VITE_API_URL=http://localhost:5000/api
+VITE_RAZORPAY_KEY_ID=<Your Razorpay ID>
+```
+
+### 3. Running the Application
+
+You can start both servers simultaneously for local development.
 
 ```bash
+# Terminal 1 - Start the backend server
 cd backend
-cp .env.example .env
-# Fill in your credentials in .env
-npm install
 npm run dev
-```
 
-### 3. Frontend Setup
-
-```bash
+# Terminal 2 - Start the frontend app
 cd frontend
-cp .env.example .env
-# Fill in your credentials in .env
-npm install
 npm run dev
 ```
 
-The app will be running at:
-- **Frontend**: http://localhost:5173
-- **Backend API**: http://localhost:5000/api
+The application client runs on `http://localhost:5173`, and the API server starts on `http://localhost:5000`.
 
 ---
 
-## 🔑 Environment Variables
+## 💳 Payment Flow Architecture
 
-### Backend (`backend/.env`)
-
-| Variable | Description |
-|----------|-------------|
-| `PORT` | Server port (default: 5000) |
-| `MONGO_URI` | MongoDB connection string |
-| `JWT_SECRET` | JWT access token secret (min 32 chars) |
-| `JWT_REFRESH_SECRET` | JWT refresh token secret |
-| `RAZORPAY_KEY_ID` | Razorpay Key ID |
-| `RAZORPAY_KEY_SECRET` | Razorpay Key Secret |
-| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
-| `CLOUDINARY_API_KEY` | Cloudinary API key |
-| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
-| `CLIENT_URL` | Frontend URL for CORS |
-
-### Frontend (`frontend/.env`)
-
-| Variable | Description |
-|----------|-------------|
-| `VITE_API_URL` | Backend API base URL |
-| `VITE_RAZORPAY_KEY_ID` | Razorpay Key ID (public) |
+1. Client finalizes cart and triggers **Checkout**.
+2. Frontend requests payment initialization from `POST /api/orders/create-payment`.
+3. Server calculates absolute DB-based pricing to prevent client-side tampering, resolving a dynamic Razorpay order ID.
+4. Razorpay's overlay initializes natively on the UI.
+5. On successful capture, the client shoots raw transaction details to `POST /api/orders/verify-payment`.
+6. Node.js backend mathematically verifies the **HMAC payload signature** against `RAZORPAY_KEY_SECRET`. Upon total match, an Order DB record is formed.
 
 ---
 
-## 💳 Razorpay Integration
+## 🛡️ Security Posture
 
-Payment flow:
-1. Frontend sends order items to `POST /api/orders/create-payment`
-2. Backend calculates price from DB (security), creates Razorpay order
-3. Frontend opens Razorpay checkout popup
-4. On success, frontend sends payment details to `POST /api/orders/verify-payment`
-5. Backend verifies HMAC signature, reduces stock, creates DB order
-6. User is redirected to order confirmation
+- **Refined JWT Handling:** Short-lived access tokens passed in-memory, paired with long-lived HTTP-only refresh tokens attached to secure sockets.
+- **Robust Verification:** Server strictly uses backend item details for payment calculation—nothing relies heavily on frontend payloads.
+- **Protection Measures:** Utilization of bcrypt hashing (12 rounds) and brute-force protection using API Rate Limiting.
 
 ---
 
-## 🛡 API Endpoints
-
-### Auth
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/auth/register` | Register user |
-| POST | `/api/auth/login` | Login + set refresh token cookie |
-| POST | `/api/auth/logout` | Logout + clear cookie |
-| POST | `/api/auth/refresh` | Refresh access token |
-| GET  | `/api/auth/me` | Get current user |
-
-### Products
-| Method | Route | Description |
-|--------|-------|-------------|
-| GET | `/api/products` | List with filters/pagination |
-| GET | `/api/products/:id` | Single product |
-| POST | `/api/products` | Create (Admin) |
-| PUT | `/api/products/:id` | Update (Admin) |
-| DELETE | `/api/products/:id` | Delete (Admin) |
-| POST | `/api/products/:id/review` | Add review |
-
-### Orders
-| Method | Route | Description |
-|--------|-------|-------------|
-| POST | `/api/orders/create-payment` | Create Razorpay order |
-| POST | `/api/orders/verify-payment` | Verify & save order |
-| GET | `/api/orders/my-orders` | User order history |
-| GET | `/api/orders` | All orders (Admin) |
-| PUT | `/api/orders/:id/status` | Update status (Admin) |
-
----
-
-## 🚢 Deployment
-
-### Frontend → Vercel
-
-1. Import from GitHub on [vercel.com](https://vercel.com)
-2. Set build command: `npm run build`
-3. Set output directory: `dist`
-4. Add environment variables from `.env.example`
-5. Deploy!
-
-### Backend → Render
-
-1. Create a Web Service on [render.com](https://render.com)
-2. Connect GitHub repo, set root directory to `backend/`
-3. Build command: `npm install`
-4. Start command: `node server.js`
-5. Add environment variables
-6. Deploy!
-
----
-
-## 🔒 Security Features
-
-- JWT with short-lived access tokens (15min) + long-lived refresh tokens (7d)
-- httpOnly cookies for refresh tokens
-- bcrypt password hashing (12 rounds)
-- Helmet.js security headers
-- CORS with whitelist
-- Rate limiting (200 req/15min global, 20 req/15min auth)
-- Razorpay HMAC signature verification
-- Input validation (express-validator)
-
----
-
-## 🧰 Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18 + Vite |
-| Styling | Tailwind CSS v3 |
-| State | Redux Toolkit |
-| Animation | Framer Motion |
-| Backend | Node.js + Express.js |
-| Database | MongoDB + Mongoose |
-| Auth | JWT (access + refresh) |
-| Payments | Razorpay |
-| Images | Cloudinary |
-| Logging | Winston + Morgan |
-
----
-
-## 📄 License
-
-MIT © M&B Jewelry 2024
+<div align="center">
+  <p>Designed and Built by <b>Rajdeep</b></p>
+  <p>Providing pristine luxury e-commerce experiences.</p>
+</div>

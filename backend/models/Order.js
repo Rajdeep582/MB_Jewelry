@@ -12,6 +12,13 @@ const orderItemSchema = new mongoose.Schema({
   quantity: { type: Number, required: true, min: 1 },
 });
 
+const trackingStepSchema = new mongoose.Schema({
+  status: { type: String, required: true },
+  timestamp: { type: Date, default: Date.now },
+  comment: { type: String, default: '' },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+}, { _id: false });
+
 const orderSchema = new mongoose.Schema(
   {
     user: {
@@ -52,6 +59,10 @@ const orderSchema = new mongoose.Schema(
     },
     deliveredAt: { type: Date },
     trackingNumber: { type: String, default: '' },
+    trackingUrl: { type: String, default: '' },
+    courierPartner: { type: String, default: '' },
+    deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    trackingHistory: [trackingStepSchema],
   },
   { timestamps: true }
 );

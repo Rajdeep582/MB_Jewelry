@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+const Review = require('../models/Review');
 const cloudinary = require('../config/cloudinary');
 
 // @desc    Get all products with filters, sort, pagination
@@ -76,14 +77,20 @@ const getProducts = async (req, res) => {
 // @access  Public
 const getProduct = async (req, res) => {
   const product = await Product.findById(req.params.id)
-    .populate('category', 'name slug')
-    .populate('ratings.user', 'name avatar');
+    .populate('category', 'name slug');
 
   if (!product) {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  res.json({ success: true, product });
+  const ratings = await Review.find({ product: product._id })
+    .populate('user', 'name avatar')
+    .sort('-createdAt');
+
+  const productObj = product.toJSON();
+  productObj.ratings = ratings;
+
+  res.json({ success: true, product: productObj });
 };
 
 // @desc    Create product
@@ -174,18 +181,18 @@ const addReview = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  const existingIndex = product.ratings.findIndex(
-    (r) => r.user.toString() === req.user._id.toString()
+  await Review.findOneAndUpdate(
+    { product: product._id, user: req.user._id },
+    { rating, comment },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  if (existingIndex >= 0) {
-    product.ratings[existingIndex].rating = rating;
-    product.ratings[existingIndex].comment = comment;
-  } else {
-    product.ratings.push({ user: req.user._id, rating, comment });
-  }
+  const allReviews = await Review.find({ product: product._id });
+  product.numReviews = allReviews.length;
+  product.averageRating = allReviews.length > 0 
+    ? allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length 
+    : 0;
 
-  product.calculateAverageRating();
   await product.save();
 
   res.json({ success: true, message: 'Review submitted', averageRating: product.averageRating });

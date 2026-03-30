@@ -1,0 +1,8 @@
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-007 - /api/products/demo-007 - GET - ::1","timestamp":"2026-03-30 22:41:53"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-007 - /api/products/demo-007 - GET - ::1","timestamp":"2026-03-30 22:41:53"}
+{"level":"\u001b[31merror\u001b[39m","message":"401 - Internal Server Error - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 00:37:28"}
+{"level":"\u001b[31merror\u001b[39m","message":"401 - Internal Server Error - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 00:48:58"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/products/demo-002 - GET - ::1","timestamp":"2026-03-31 00:51:42"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/products/demo-002 - GET - ::1","timestamp":"2026-03-31 00:51:42"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/products/demo-002/review - POST - ::1","timestamp":"2026-03-31 00:51:56"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 00:52:37"}

@@ -9,7 +9,7 @@ const loadCartState = () => {
   try {
     const serialized = localStorage.getItem('mb_jewelry_cart');
     return serialized ? JSON.parse(serialized) : undefined;
-  } catch {
+  } catch (e) {
     return undefined;
   }
 };
@@ -36,7 +36,7 @@ store.subscribe(() => {
     prevCart = nextCart;
     try {
       localStorage.setItem('mb_jewelry_cart', JSON.stringify(nextCart));
-    } catch {}
+    } catch (e) {}
   }
 });
 
