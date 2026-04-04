@@ -87,7 +87,12 @@
   }
 
   .card-hover {
-    @apply card hover:border-gold-500/30 hover:shadow-card-hover hover:-translate-y-1;
+    @apply card;
+  }
+  
+  .card-hover:hover {
+    @apply shadow-card-hover -translate-y-1;
+    border-color: #742A2A;
   }
 
   /* Glassmorphism */
@@ -150,7 +155,10 @@
   }
 
   .badge-red {
-    @apply badge bg-red-500/15 text-red-400 border border-red-500/30;
+    @apply badge;
+    background-color: #4A1414; /* bg-velvet-900 */
+    color: #E53E3E; /* text-velvet-400 */
+    border-color: #742A2A; /* border-velvet-700 */
   }
 
   .badge-blue {
@@ -175,7 +183,8 @@
 
   /* Product Card Image */
   .product-img-wrapper {
-    @apply relative overflow-hidden bg-dark-800 aspect-square;
+    @apply relative overflow-hidden aspect-square;
+    background: radial-gradient(circle at bottom right, #2A0A0A 0%, #0D0D0D 100%);
   }
 
   .product-img-wrapper img {

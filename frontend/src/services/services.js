@@ -3,6 +3,7 @@ import api from './api';
 export const orderService = {
   createPayment: (data) => api.post('/orders/create-payment', data),
   verifyPayment: (data) => api.post('/orders/verify-payment', data),
+  failPayment: (data) => api.post('/orders/fail-payment', data),    // report payment failure/dismissal
   getMyOrders: () => api.get('/orders/my-orders'),
   getOrder: (id) => api.get(`/orders/${id}`),
   getAllOrders: (params) => api.get('/orders', { params }),
@@ -18,6 +19,7 @@ export const userService = {
   deleteAddress: (id) => api.delete(`/users/addresses/${id}`),
   getAllUsers: (params) => api.get('/users', { params }),
   toggleUserActive: (id) => api.put(`/users/${id}/toggle-active`),
+  updateUserRole: (id, data) => api.put(`/users/${id}/role`, data),
 };
 
 export const productService = {
@@ -38,5 +40,9 @@ export const categoryService = {
     api.post('/categories', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   updateCategory: (id, formData) =>
     api.put(`/categories/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  deleteCategory: (id) => api.delete(`/categories/${id}`),
+};
+
+export const adminService = {
+  bulkUpdatePricing: (data) => api.post('/admin/bulk-pricing', data),
+  bulkUpdateDiscounts: (data) => api.post('/admin/bulk-discounts', data),
 };

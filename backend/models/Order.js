@@ -41,12 +41,14 @@ const orderSchema = new mongoose.Schema(
       razorpayOrderId: { type: String },
       razorpayPaymentId: { type: String },
       razorpaySignature: { type: String },
+      method: { type: String, default: 'razorpay' },      // razorpay | cod (extensible)
       status: {
         type: String,
         enum: ['pending', 'paid', 'failed', 'refunded'],
         default: 'pending',
       },
       paidAt: { type: Date },
+      failReason: { type: String, default: '' },           // audit: why payment failed
     },
     itemsPrice: { type: Number, required: true },
     shippingPrice: { type: Number, default: 0 },
@@ -54,7 +56,7 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     orderStatus: {
       type: String,
-      enum: ['processing', 'confirmed', 'shipped', 'delivered', 'cancelled'],
+      enum: ['processing', 'confirmed', 'shipped', 'delivered', 'cancelled', 'return_requested', 'returned'],
       default: 'processing',
     },
     deliveredAt: { type: Date },

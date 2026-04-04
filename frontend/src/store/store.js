@@ -4,18 +4,31 @@ import cartReducer from './cartSlice';
 import productReducer from './productSlice';
 import uiReducer from './uiSlice';
 
-// Load cart from localStorage
+// ─── Cart Persistence ─────────────────────────────────────────────────────────
+// Only persist cart items — NOT isOpen (drawer state should reset on every visit)
+
+const CART_STORAGE_KEY = 'mb_jewelry_cart';
+
 const loadCartState = () => {
   try {
-    const serialized = localStorage.getItem('mb_jewelry_cart');
-    return serialized ? JSON.parse(serialized) : undefined;
+    const serialized = localStorage.getItem(CART_STORAGE_KEY);
+    if (!serialized) return undefined;
+    const parsed = JSON.parse(serialized);
+    // Validate shape before injecting into Redux
+    if (!Array.isArray(parsed?.items)) {
+      localStorage.removeItem(CART_STORAGE_KEY);
+      return undefined;
+    }
+    return { items: parsed.items, isOpen: false }; // always reset isOpen
   } catch (e) {
+    // Corrupt data — clear it
+    localStorage.removeItem(CART_STORAGE_KEY);
     return undefined;
   }
 };
 
 const preloadedState = {
-  cart: loadCartState(),
+  cart: loadCartState() ?? { items: [], isOpen: false },
 };
 
 export const store = configureStore({
@@ -28,15 +41,18 @@ export const store = configureStore({
   preloadedState,
 });
 
-// Persist cart to localStorage on every state change
-let prevCart = store.getState().cart;
+// ─── Subscribe: persist only cart items (not isOpen or any transient UI state) ─
+let prevCartItems = store.getState().cart.items;
+
 store.subscribe(() => {
-  const nextCart = store.getState().cart;
-  if (nextCart !== prevCart) {
-    prevCart = nextCart;
+  const nextCartItems = store.getState().cart.items;
+  if (nextCartItems !== prevCartItems) {
+    prevCartItems = nextCartItems;
     try {
-      localStorage.setItem('mb_jewelry_cart', JSON.stringify(nextCart));
-    } catch (e) {}
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ items: nextCartItems }));
+    } catch (e) {
+      // Storage quota — silently ignore
+    }
   }
 });
 

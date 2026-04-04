@@ -43,16 +43,25 @@ export default function Shop() {
 
   useEffect(() => {
     document.title = 'Shop — M&B Jewelry';
-    // Read URL params
-    const type = searchParams.get('type');
-    const category = searchParams.get('category');
-    if (type) dispatch(setFilters({ type }));
-    if (category) dispatch(setFilters({ category }));
-  }, []);
+    const type = searchParams.get('type') || '';
+    const category = searchParams.get('category') || '';
+    const material = searchParams.get('material') || '';
+    
+    // Strict URL synchronization: clear existing state when URL dictates so
+    const newFilters = { type, category, material };
+    
+    // If navigating generically without focusSearch, clear search state too
+    if (!location.state?.focusSearch && Array.from(searchParams.keys()).length === 0) {
+      newFilters.search = '';
+      setSearch('');
+    }
+    
+    dispatch(setFilters(newFilters));
+  }, [searchParams, location.state, dispatch]);
 
   useEffect(() => {
     dispatch(fetchProducts(filters));
-  }, [dispatch, filters]);
+  }, [dispatch, filters.type, filters.category, filters.material, filters.search, filters.sort, filters.page, filters.minPrice, filters.maxPrice]);
 
   const debouncedSearch = useCallback(
     debounce((val) => dispatch(setFilters({ search: val })), 400),

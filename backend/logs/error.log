@@ -6,3 +6,38 @@
 {"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/products/demo-002 - GET - ::1","timestamp":"2026-03-31 00:51:42"}
 {"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/products/demo-002/review - POST - ::1","timestamp":"2026-03-31 00:51:56"}
 {"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-002 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 00:52:37"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/products/demo-001 - GET - ::1","timestamp":"2026-03-31 16:51:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/products/demo-001 - GET - ::1","timestamp":"2026-03-31 16:51:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 16:52:44"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 16:52:57"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 16:53:03"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-001 - /api/orders/create-payment - POST - ::1","timestamp":"2026-03-31 16:53:09"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 4","timestamp":"2026-04-03 19:37:07"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 3","timestamp":"2026-04-03 19:37:12"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 2","timestamp":"2026-04-03 19:37:17"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 1","timestamp":"2026-04-03 19:37:22"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 0","timestamp":"2026-04-03 19:37:27"}
+{"level":"\u001b[31merror\u001b[39m","message":"Unhandled Rejection: undefined","timestamp":"2026-04-04 12:26:48"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - Unknown API key YOUR_API_KEY - /api/products - POST - ::1","timestamp":"2026-04-04 12:26:48"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - Unknown API key YOUR_API_KEY - /api/products/69d0b7d7caae1f55a7d47756 - PUT - ::1","timestamp":"2026-04-04 12:37:54"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - Unknown API key YOUR_API_KEY - /api/products/69d0b93b602bf39f83e6d13f - PUT - ::1","timestamp":"2026-04-04 12:39:49"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - Unknown API key YOUR_API_KEY - /api/products/69d0b7d7caae1f55a7d47756 - PUT - ::1","timestamp":"2026-04-04 12:43:21"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - Unknown API key YOUR_API_KEY - /api/products/69d0b7d7caae1f55a7d47756 - PUT - ::1","timestamp":"2026-04-04 12:44:08"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /favicon.ico - /favicon.ico - GET - ::1","timestamp":"2026-04-04 13:20:24"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: / - / - GET - ::1","timestamp":"2026-04-04 13:21:59"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: / - / - GET - ::1","timestamp":"2026-04-04 13:22:24"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /favicon.ico - /favicon.ico - GET - ::1","timestamp":"2026-04-04 13:54:47"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:06:13"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:06:28"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:19:30"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:01"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:05"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:12"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:13"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:15"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:22"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:25"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:26"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:26"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:28"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:27:15"}

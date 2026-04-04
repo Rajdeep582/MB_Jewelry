@@ -55,19 +55,30 @@ const productSchema = new mongoose.Schema(
 
     averageRating: { type: Number, default: 0, min: 0, max: 5 },
     numReviews: { type: Number, default: 0 },
-    weight: { type: String, default: '' },
+    weight: { type: String, default: '' }, // e.g. "12.5g"
     sku: { type: String, unique: true, sparse: true },
+    
+    // Jewelry Production Business standards
+    purity: { 
+      type: String, 
+      enum: ['24K', '22K', 'None'],
+      default: 'None' 
+    },
+    isHallmarked: { 
+      type: Boolean, 
+      default: false 
+    },
   },
   { timestamps: true }
 );
-
-
 
 // Indexes for performance
 productSchema.index({ category: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ material: 1 });
 productSchema.index({ type: 1 });
+productSchema.index({ purity: 1 });
+productSchema.index({ isHallmarked: 1 });
 productSchema.index({ isFeatured: 1 });
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 

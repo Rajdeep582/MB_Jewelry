@@ -38,7 +38,11 @@ export const fetchFeaturedProducts = createAsyncThunk('products/fetchFeatured', 
 
 // ── Helper: filter & paginate DEMO_PRODUCTS locally ──────────────────────
 function buildDemoPage(params = {}) {
-  const { search = '', category = '', material = '', type = '', minPrice = '', maxPrice = '', sort = '', page = 1, limit = 12 } = params;
+  const { 
+    search = '', category = '', material = '', type = '', 
+    minPrice = '', maxPrice = '', sort = '', page = 1, limit = 12,
+    purity = '', isHallmarked = ''
+  } = params;
   let list = [...DEMO_PRODUCTS];
 
   if (search) {
@@ -49,6 +53,14 @@ function buildDemoPage(params = {}) {
   if (type)     list = list.filter((p) => p.type.toLowerCase() === type.toLowerCase());
   if (minPrice) list = list.filter((p) => (p.discountedPrice || p.price) >= Number(minPrice));
   if (maxPrice) list = list.filter((p) => (p.discountedPrice || p.price) <= Number(maxPrice));
+  
+  if (purity) {
+    const purities = purity.split(',').map(p => p.trim());
+    list = list.filter(p => purities.includes(p.purity));
+  }
+  if (isHallmarked === 'true') {
+    list = list.filter(p => p.isHallmarked === true);
+  }
 
   if (sort === 'price-asc')  list.sort((a, b) => (a.discountedPrice || a.price) - (b.discountedPrice || b.price));
   if (sort === 'price-desc') list.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
@@ -76,6 +88,8 @@ const productSlice = createSlice({
       category: '',
       material: '',
       type: '',
+      purity: '',
+      isHallmarked: '',
       minPrice: '',
       maxPrice: '',
       sort: '',
@@ -90,7 +104,7 @@ const productSlice = createSlice({
       state.filters = { ...state.filters, ...payload, page: payload.page || 1 };
     },
     resetFilters: (state) => {
-      state.filters = { search: '', category: '', material: '', type: '', minPrice: '', maxPrice: '', sort: '', page: 1 };
+      state.filters = { search: '', category: '', material: '', type: '', purity: '', isHallmarked: '', minPrice: '', maxPrice: '', sort: '', page: 1 };
     },
     clearCurrentProduct: (state) => {
       state.current = null;

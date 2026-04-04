@@ -28,6 +28,8 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProducts from './pages/admin/AdminProducts';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminPricing from './pages/admin/AdminPricing';
+import AdminDelivery from './pages/admin/AdminDelivery';
 
 function MainLayout({ children }) {
   return (
@@ -102,7 +104,9 @@ export default function App() {
               <Route index element={<AdminDashboard />} />
               <Route path="products" element={<AdminProducts />} />
               <Route path="orders" element={<AdminOrders />} />
+              <Route path="deliveries" element={<AdminDelivery />} />
               <Route path="users" element={<AdminUsers />} />
+              <Route path="pricing" element={<AdminPricing />} />
             </Route>
 
             {/* 404 */}

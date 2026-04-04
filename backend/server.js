@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
+const path = require('path');
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
@@ -18,14 +19,20 @@ const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const userRoutes = require('./routes/userRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Connect to MongoDB
 connectDB();
 
 const app = express();
 
+// ─── Static Files (Bypass Helmet CSP for pure images) ─────────
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // ─── Security Middleware ─────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 app.use(
   cors({
@@ -84,6 +91,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

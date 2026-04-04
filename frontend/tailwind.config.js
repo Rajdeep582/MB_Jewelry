@@ -38,6 +38,15 @@ export default {
           200: '#F2E9D5',
           300: '#E8D9BC',
         },
+        velvet: {
+          400: '#E53E3E',
+          500: '#C53030', // base red
+          600: '#9B2C2C', // deeper red
+          700: '#742A2A', // dark red
+          800: '#5C1D1D', // maroon
+          900: '#4A1414', // very dark red
+          950: '#2A0A0A', // almost black red
+        },
       },
       fontFamily: {
         sans:  ['Inter', 'system-ui', 'sans-serif'],
@@ -48,6 +57,7 @@ export default {
         'gold-gradient': 'linear-gradient(135deg, #D4AF37 0%, #F2C94C 50%, #C5973B 100%)',
         'dark-gradient': 'linear-gradient(135deg, #141414 0%, #0D0D0D 100%)',
         'hero-gradient': 'linear-gradient(160deg, #0D0D0D 0%, #1a1508 60%, #0D0D0D 100%)',
+        'velvet-gradient': 'radial-gradient(circle at center, #742A2A 0%, #2A0A0A 100%)',
       },
       animation: {
         'fade-in':     'fadeIn 0.5s ease-in-out',
@@ -93,7 +103,7 @@ export default {
         'gold':    '0 4px 24px rgba(212, 175, 55, 0.25)',
         'gold-lg': '0 8px 40px rgba(212, 175, 55, 0.35)',
         'card':    '0 2px 20px rgba(0, 0, 0, 0.3)',
-        'card-hover': '0 8px 40px rgba(0, 0, 0, 0.5)',
+        'card-hover': '0 8px 40px rgba(116, 42, 42, 0.35)', /* velvet glow */
       },
       borderRadius: {
         '2xl': '16px',

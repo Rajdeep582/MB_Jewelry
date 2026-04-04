@@ -8,7 +8,7 @@ import {
   selectCartItems, selectCartTotal, selectCartOpen,
   closeCart, removeFromCart, updateQuantity,
 } from '../../store/cartSlice';
-import { formatPrice } from '../../utils/helpers';
+import { formatPrice, resolveImageUrl } from '../../utils/helpers';
 
 export default function CartDrawer() {
   const dispatch = useDispatch();
@@ -98,7 +98,7 @@ export default function CartDrawer() {
                       <Link to={`/products/${item._id}`} onClick={() => dispatch(closeCart())}>
                         <div className="w-18 h-18 rounded-lg overflow-hidden bg-dark-700 flex-shrink-0">
                           <img
-                            src={item.images?.[0]?.url || jewelryImg}
+                            src={item.images?.[0]?.url ? resolveImageUrl(item.images[0].url) : jewelryImg}
                             alt={item.name}
                             className="w-full h-full object-cover"
                             style={{ width: '72px', height: '72px' }}

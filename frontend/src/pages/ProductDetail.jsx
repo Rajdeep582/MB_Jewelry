@@ -6,7 +6,7 @@ import { FiShoppingBag, FiStar, FiShare2, FiChevronLeft, FiChevronRight, FiMinus
 import { fetchProduct, selectCurrentProduct } from '../store/productSlice';
 import { addToCart, openCart } from '../store/cartSlice';
 import { selectIsAuthenticated } from '../store/authSlice';
-import { formatPrice, generateStars, formatDate } from '../utils/helpers';
+import { formatPrice, generateStars, formatDate, resolveImageUrl } from '../utils/helpers';
 import { productService } from '../services/services';
 import { ProductDetailSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
@@ -100,11 +100,11 @@ export default function ProductDetail() {
           {/* Image Gallery */}
           <div className="space-y-4">
             {/* Main Image */}
-            <div className="relative aspect-square rounded-2xl overflow-hidden bg-dark-800 group">
+            <div className="relative aspect-square rounded-2xl overflow-hidden bg-gradient-to-br from-dark-900 to-velvet-950 group border border-velvet-900/30 shadow-lg shadow-velvet-950/50">
               <AnimatePresence mode="wait">
                 <motion.img
                   key={activeImg}
-                  src={displayImages[activeImg]?.url || placeholderImg}
+                  src={displayImages[activeImg]?.url ? resolveImageUrl(displayImages[activeImg].url) : placeholderImg}
                   alt={name}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -141,7 +141,7 @@ export default function ProductDetail() {
                       activeImg === i ? 'border-gold-500' : 'border-white/10 hover:border-white/30'
                     }`}
                   >
-                    <img src={img.url} alt="" className="w-full h-full object-cover" />
+                    <img src={resolveImageUrl(img.url)} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
               </div>

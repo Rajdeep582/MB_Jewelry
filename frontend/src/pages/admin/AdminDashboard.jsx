@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [totalProducts, setTotalProducts] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     document.title = 'Admin Dashboard — M&B Jewelry';
@@ -46,11 +47,14 @@ export default function AdminDashboard() {
       productService.getProducts({ limit: 1 }),
     ]).then(([statsRes, ordersRes, usersRes, productsRes]) => {
       setStats(statsRes.data.stats);
-      setRecentOrders(ordersRes.data.orders);
-      setTotalUsers(usersRes.data.total);
-      setTotalProducts(productsRes.data.pagination.total);
+      setRecentOrders(ordersRes.data.orders || []);
+      setTotalUsers(usersRes.data.total || 0);
+      setTotalProducts(productsRes.data.pagination?.total || 0);
+    }).catch((err) => {
+      setError(err.response?.data?.message || 'Failed to load dashboard data');
     }).finally(() => setLoading(false));
   }, []);
+
 
   if (loading) {
     return (
@@ -63,6 +67,17 @@ export default function AdminDashboard() {
               <div className="skeleton h-4 rounded w-3/4" />
             </div>
           ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <p className="text-red-400 mb-2">{error}</p>
+          <button onClick={() => window.location.reload()} className="btn-dark text-sm">Retry</button>
         </div>
       </div>
     );

@@ -1,7 +1,8 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-// Async thunks
+// ─── Async Thunks ────────────────────────────────────────────────────────────
+
 export const registerUser = createAsyncThunk('auth/register', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/auth/register', data);
@@ -24,6 +25,7 @@ export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWith
   try {
     await api.post('/auth/logout');
   } catch (err) {
+    // Even if server logout fails, we still clear client state
     return rejectWithValue(err.response?.data?.message);
   }
 });
@@ -46,17 +48,42 @@ export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { r
   }
 });
 
-// Load persisted auth from localStorage
+// ─── Helpers (single source of truth for localStorage) ───────────────────────
+
+const STORAGE_KEYS = {
+  token: 'mb_access_token',
+  user: 'mb_user',
+};
+
+const persistAuth = (accessToken, user) => {
+  try {
+    localStorage.setItem(STORAGE_KEYS.token, accessToken);
+    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+  } catch (e) {
+    // Storage quota exceeded or private mode — silently ignore
+  }
+};
+
+const clearAuth = () => {
+  localStorage.removeItem(STORAGE_KEYS.token);
+  localStorage.removeItem(STORAGE_KEYS.user);
+};
+
 const loadAuthFromStorage = () => {
   try {
-    const token = localStorage.getItem('mb_access_token');
-    const user = localStorage.getItem('mb_user');
+    const token = localStorage.getItem(STORAGE_KEYS.token);
+    const user = localStorage.getItem(STORAGE_KEYS.user);
     if (token && user) return { accessToken: token, user: JSON.parse(user) };
-  } catch (e) {}
+  } catch (e) {
+    // Corrupt storage — clear it
+    clearAuth();
+  }
   return { accessToken: null, user: null };
 };
 
 const { accessToken, user } = loadAuthFromStorage();
+
+// ─── Slice ───────────────────────────────────────────────────────────────────
 
 const authSlice = createSlice({
   name: 'auth',
@@ -71,17 +98,16 @@ const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    // Single place to set credentials — all success cases use this
     setCredentials: (state, { payload }) => {
       state.user = payload.user;
       state.accessToken = payload.accessToken;
-      localStorage.setItem('mb_access_token', payload.accessToken);
-      localStorage.setItem('mb_user', JSON.stringify(payload.user));
+      persistAuth(payload.accessToken, payload.user);
     },
     clearCredentials: (state) => {
       state.user = null;
       state.accessToken = null;
-      localStorage.removeItem('mb_access_token');
-      localStorage.removeItem('mb_user');
+      clearAuth();
     },
   },
   extraReducers: (builder) => {
@@ -95,47 +121,64 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        localStorage.setItem('mb_access_token', payload.accessToken);
-        localStorage.setItem('mb_user', JSON.stringify(payload.user));
+        persistAuth(payload.accessToken, payload.user);
       })
       .addCase(registerUser.rejected, handleRejected)
+
       // Login
       .addCase(loginUser.pending, handlePending)
       .addCase(loginUser.fulfilled, (state, { payload }) => {
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        localStorage.setItem('mb_access_token', payload.accessToken);
-        localStorage.setItem('mb_user', JSON.stringify(payload.user));
+        persistAuth(payload.accessToken, payload.user);
       })
       .addCase(loginUser.rejected, handleRejected)
-      // Logout
+
+      // Logout — always clear regardless of server response
       .addCase(logoutUser.fulfilled, (state) => {
         state.user = null;
         state.accessToken = null;
-        localStorage.removeItem('mb_access_token');
-        localStorage.removeItem('mb_user');
+        clearAuth();
       })
+      .addCase(logoutUser.rejected, (state) => {
+        // Server logout failed (maybe already expired), but clear client state anyway
+        state.user = null;
+        state.accessToken = null;
+        clearAuth();
+      })
+
       // Fetch current user
       .addCase(fetchCurrentUser.fulfilled, (state, { payload }) => {
         state.user = payload.user;
         state.initialized = true;
-        localStorage.setItem('mb_user', JSON.stringify(payload.user));
+        try {
+          localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload.user));
+        } catch (e) {}
       })
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.initialized = true;
       })
+
       // Refresh token
       .addCase(refreshAccessToken.fulfilled, (state, { payload }) => {
         state.accessToken = payload.accessToken;
-        localStorage.setItem('mb_access_token', payload.accessToken);
+        try {
+          localStorage.setItem(STORAGE_KEYS.token, payload.accessToken);
+        } catch (e) {}
+      })
+      .addCase(refreshAccessToken.rejected, (state) => {
+        // Refresh failed — session truly expired, force logout
+        state.user = null;
+        state.accessToken = null;
+        clearAuth();
       });
   },
 });
 
 export const { clearError, setCredentials, clearCredentials } = authSlice.actions;
 
-// Selectors
+// ─── Selectors ───────────────────────────────────────────────────────────────
 export const selectUser = (state) => state.auth.user;
 export const selectToken = (state) => state.auth.accessToken;
 export const selectIsAuthenticated = (state) => !!state.auth.user && !!state.auth.accessToken;

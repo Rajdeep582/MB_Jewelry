@@ -1,6 +1,21 @@
 const Category = require('../models/Category');
 const cloudinary = require('../config/cloudinary');
 
+// Helper: build public-facing URL from an uploaded file (works for both Cloudinary and local disk)
+const buildFileUrl = (file, folder = 'categories') => {
+  if (!file) return { url: '', publicId: '' };
+  // Cloudinary sets file.path to the HTTPS CDN URL
+  if (file.path && file.path.startsWith('http')) {
+    return { url: file.path, publicId: file.filename };
+  }
+  // Local disk storage: file.path is an absolute OS path — build a proper HTTP URL
+  const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
+  return {
+    url: `${backendUrl}/uploads/${folder}/${file.filename}`,
+    publicId: file.filename,
+  };
+};
+
 // @desc    Get all active categories
 // @route   GET /api/categories
 // @access  Public
@@ -25,9 +40,7 @@ const getCategory = async (req, res) => {
 // @access  Admin
 const createCategory = async (req, res) => {
   const { name, description } = req.body;
-  const image = req.file
-    ? { url: req.file.path, publicId: req.file.filename }
-    : { url: '', publicId: '' };
+  const image = req.file ? buildFileUrl(req.file, 'categories') : { url: '', publicId: '' };
 
   const category = await Category.create({ name, description, image });
   res.status(201).json({ success: true, category });
@@ -45,11 +58,11 @@ const updateCategory = async (req, res) => {
   const updates = { ...req.body };
 
   if (req.file) {
-    // Delete old image
+    // Delete old image from Cloudinary (no-op for local storage)
     if (category.image?.publicId) {
       try { await cloudinary.uploader.destroy(category.image.publicId); } catch (_) {}
     }
-    updates.image = { url: req.file.path, publicId: req.file.filename };
+    updates.image = buildFileUrl(req.file, 'categories');
   }
 
   const updated = await Category.findByIdAndUpdate(req.params.id, updates, {

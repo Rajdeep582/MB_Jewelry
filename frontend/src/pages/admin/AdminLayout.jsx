@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
 import {
   FiGrid, FiPackage, FiShoppingBag, FiUsers, FiTrendingUp,
-  FiLogOut, FiMenu, FiX, FiTag
+  FiLogOut, FiMenu, FiX, FiTag, FiDollarSign, FiTruck
 } from 'react-icons/fi';
 import { logoutUser } from '../../store/authSlice';
 import toast from 'react-hot-toast';
@@ -12,9 +12,11 @@ import toast from 'react-hot-toast';
 const adminLinks = [
   { to: '/admin', label: 'Dashboard', icon: FiGrid, end: true },
   { to: '/admin/products', label: 'Products', icon: FiShoppingBag },
-  { to: '/admin/orders', label: 'Orders', icon: FiPackage },
-  { to: '/admin/users', label: 'Users', icon: FiUsers },
   { to: '/admin/categories', label: 'Categories', icon: FiTag },
+  { to: '/admin/pricing', label: 'Pricing & Discounts', icon: FiDollarSign },
+  { to: '/admin/orders', label: 'Orders', icon: FiPackage },
+  { to: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
+  { to: '/admin/users', label: 'Users', icon: FiUsers },
 ];
 
 export default function AdminLayout() {

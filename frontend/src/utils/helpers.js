@@ -1,3 +1,18 @@
+const BACKEND_URL = import.meta.env.VITE_API_URL
+  ? import.meta.env.VITE_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+
+/**
+ * Normalize image URLs from the database.
+ * Handles: absolute http://..., Cloudinary https://..., and legacy relative /uploads/...
+ */
+export const resolveImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Legacy relative path (e.g. /uploads/products/filename.jpg)
+  return `${BACKEND_URL}${url.startsWith('/') ? url : `/${url}`}`;
+};
+
 /**
  * Format price in Indian Rupees
  */
@@ -26,11 +41,13 @@ export const discountPercent = (original, discounted) =>
  */
 export const getOrderStatusColor = (status) => {
   const map = {
-    processing:  'badge-gold',
-    confirmed:   'badge-blue',
-    shipped:     'badge-blue',
-    delivered:   'badge-green',
-    cancelled:   'badge-red',
+    processing:       'badge-gold',
+    confirmed:        'badge-blue',
+    shipped:          'badge-blue',
+    delivered:        'badge-green',
+    cancelled:        'badge-red',
+    return_requested: 'badge-gold',
+    returned:         'badge-red',
   };
   return map[status] || 'badge-gold';
 };

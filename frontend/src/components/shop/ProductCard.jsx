@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { FiShoppingBag, FiStar, FiHeart } from 'react-icons/fi';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToCart, openCart } from '../../store/cartSlice';
-import { formatPrice, discountPercent } from '../../utils/helpers';
+import { formatPrice, discountPercent, resolveImageUrl } from '../../utils/helpers';
 import { selectIsAuthenticated } from '../../store/authSlice';
 import toast from 'react-hot-toast';
 import { useState } from 'react';
@@ -17,8 +17,8 @@ export default function ProductCard({ product }) {
 
   const { _id, name, price, discountedPrice, images, material, type, averageRating, numReviews, stock } = product;
 
-  const mainImage = images?.[0]?.url;
-  const hoverImage = images?.[1]?.url;
+  const mainImage = images?.[0]?.url ? resolveImageUrl(images[0].url) : null;
+  const hoverImage = images?.[1]?.url ? resolveImageUrl(images[1].url) : null;
 
   const handleAddToCart = (e) => {
     e.preventDefault();
@@ -66,10 +66,10 @@ export default function ProductCard({ product }) {
           {/* Wishlist */}
           <button
             onClick={handleWishlist}
-            className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm flex items-center justify-center text-dark-400 hover:text-red-400 transition-all duration-200 opacity-0 group-hover:opacity-100"
+            className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm flex items-center justify-center text-dark-400 hover:text-velvet-400 transition-all duration-200 opacity-0 group-hover:opacity-100"
             aria-label="Add to wishlist"
           >
-            <FiHeart size={14} className={wishlisted ? 'fill-red-400 text-red-400' : ''} />
+            <FiHeart size={14} className={wishlisted ? 'fill-velvet-400 text-velvet-400' : ''} />
           </button>
 
           {/* Main image */}
@@ -77,7 +77,7 @@ export default function ProductCard({ product }) {
             src={imgError || !mainImage ? jewelryImg : mainImage}
             alt={name}
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover transition-opacity duration-500 group-hover:opacity-0"
+            className={`w-full h-full object-cover transition-opacity duration-500 ${hoverImage ? 'group-hover:opacity-0' : ''}`}
             loading="lazy"
           />
           {/* Hover image */}

@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,9 @@ import toast from 'react-hot-toast';
 const navLinks = [
   { to: '/', label: 'Home' },
   { to: '/shop', label: 'Shop' },
+  { to: '/shop?material=Gold', label: 'Gold' },
+  { to: '/shop?material=Silver', label: 'Silver' },
+  { to: '/shop?material=Diamond', label: 'Diamond' },
   { to: '/about', label: 'About' },
   { to: '/contact', label: 'Contact' },
 ];
@@ -17,6 +20,7 @@ const navLinks = [
 export default function Navbar() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const cartCount = useSelector(selectCartCount);
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const user = useSelector(selectUser);
@@ -75,18 +79,33 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <div className="hidden lg:flex items-center gap-8">
-            {navLinks.map(({ to, label }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === '/'}
-                className={({ isActive }) =>
-                  `nav-link ${isActive ? 'nav-link-active text-gold-500' : ''}`
-                }
-              >
-                {label}
-              </NavLink>
-            ))}
+            {navLinks.map(({ to, label }) => {
+              const toPath = to.split('?')[0];
+              const toSearch = to.split('?')[1] || '';
+              
+              let isActive = false;
+              if (to === '/') {
+                isActive = location.pathname === '/';
+              } else if (toSearch) {
+                // Exact match for things like /shop?material=Gold
+                isActive = location.pathname === toPath && location.search.includes(toSearch);
+              } else if (toPath === '/shop') {
+                // Shop is active ONLY if there is NO material filter in URL
+                isActive = location.pathname.startsWith(toPath) && !location.search.includes('material');
+              } else {
+                isActive = location.pathname.startsWith(toPath);
+              }
+
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  className={`nav-link ${isActive ? 'nav-link-active text-gold-500' : ''}`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
           </div>
 
           {/* Right Actions */}
@@ -217,21 +236,35 @@ export default function Navbar() {
             className="lg:hidden glass border-t border-white/10 overflow-hidden"
           >
             <div className="px-4 py-4 space-y-1">
-              {navLinks.map(({ to, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={to === '/'}
-                  onClick={() => setMobileOpen(false)}
-                  className={({ isActive }) =>
-                    `block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                      isActive ? 'bg-gold-500/10 text-gold-400' : 'text-dark-300 hover:text-white hover:bg-white/5'
-                    }`
-                  }
-                >
-                  {label}
-                </NavLink>
-              ))}
+              {navLinks.map(({ to, label }) => {
+                const toPath = to.split('?')[0];
+                const toSearch = to.split('?')[1] || '';
+                
+                let isActive = false;
+                if (to === '/') {
+                  isActive = location.pathname === '/';
+                } else if (toSearch) {
+                  isActive = location.pathname === toPath && location.search.includes(toSearch);
+                } else if (toPath === '/shop') {
+                  isActive = location.pathname.startsWith(toPath) && !location.search.includes('material');
+                } else {
+                  isActive = location.pathname.startsWith(toPath);
+                }
+
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={() => setMobileOpen(false)}
+                    className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                        isActive ? 'bg-gold-500/10 text-gold-400' : 'text-dark-300 hover:text-white hover:bg-white/5'
+                      }`
+                    }
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
 
               <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
                 {isAuthenticated ? (
