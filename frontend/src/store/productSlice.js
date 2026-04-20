@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import DEMO_PRODUCTS from '../data/demoProducts';
 import api from '../services/api';
 
-export const fetchProducts = createAsyncThunk('products/fetchAll', async (params, { rejectWithValue }) => {
+export const fetchProducts = createAsyncThunk('products/fetchAll', async (params) => {
   try {
     const res = await api.get('/products', { params });
     // If API returns products use them, otherwise fall back to demo data
@@ -26,7 +26,7 @@ export const fetchProduct = createAsyncThunk('products/fetchOne', async (id, { r
   }
 });
 
-export const fetchFeaturedProducts = createAsyncThunk('products/fetchFeatured', async (_, { rejectWithValue }) => {
+export const fetchFeaturedProducts = createAsyncThunk('products/fetchFeatured', async () => {
   try {
     const res = await api.get('/products', { params: { featured: true, limit: 8 } });
     if (res.data?.products?.length > 0) return res.data.products;
@@ -38,8 +38,8 @@ export const fetchFeaturedProducts = createAsyncThunk('products/fetchFeatured', 
 
 // ── Helper: filter & paginate DEMO_PRODUCTS locally ──────────────────────
 function buildDemoPage(params = {}) {
-  const { 
-    search = '', category = '', material = '', type = '', 
+  const {
+    search = '', material = '', type = '',
     minPrice = '', maxPrice = '', sort = '', page = 1, limit = 12,
     purity = '', isHallmarked = ''
   } = params;

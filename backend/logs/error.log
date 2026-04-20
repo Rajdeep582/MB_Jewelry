@@ -41,3 +41,53 @@
 {"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:26"}
 {"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:24:28"}
 {"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 14:27:15"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:37:24"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:37:24"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:41:34"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:41:34"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:41:35"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-048 - /api/products/demo-048 - GET - ::1","timestamp":"2026-04-04 20:41:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"400 - Invalid _id: demo-048 - /api/products/demo-048 - GET - ::1","timestamp":"2026-04-04 20:41:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 20:41:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 4","timestamp":"2026-04-04 20:53:58"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 3","timestamp":"2026-04-04 20:54:03"}
+{"level":"\u001b[31merror\u001b[39m","message":"❌ MongoDB connection failed. Retries left: 2","timestamp":"2026-04-04 20:54:08"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: CRITICAL: SENDGRID_API_KEY missing from environment variables.","timestamp":"2026-04-04 22:18:46"}
+{"level":"\u001b[31merror\u001b[39m","message":"500 - logger is not defined - /api/auth/register - POST - ::1","timestamp":"2026-04-04 22:18:46"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: CRITICAL: SENDGRID_API_KEY missing from environment variables.","timestamp":"2026-04-04 22:21:11"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for sitabiswas029@gmail.com: CRITICAL: SENDGRID_API_KEY missing from environment variables.","timestamp":"2026-04-04 22:21:12"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:23:42"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":"from","help":null,"message":"The from address does not match a verified Sender Identity. Mail cannot be sent until this error is resolved. Visit https://sendgrid.com/docs/for-developers/sending-email/sender-identity/ to see the Sender Identity requirements"}]},"timestamp":"2026-04-04 22:23:42"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:23:42"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:23:47"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":"from","help":null,"message":"The from address does not match a verified Sender Identity. Mail cannot be sent until this error is resolved. Visit https://sendgrid.com/docs/for-developers/sending-email/sender-identity/ to see the Sender Identity requirements"}]},"timestamp":"2026-04-04 22:23:47"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:23:47"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:27:21"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":"from","help":null,"message":"The from address does not match a verified Sender Identity. Mail cannot be sent until this error is resolved. Visit https://sendgrid.com/docs/for-developers/sending-email/sender-identity/ to see the Sender Identity requirements"}]},"timestamp":"2026-04-04 22:27:21"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:27:21"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:29:06"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":"from","help":null,"message":"The from address does not match a verified Sender Identity. Mail cannot be sent until this error is resolved. Visit https://sendgrid.com/docs/for-developers/sending-email/sender-identity/ to see the Sender Identity requirements"}]},"timestamp":"2026-04-04 22:29:06"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for sitabiswas029@gmail.com: Forbidden","timestamp":"2026-04-04 22:29:06"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:13:43"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:14:04"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:14:06"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:14:08"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:14:12"}
+{"level":"\u001b[31merror\u001b[39m","message":"404 - Route not found: /src/assets/necklace.webp - /src/assets/necklace.webp - GET - ::1","timestamp":"2026-04-04 23:14:15"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e48cac33ba23a2d3e056c7: undefined","timestamp":"2026-04-19 22:23:06"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to test_user_unique_123@example.com: Unauthorized","timestamp":"2026-04-19 22:43:39"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":null,"help":null,"message":"The requestor's IP Address is not whitelisted"}]},"timestamp":"2026-04-19 22:43:39"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for test_user_unique_123@example.com: Unauthorized","timestamp":"2026-04-19 22:43:39"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e48cac33ba23a2d3e056c7: undefined","timestamp":"2026-04-19 22:51:01"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e48cac33ba23a2d3e056c7: undefined","timestamp":"2026-04-19 22:51:33"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e4862c2748108f25e03ee6: undefined","timestamp":"2026-04-19 23:11:56"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e4862c2748108f25e03ee6: undefined","timestamp":"2026-04-19 23:13:53"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e4862c2748108f25e03ee6: undefined","timestamp":"2026-04-19 23:14:53"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e48cac33ba23a2d3e056c7: undefined","timestamp":"2026-04-19 23:19:33"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed: undefined","timestamp":"2026-04-19 23:20:19"}
+{"level":"\u001b[31merror\u001b[39m","message":"Razorpay order creation failed for custom order 69e48cac33ba23a2d3e056c7: undefined","timestamp":"2026-04-20 12:59:28"}
+{"level":"\u001b[31merror\u001b[39m","message":"Failed to create COD order: E11000 duplicate key error collection: test.orders index: deliveryId_1 dup key: { deliveryId: null }","timestamp":"2026-04-20 19:44:38"}
+{"level":"\u001b[31merror\u001b[39m","message":"Failed to create COD order: E11000 duplicate key error collection: test.orders index: deliveryId_1 dup key: { deliveryId: null }","timestamp":"2026-04-20 19:44:51"}
+{"level":"\u001b[31merror\u001b[39m","message":"Error sending OTP to testuser@example.com: Unauthorized","timestamp":"2026-04-20 21:42:36"}
+{"level":"\u001b[31merror\u001b[39m","message":{"errors":[{"field":null,"help":null,"message":"The requestor's IP Address is not whitelisted"}]},"timestamp":"2026-04-20 21:42:36"}
+{"level":"\u001b[31merror\u001b[39m","message":"Registration error for testuser@example.com: Unauthorized","timestamp":"2026-04-20 21:42:36"}

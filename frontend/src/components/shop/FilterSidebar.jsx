@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiFilter, FiX, FiChevronDown } from 'react-icons/fi';
@@ -40,7 +40,7 @@ function FilterSection({ title, children }) {
   );
 }
 
-export default function FilterSidebar({ onApply }) {
+export default function FilterSidebar() {
   const dispatch = useDispatch();
   const filters = useSelector(selectProductsFilter);
   const [categories, setCategories] = useState([]);
@@ -54,7 +54,9 @@ export default function FilterSidebar({ onApply }) {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMinPrice(filters.minPrice || '');
+     
     setMaxPrice(filters.maxPrice || '');
   }, [filters.minPrice, filters.maxPrice]);
 
@@ -62,11 +64,11 @@ export default function FilterSidebar({ onApply }) {
     dispatch(setFilters({ [key]: filters[key] === value ? '' : value }));
   };
 
-  const debouncedPriceChange = useCallback(
-    debounce((key, val) => {
+  const debouncedPriceChange = useMemo(
+    () => debounce((key, val) => {
       dispatch(setFilters({ [key]: val }));
     }, 600),
-    []
+    [dispatch]
   );
 
   const handleMinChange = (e) => {

@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { FiPercent, FiDollarSign, FiTag, FiBox } from 'react-icons/fi';
 import { categoryService, adminService } from '../../services/services';
 import toast from 'react-hot-toast';
@@ -8,7 +7,6 @@ const MATERIALS = ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemsto
 
 export default function AdminPricing() {
   const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   const [pricingForm, setPricingForm] = useState({
     material: '',
@@ -28,7 +26,6 @@ export default function AdminPricing() {
     document.title = 'Pricing & Discounts — Admin';
     categoryService.getCategories().then(res => {
       setCategories(res.data.categories);
-      setLoading(false);
     });
   }, []);
 

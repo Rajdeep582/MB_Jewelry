@@ -59,7 +59,7 @@ const persistAuth = (accessToken, user) => {
   try {
     localStorage.setItem(STORAGE_KEYS.token, accessToken);
     localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
-  } catch (e) {
+  } catch {
     // Storage quota exceeded or private mode — silently ignore
   }
 };
@@ -74,7 +74,7 @@ const loadAuthFromStorage = () => {
     const token = localStorage.getItem(STORAGE_KEYS.token);
     const user = localStorage.getItem(STORAGE_KEYS.user);
     if (token && user) return { accessToken: token, user: JSON.parse(user) };
-  } catch (e) {
+  } catch {
     // Corrupt storage — clear it
     clearAuth();
   }
@@ -117,11 +117,9 @@ const authSlice = createSlice({
     builder
       // Register
       .addCase(registerUser.pending, handlePending)
-      .addCase(registerUser.fulfilled, (state, { payload }) => {
+      .addCase(registerUser.fulfilled, (state) => {
         state.loading = false;
-        state.user = payload.user;
-        state.accessToken = payload.accessToken;
-        persistAuth(payload.accessToken, payload.user);
+        // Do not auto-login or set tokens — user must verify email first.
       })
       .addCase(registerUser.rejected, handleRejected)
 
@@ -154,7 +152,9 @@ const authSlice = createSlice({
         state.initialized = true;
         try {
           localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload.user));
-        } catch (e) {}
+        } catch {
+          // Storage quota — silently ignore
+        }
       })
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.initialized = true;
@@ -165,7 +165,9 @@ const authSlice = createSlice({
         state.accessToken = payload.accessToken;
         try {
           localStorage.setItem(STORAGE_KEYS.token, payload.accessToken);
-        } catch (e) {}
+        } catch {
+          // Storage quota — silently ignore
+        }
       })
       .addCase(refreshAccessToken.rejected, (state) => {
         // Refresh failed — session truly expired, force logout

@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { FiEye, FiEyeOff, FiMail, FiLock, FiUser } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiMail, FiLock, FiUser, FiKey } from 'react-icons/fi';
 import { registerUser, loginUser, selectAuthLoading, selectAuthError, clearError } from '../store/authSlice';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 
 function AuthPage({ type }) {
   const navigate = useNavigate();
@@ -17,17 +18,23 @@ function AuthPage({ type }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
+  const [step, setStep] = useState('form'); // 'form' or 'otp'
+  const [otp, setOtp] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     dispatch(clearError());
     document.title = `${type === 'login' ? 'Sign In' : 'Register'} — M&B Jewelry`;
-  }, [type]);
+  }, [type, dispatch]);
 
   const validate = () => {
     const e = {};
     if (type === 'register' && !form.name.trim()) e.name = 'Name is required';
     if (!form.email.match(/^\S+@\S+\.\S+$/)) e.email = 'Valid email required';
-    if (form.password.length < 8) e.password = 'Password must be at least 8 characters';
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+    if (!passwordRegex.test(form.password)) {
+      e.password = 'Password must have min 8 chars, 1 letter, 1 number, & 1 special char';
+    }
     if (type === 'register' && form.password !== form.confirmPassword) e.confirmPassword = 'Passwords do not match';
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -43,8 +50,33 @@ function AuthPage({ type }) {
 
     const result = await dispatch(action);
     if (result.meta.requestStatus === 'fulfilled') {
-      toast.success(type === 'login' ? 'Welcome back! 💎' : 'Account created! Welcome to M&B Jewelry 💍');
-      navigate(from, { replace: true });
+      if (type === 'login') {
+        toast.success('Welcome back! 💎');
+        navigate(from, { replace: true });
+      } else {
+        toast.success('Account created! Please check your email for the OTP.');
+        setStep('otp');
+      }
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (otp.length !== 6) {
+      return toast.error('OTP must be exactly 6 digits');
+    }
+    setVerifying(true);
+    try {
+      const res = await api.post('/auth/verify-otp', { email: form.email, otp });
+      toast.success(res.data.message);
+      setForm({ name: '', email: '', password: '', confirmPassword: '' });
+      setOtp('');
+      setStep('form');
+      navigate('/login');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Verification failed');
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -87,7 +119,7 @@ function AuthPage({ type }) {
               <span className="text-dark-900 font-bold text-lg font-serif">M</span>
             </div>
             <h1 className="font-display text-2xl text-white">
-              {type === 'login' ? 'Welcome Back' : 'Create Account'}
+              {step === 'otp' ? 'Verify Your Email' : type === 'login' ? 'Welcome Back' : 'Create Account'}
             </h1>
             <p className="text-dark-400 text-sm mt-1">
               {type === 'login' ? "Don't have an account?" : 'Already have an account?'}
@@ -101,12 +133,43 @@ function AuthPage({ type }) {
             </p>
           </div>
 
-          {/* Error */}
-          {error && (
-            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-              {error}
-            </div>
-          )}
+          {/* OTP Step */}
+          {step === 'otp' ? (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div>
+                <label className="label-dark">6-Digit Verification Code</label>
+                <p className="text-dark-400 text-sm mb-3">
+                  We sent an OTP to <span className="text-gold-500">{form.email}</span>
+                </p>
+                <div className="relative">
+                  <FiKey size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
+                  <input
+                    type="text"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="Enter 6-digit code"
+                    className="input-dark pl-10 tracking-[0.5em] text-center text-lg uppercase"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={verifying || otp.length < 6}
+                className="btn-gold w-full py-3.5 mt-4 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {verifying ? 'Verifying...' : 'Verify Email'}
+              </button>
+            </form>
+          ) : (
+            <>
+              {/* Error */}
+              {error && (
+                <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
 
           <form id={`${type}-form`} onSubmit={handleSubmit} className="space-y-4">
             {type === 'register' && (
@@ -203,6 +266,8 @@ function AuthPage({ type }) {
               )}
             </button>
           </form>
+          </>
+          )}
         </motion.div>
       </div>
     </div>

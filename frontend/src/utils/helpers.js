@@ -41,13 +41,13 @@ export const discountPercent = (original, discounted) =>
  */
 export const getOrderStatusColor = (status) => {
   const map = {
-    processing:       'badge-gold',
     confirmed:        'badge-blue',
+    in_production:    'badge-gold',
+    ready_to_ship:    'badge-blue',
     shipped:          'badge-blue',
     delivered:        'badge-green',
-    cancelled:        'badge-red',
-    return_requested: 'badge-gold',
-    returned:         'badge-red',
+    returned_refunded:'badge-red',
+    failed:           'badge-red',
   };
   return map[status] || 'badge-gold';
 };
@@ -84,4 +84,32 @@ export const debounce = (fn, delay = 300) => {
     clearTimeout(timer);
     timer = setTimeout(() => fn(...args), delay);
   };
+};
+
+/**
+ * Get custom order status color class
+ */
+export const getCustomOrderStatusColor = (status) => {
+  const map = {
+    pending:                'badge-gold',
+    quoted:                 'badge-blue',
+    payment_pending:        'badge-gold',
+    payment_confirmed:      'badge-green',
+    advance_paid:           'badge-green',
+    in_production:          'badge-blue',
+    final_payment_pending:  'badge-gold',
+    final_payment_paid:     'badge-green',
+    ready_to_ship:          'badge-blue',
+    shipped:                'badge-blue',
+    delivered:              'badge-green',
+    cancelled:              'badge-red',
+  };
+  return map[status] || 'badge-gold';
+};
+
+export const REQUIRED_ADDR_FIELDS = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'pincode'];
+
+export const BLANK_ADDRESS = {
+  fullName: '', phone: '', addressLine1: '', addressLine2: '',
+  city: '', state: '', pincode: '', country: 'India',
 };

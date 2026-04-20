@@ -85,9 +85,12 @@ export default function Home() {
       <section className="py-16 border-y border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map(({ icon: Icon, title, desc }, i) => (
+            {features.map((item, i) => {
+               
+              const SIcon = item.icon;
+              return (
               <motion.div
-                key={title}
+                key={item.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -95,14 +98,14 @@ export default function Home() {
                 className="flex flex-col items-center text-center gap-3 p-4"
               >
                 <div className="w-12 h-12 rounded-full glass-gold flex items-center justify-center">
-                  <Icon size={20} className="text-gold-500" />
+                  <SIcon size={20} className="text-gold-500" />
                 </div>
                 <div>
-                  <p className="text-white font-medium text-sm">{title}</p>
-                  <p className="text-dark-400 text-xs leading-relaxed">{desc}</p>
+                  <p className="text-white font-medium text-sm">{item.title}</p>
+                  <p className="text-dark-400 text-xs leading-relaxed">{item.desc}</p>
                 </div>
               </motion.div>
-            ))}
+            )})}
           </div>
         </div>
       </section>

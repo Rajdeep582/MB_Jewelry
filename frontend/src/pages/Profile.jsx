@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
 import { FiUser, FiMapPin, FiPlus, FiTrash2, FiEdit3, FiCheck } from 'react-icons/fi';
-import { selectUser, setCredentials } from '../store/authSlice';
+import { setCredentials } from '../store/authSlice';
 import { userService } from '../services/services';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
   const dispatch = useDispatch();
-  const user = useSelector(selectUser);
   const [profile, setProfile] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: '', phone: '' });

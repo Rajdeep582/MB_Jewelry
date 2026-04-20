@@ -14,7 +14,7 @@ if (!hasCloudinaryAuth) {
   }
 }
 
-let productStorage, categoryStorage;
+let productStorage, categoryStorage, customOrderStorage;
 
 if (hasCloudinaryAuth) {
   productStorage = new CloudinaryStorage({
@@ -34,6 +34,15 @@ if (hasCloudinaryAuth) {
       transformation: [{ width: 400, height: 400, crop: 'fill', quality: 'auto' }],
     },
   });
+
+  customOrderStorage = new CloudinaryStorage({
+    cloudinary,
+    params: {
+      folder: 'mb_jewelry/custom_orders',
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }],
+    },
+  });
 } else {
   // Graceful fallback to local disk storage
   const createDiskStorage = (folderName) => multer.diskStorage({
@@ -46,8 +55,9 @@ if (hasCloudinaryAuth) {
       cb(null, `${Date.now()}-${file.originalname}`);
     }
   });
-  productStorage = createDiskStorage('products');
-  categoryStorage = createDiskStorage('categories');
+  productStorage  = createDiskStorage('products');
+  categoryStorage  = createDiskStorage('categories');
+  customOrderStorage = createDiskStorage('custom_orders');
 }
 
 const fileFilter = (req, file, cb) => {
@@ -71,4 +81,10 @@ const uploadCategoryImage = multer({
   limits: { fileSize: 2 * 1024 * 1024, files: 1 }, // max 2MB
 }).single('image');
 
-module.exports = { uploadProductImages, uploadCategoryImage };
+const uploadCustomOrderImages = multer({
+  storage: customOrderStorage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024, files: 4 }, // max 10MB, 4 reference images
+}).array('referenceImages', 4);
+
+module.exports = { uploadProductImages, uploadCategoryImage, uploadCustomOrderImages };

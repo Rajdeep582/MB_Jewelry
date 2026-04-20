@@ -2,19 +2,20 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiShoppingBag, FiUser, FiMenu, FiX, FiSearch, FiChevronDown, FiLogOut, FiPackage, FiSettings } from 'react-icons/fi';
+import { FiShoppingBag, FiUser, FiMenu, FiX, FiSearch, FiChevronDown, FiLogOut, FiPackage, FiSettings, FiStar } from 'react-icons/fi';
 import { selectCartCount, openCart } from '../../store/cartSlice';
 import { selectIsAuthenticated, selectUser, selectIsAdmin, logoutUser } from '../../store/authSlice';
 import toast from 'react-hot-toast';
 
 const navLinks = [
-  { to: '/', label: 'Home' },
-  { to: '/shop', label: 'Shop' },
+  { to: '/',                   label: 'Home' },
+  { to: '/shop',               label: 'Shop' },
   { to: '/shop?material=Gold', label: 'Gold' },
   { to: '/shop?material=Silver', label: 'Silver' },
   { to: '/shop?material=Diamond', label: 'Diamond' },
-  { to: '/about', label: 'About' },
-  { to: '/contact', label: 'Contact' },
+  { to: '/custom-order',       label: 'Custom Jewelry', highlight: true },
+  { to: '/about',              label: 'About' },
+  { to: '/contact',            label: 'Contact' },
 ];
 
 export default function Navbar() {
@@ -79,7 +80,7 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <div className="hidden lg:flex items-center gap-8">
-            {navLinks.map(({ to, label }) => {
+            {navLinks.map(({ to, label, highlight }) => {
               const toPath = to.split('?')[0];
               const toSearch = to.split('?')[1] || '';
               
@@ -87,10 +88,8 @@ export default function Navbar() {
               if (to === '/') {
                 isActive = location.pathname === '/';
               } else if (toSearch) {
-                // Exact match for things like /shop?material=Gold
                 isActive = location.pathname === toPath && location.search.includes(toSearch);
               } else if (toPath === '/shop') {
-                // Shop is active ONLY if there is NO material filter in URL
                 isActive = location.pathname.startsWith(toPath) && !location.search.includes('material');
               } else {
                 isActive = location.pathname.startsWith(toPath);
@@ -100,9 +99,14 @@ export default function Navbar() {
                 <Link
                   key={to}
                   to={to}
-                  className={`nav-link ${isActive ? 'nav-link-active text-gold-500' : ''}`}
+                  className={`nav-link relative ${isActive ? 'nav-link-active text-gold-500' : ''} ${
+                    highlight && !isActive ? 'text-gold-400 hover:text-gold-300' : ''
+                  }`}
                 >
                   {label}
+                  {highlight && (
+                    <span className="absolute -top-2 -right-3 text-gold-400 text-xs animate-pulse">✦</span>
+                  )}
                 </Link>
               );
             })}
@@ -192,6 +196,13 @@ export default function Navbar() {
                         >
                           <FiPackage size={14} /> Orders
                         </Link>
+                        <Link
+                          to="/custom-orders"
+                          onClick={() => setProfileOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gold-400 hover:bg-gold-500/10 transition-colors"
+                        >
+                          <FiStar size={14} /> Custom Orders
+                        </Link>
                         <button
                           onClick={handleLogout}
                           className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors"
@@ -236,7 +247,7 @@ export default function Navbar() {
             className="lg:hidden glass border-t border-white/10 overflow-hidden"
           >
             <div className="px-4 py-4 space-y-1">
-              {navLinks.map(({ to, label }) => {
+              {navLinks.map(({ to, label, highlight }) => {
                 const toPath = to.split('?')[0];
                 const toSearch = to.split('?')[1] || '';
                 
@@ -256,12 +267,16 @@ export default function Navbar() {
                     key={to}
                     to={to}
                     onClick={() => setMobileOpen(false)}
-                    className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                        isActive ? 'bg-gold-500/10 text-gold-400' : 'text-dark-300 hover:text-white hover:bg-white/5'
-                      }`
-                    }
+                    className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${
+                      isActive
+                        ? 'bg-gold-500/10 text-gold-400'
+                        : highlight
+                        ? 'text-gold-400 hover:bg-gold-500/10'
+                        : 'text-dark-300 hover:text-white hover:bg-white/5'
+                    }`}
                   >
                     {label}
+                    {highlight && <span className="text-gold-400 text-xs">✦</span>}
                   </Link>
                 );
               })}
@@ -286,6 +301,10 @@ export default function Navbar() {
                     <Link to="/orders" onClick={() => setMobileOpen(false)}
                       className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-dark-300 hover:text-white hover:bg-white/5">
                       <FiPackage size={14} /> Orders
+                    </Link>
+                    <Link to="/custom-orders" onClick={() => setMobileOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-gold-400 hover:bg-gold-500/10">
+                      <FiStar size={14} /> Custom Orders
                     </Link>
                     <button onClick={() => { handleLogout(); setMobileOpen(false); }}
                       className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm text-red-400 hover:bg-red-500/10">

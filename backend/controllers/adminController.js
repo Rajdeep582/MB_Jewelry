@@ -5,9 +5,13 @@ const logger = require('../utils/logger');
 // @access  Admin
 const bulkUpdatePricing = async (req, res) => {
   const { material, category, operation, amount } = req.body;
-  
-  if (!amount || isNaN(amount)) {
+
+  const numAmount = Number(amount);
+  if (!amount || isNaN(numAmount)) {
     return res.status(400).json({ success: false, message: 'Invalid amount' });
+  }
+  if (!['percentage', 'flat'].includes(operation)) {
+    return res.status(400).json({ success: false, message: 'Invalid operation. Must be "percentage" or "flat"' });
   }
 
   const query = {};
@@ -18,47 +22,53 @@ const bulkUpdatePricing = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Must specify material or category to update' });
   }
 
-  const products = await Product.find(query);
+  // Fetch only the fields we need for calculation
+  const products = await Product.find(query).select('price discountedPrice').lean();
   if (products.length === 0) {
     return res.status(404).json({ success: false, message: 'No products found matching criteria' });
   }
 
-  let updatedCount = 0;
-  for (const product of products) {
+  // Build a single bulkWrite operation — atomic and efficient (one round-trip)
+  const bulkOps = products.map((product) => {
     let newPrice = product.price;
-
     if (operation === 'percentage') {
-      newPrice = newPrice + (newPrice * (amount / 100));
-    } else if (operation === 'flat') {
-      newPrice = newPrice + amount;
+      newPrice = newPrice + newPrice * (numAmount / 100);
+    } else {
+      newPrice = newPrice + numAmount;
     }
+    newPrice = Math.max(0, Math.round(newPrice));
 
-    if (newPrice < 0) newPrice = 0; // Prevent negative prices
+    const updateFields = { price: newPrice };
 
-    // Also adjust discounted price if it exists
-    let newDiscountedPrice = product.discountedPrice;
-    if (newDiscountedPrice) {
+    if (product.discountedPrice != null) {
+      let newDiscountedPrice = product.discountedPrice;
       if (operation === 'percentage') {
-        newDiscountedPrice = newDiscountedPrice + (newDiscountedPrice * (amount / 100));
-      } else if (operation === 'flat') {
-        newDiscountedPrice = newDiscountedPrice + amount;
+        newDiscountedPrice = newDiscountedPrice + newDiscountedPrice * (numAmount / 100);
+      } else {
+        newDiscountedPrice = newDiscountedPrice + numAmount;
       }
-      if (newDiscountedPrice < 0) newDiscountedPrice = 0;
+      updateFields.discountedPrice = Math.max(0, Math.round(newDiscountedPrice));
     }
 
-    await Product.findByIdAndUpdate(product._id, {
-      price: Math.round(newPrice),
-      ...(newDiscountedPrice ? { discountedPrice: Math.round(newDiscountedPrice) } : {})
-    });
-    updatedCount++;
-  }
+    return {
+      updateOne: {
+        filter: { _id: product._id },
+        update: { $set: updateFields },
+      },
+    };
+  });
 
-  logger.info(`Admin ${req.user._id} bulk updated pricing for ${updatedCount} products`);
+  const result = await Product.bulkWrite(bulkOps, { ordered: false });
+
+  logger.info(
+    `Admin ${req.user._id} bulk updated pricing for ${result.modifiedCount} products ` +
+    `[operation=${operation}, amount=${numAmount}, query=${JSON.stringify(query)}]`
+  );
 
   res.json({
     success: true,
-    message: `Successfully updated prices for ${updatedCount} products.`,
-    updatedCount
+    message: `Successfully updated prices for ${result.modifiedCount} products.`,
+    updatedCount: result.modifiedCount,
   });
 };
 
@@ -66,10 +76,22 @@ const bulkUpdatePricing = async (req, res) => {
 // @access  Admin
 const bulkUpdateDiscounts = async (req, res) => {
   const { targetType, targetId, discountType, discountValue } = req.body;
-  // targetType: 'global', 'category', 'product'
-  // discountType: 'percentage', 'flat', 'remove'
+  // targetType: 'global' | 'category' | 'product'
+  // discountType: 'percentage' | 'flat' | 'remove'
 
-  let query = {};
+  if (!['global', 'category', 'product'].includes(targetType)) {
+    return res.status(400).json({ success: false, message: 'Invalid targetType' });
+  }
+  if (!['percentage', 'flat', 'remove'].includes(discountType)) {
+    return res.status(400).json({ success: false, message: 'Invalid discountType' });
+  }
+
+  const numValue = Number(discountValue);
+  if (discountType !== 'remove' && (isNaN(numValue) || numValue <= 0)) {
+    return res.status(400).json({ success: false, message: 'discountValue must be a positive number' });
+  }
+
+  const query = {};
   if (targetType === 'category') {
     if (!targetId) return res.status(400).json({ success: false, message: 'Category ID required' });
     query.category = targetId;
@@ -78,40 +100,51 @@ const bulkUpdateDiscounts = async (req, res) => {
     query._id = targetId;
   }
 
-  const products = await Product.find(query);
-  let updatedCount = 0;
+  const products = await Product.find(query).select('price').lean();
+  if (products.length === 0) {
+    return res.status(404).json({ success: false, message: 'No products found matching criteria' });
+  }
 
-  for (const product of products) {
+  // Build single bulkWrite — atomic and efficient
+  const bulkOps = products.map((product) => {
     let newDiscountedPrice = null;
 
     if (discountType === 'remove') {
       newDiscountedPrice = null;
     } else if (discountType === 'percentage') {
-      newDiscountedPrice = product.price - (product.price * (discountValue / 100));
-    } else if (discountType === 'flat') {
-      newDiscountedPrice = product.price - discountValue;
+      newDiscountedPrice = product.price - product.price * (numValue / 100);
+    } else {
+      // flat
+      newDiscountedPrice = product.price - numValue;
     }
 
-    if (newDiscountedPrice !== null && newDiscountedPrice < 0) {
-      newDiscountedPrice = 0;
+    if (newDiscountedPrice !== null) {
+      newDiscountedPrice = Math.max(0, Math.round(newDiscountedPrice));
     }
 
-    await Product.findByIdAndUpdate(product._id, {
-      discountedPrice: newDiscountedPrice ? Math.round(newDiscountedPrice) : null
-    });
-    updatedCount++;
-  }
+    return {
+      updateOne: {
+        filter: { _id: product._id },
+        update: { $set: { discountedPrice: newDiscountedPrice } },
+      },
+    };
+  });
 
-  logger.info(`Admin ${req.user._id} bulk updated discounts for ${updatedCount} products`);
+  const result = await Product.bulkWrite(bulkOps, { ordered: false });
+
+  logger.info(
+    `Admin ${req.user._id} bulk updated discounts for ${result.modifiedCount} products ` +
+    `[type=${discountType}, targetType=${targetType}]`
+  );
 
   res.json({
     success: true,
-    message: `Successfully updated discounts for ${updatedCount} products.`,
-    updatedCount
+    message: `Successfully updated discounts for ${result.modifiedCount} products.`,
+    updatedCount: result.modifiedCount,
   });
 };
 
 module.exports = {
   bulkUpdatePricing,
-  bulkUpdateDiscounts
+  bulkUpdateDiscounts,
 };

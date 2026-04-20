@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import { store } from './store/store';
@@ -21,6 +21,9 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import NotFound from './pages/NotFound';
 import { Login, Register } from './pages/Auth';
+import VerifyEmail from './pages/VerifyEmail';
+import CustomOrder from './pages/CustomOrder';
+import CustomOrders from './pages/CustomOrders';
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout';
@@ -30,16 +33,29 @@ import AdminOrders from './pages/admin/AdminOrders';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminPricing from './pages/admin/AdminPricing';
 import AdminDelivery from './pages/admin/AdminDelivery';
+import AdminCustomOrders from './pages/admin/AdminCustomOrders';
 
-function MainLayout({ children }) {
+function RootNavbarLayout() {
   return (
     <>
       <Navbar />
       <CartDrawer />
-      <main>{children}</main>
+      <Outlet />
+    </>
+  );
+}
+
+function MainFooterLayout() {
+  return (
+    <>
+      <main><Outlet /></main>
       <Footer />
     </>
   );
+}
+
+function AuthLayout() {
+  return <main><Outlet /></main>;
 }
 
 export default function App() {
@@ -65,48 +81,43 @@ export default function App() {
           />
 
           <Routes>
-            {/* Public routes with Navbar/Footer */}
-            <Route path="/" element={<MainLayout><Home /></MainLayout>} />
-            <Route path="/shop" element={<MainLayout><Shop /></MainLayout>} />
-            <Route path="/products/:id" element={<MainLayout><ProductDetail /></MainLayout>} />
-            <Route path="/cart" element={<MainLayout><Cart /></MainLayout>} />
-            <Route path="/about" element={<MainLayout><About /></MainLayout>} />
-            <Route path="/contact" element={<MainLayout><Contact /></MainLayout>} />
+            <Route element={<RootNavbarLayout />}>
+              {/* Public routes with Navbar/Footer */}
+              <Route element={<MainFooterLayout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/shop" element={<Shop />} />
+                <Route path="/products/:id" element={<ProductDetail />} />
+                <Route path="/cart" element={<Cart />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/contact" element={<Contact />} />
 
-            {/* Auth routes (no footer) */}
-            <Route path="/login" element={<><Navbar /><Login /></>} />
-            <Route path="/register" element={<><Navbar /><Register /></>} />
+                {/* Protected routes */}
+                <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
+                <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+                <Route path="/orders/:id" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+                <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                <Route path="/custom-order" element={<ProtectedRoute><CustomOrder /></ProtectedRoute>} />
+                <Route path="/custom-orders" element={<ProtectedRoute><CustomOrders /></ProtectedRoute>} />
+                <Route path="/custom-orders/:id" element={<ProtectedRoute><CustomOrders /></ProtectedRoute>} />
+              </Route>
 
-            {/* Protected routes */}
-            <Route path="/checkout" element={
-              <ProtectedRoute>
-                <MainLayout><Checkout /></MainLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/orders" element={
-              <ProtectedRoute>
-                <MainLayout><Orders /></MainLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/orders/:id" element={
-              <ProtectedRoute>
-                <MainLayout><Orders /></MainLayout>
-              </ProtectedRoute>
-            } />
-            <Route path="/profile" element={
-              <ProtectedRoute>
-                <MainLayout><Profile /></MainLayout>
-              </ProtectedRoute>
-            } />
+              {/* Auth routes (no footer) */}
+              <Route element={<AuthLayout />}>
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/verify/:token" element={<VerifyEmail />} />
+              </Route>
+            </Route>
 
             {/* Admin routes */}
             <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
               <Route index element={<AdminDashboard />} />
-              <Route path="products" element={<AdminProducts />} />
-              <Route path="orders" element={<AdminOrders />} />
-              <Route path="deliveries" element={<AdminDelivery />} />
-              <Route path="users" element={<AdminUsers />} />
-              <Route path="pricing" element={<AdminPricing />} />
+              <Route path="products"      element={<AdminProducts />} />
+              <Route path="orders"        element={<AdminOrders />} />
+              <Route path="custom-orders" element={<AdminCustomOrders />} />
+              <Route path="deliveries"    element={<AdminDelivery />} />
+              <Route path="users"         element={<AdminUsers />} />
+              <Route path="pricing"       element={<AdminPricing />} />
             </Route>
 
             {/* 404 */}

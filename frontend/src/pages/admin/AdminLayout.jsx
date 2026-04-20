@@ -1,22 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { motion } from 'framer-motion';
 import {
   FiGrid, FiPackage, FiShoppingBag, FiUsers, FiTrendingUp,
-  FiLogOut, FiMenu, FiX, FiTag, FiDollarSign, FiTruck
+  FiLogOut, FiMenu, FiX, FiDollarSign, FiTruck, FiEdit2
 } from 'react-icons/fi';
 import { logoutUser } from '../../store/authSlice';
 import toast from 'react-hot-toast';
 
 const adminLinks = [
-  { to: '/admin', label: 'Dashboard', icon: FiGrid, end: true },
-  { to: '/admin/products', label: 'Products', icon: FiShoppingBag },
-  { to: '/admin/categories', label: 'Categories', icon: FiTag },
-  { to: '/admin/pricing', label: 'Pricing & Discounts', icon: FiDollarSign },
-  { to: '/admin/orders', label: 'Orders', icon: FiPackage },
-  { to: '/admin/deliveries', label: 'Deliveries', icon: FiTruck },
-  { to: '/admin/users', label: 'Users', icon: FiUsers },
+  { to: '/admin',            label: 'Dashboard',          icon: FiGrid,       end: true },
+  { to: '/admin/products',   label: 'Products',           icon: FiShoppingBag },
+  { to: '/admin/pricing',    label: 'Pricing & Discounts', icon: FiDollarSign },
+  { to: '/admin/orders',     label: 'Orders',             icon: FiPackage },
+  { to: '/admin/custom-orders', label: 'Custom Orders',   icon: FiEdit2 },
+  { to: '/admin/deliveries', label: 'Deliveries',         icon: FiTruck },
+  { to: '/admin/users',      label: 'Users',              icon: FiUsers },
 ];
 
 export default function AdminLayout() {
@@ -46,14 +46,16 @@ export default function AdminLayout() {
       </div>
 
       <nav className="flex-1 p-3 space-y-1">
-        {adminLinks.map(({ to, label, icon: Icon, end }) => {
-          const isActive = end
-            ? location.pathname === to
-            : location.pathname.startsWith(to);
+        {adminLinks.map((item) => {
+           
+          const SIcon = item.icon;
+          const isActive = item.end
+            ? location.pathname === item.to
+            : location.pathname.startsWith(item.to);
           return (
             <Link
-              key={to}
-              to={to}
+              key={item.to}
+              to={item.to}
               onClick={() => setSidebarOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 isActive
@@ -61,8 +63,8 @@ export default function AdminLayout() {
                   : 'text-dark-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Icon size={16} />
-              {label}
+              <SIcon size={16} />
+              {item.label}
             </Link>
           );
         })}

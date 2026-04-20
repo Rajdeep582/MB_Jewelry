@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const productSchema = new mongoose.Schema(
   {
@@ -68,6 +69,7 @@ const productSchema = new mongoose.Schema(
       type: Boolean, 
       default: false 
     },
+    productId: { type: String, unique: true, sparse: true },
   },
   { timestamps: true }
 );
@@ -80,6 +82,15 @@ productSchema.index({ type: 1 });
 productSchema.index({ purity: 1 });
 productSchema.index({ isHallmarked: 1 });
 productSchema.index({ isFeatured: 1 });
+productSchema.index({ productId: 1 }, { sparse: true, unique: true });
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
+
+// Auto-generate productId
+productSchema.pre('save', function (next) {
+  if (!this.productId) {
+    this.productId = `PRD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+  next();
+});
 
 module.exports = mongoose.model('Product', productSchema);

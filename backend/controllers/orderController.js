@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Transaction = require('../models/Transaction');
@@ -65,11 +66,92 @@ async function validateAndBuildItems(items) {
   return { orderItems, errors };
 }
 
+/**
+ * Core atomic commit: decrement stock, confirm order, update transaction.
+ * Shared by verifyPayment, handleWebhook, and retryVerifyPayment.
+ */
+async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // 1. Decrement stock for each item
+    for (const item of pendingOrder.items) {
+      const product = await Product.findById(item.product).session(session);
+      if (!product) throw new Error(`Product ${item.product} no longer exists`);
+      if (product.stock < item.quantity) {
+        throw new Error(`Insufficient stock for "${product.name}" (available: ${product.stock})`);
+      }
+      await Product.findByIdAndUpdate(
+        item.product,
+        { $inc: { stock: -item.quantity, sold: item.quantity } },
+        { session }
+      );
+    }
+
+    // 2. Confirm the order
+    const confirmedOrder = await Order.findByIdAndUpdate(
+      pendingOrder._id,
+      {
+        orderStatus: 'confirmed',
+        'payment.razorpayPaymentId': razorpayPaymentId,
+        'payment.razorpaySignature': razorpaySignature,
+        'payment.status': 'paid',
+        'payment.paidAt': new Date(),
+        $push: {
+          trackingHistory: {
+            status: 'confirmed',
+            comment: 'Payment verified successfully online.',
+            timestamp: new Date(),
+          },
+        },
+      },
+      { new: true, session }
+    );
+
+    // 3. Update Transaction to success
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId },
+      {
+        order: pendingOrder._id,
+        orderType: 'Order',
+        razorpayPaymentId,
+        razorpaySignature,
+        status: 'success',
+        gatewayResponse: { razorpayOrderId, razorpayPaymentId },
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    logger.info(`Order confirmed atomically: order=${pendingOrder._id}, payment=${razorpayPaymentId}`);
+    return { success: true, order: confirmedOrder };
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+
+    // Mark order & transaction as failed so user can retry
+    await Order.findByIdAndUpdate(pendingOrder._id, {
+      'payment.status': 'failed',
+      'payment.failReason': err.message,
+    });
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId },
+      { status: 'failed', failReason: err.message }
+    );
+
+    logger.error(`atomicConfirmOrder rollback: order=${pendingOrder._id}, ${err.message}`);
+    return { success: false, error: err.message };
+  }
+}
+
 // ─── Phase 1: Create Payment ─────────────────────────────────────────────────
 // @route   POST /api/orders/create-payment
 // @access  Private
 const createPayment = async (req, res) => {
-  const { items, shippingAddress } = req.body;
+  const { items, shippingAddress, method = 'razorpay' } = req.body;
 
   // --- Guard: empty cart ---
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -93,40 +175,140 @@ const createPayment = async (req, res) => {
   // --- Compute server-side pricing ---
   const pricing = computePricing(orderItems);
 
-  // --- Create pending Order in DB FIRST ---
-  // This is the "intent record". It exists even if the user closes the tab.
-  const pendingOrder = await Order.create({
-    user: req.user._id,
-    items: orderItems,
-    shippingAddress,
-    payment: {
-      status: 'pending',
-      method: 'razorpay',
-    },
-    itemsPrice: pricing.itemsPrice,
-    shippingPrice: pricing.shippingPrice,
-    taxPrice: pricing.taxPrice,
-    totalAmount: pricing.totalAmount,
-    orderStatus: 'processing',
-  });
+  // --- Cash on Delivery Flow ---
+  if (method === 'cod') {
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-  // --- Create pending Transaction record (audit trail begins here) ---
-  const transaction = await Transaction.create({
-    order: pendingOrder._id,
-    user: req.user._id,
-    amount: pricing.totalAmount,
-    currency: 'INR',
-    status: 'pending',
-  });
+    let pendingOrder;
+    try {
+      [pendingOrder] = await Order.create(
+        [{
+          user: req.user._id,
+          items: orderItems,
+          shippingAddress,
+          payment: { status: 'pending', method: 'cod' },
+          itemsPrice: pricing.itemsPrice,
+          shippingPrice: pricing.shippingPrice,
+          taxPrice: pricing.taxPrice,
+          totalAmount: pricing.totalAmount,
+          orderStatus: 'confirmed', // initial state universally confirmed
+          trackingHistory: [{
+            status: 'confirmed',
+            comment: 'Order placed via Cash on Delivery.',
+            timestamp: new Date(),
+          }],
+        }],
+        { session }
+      );
 
-  // --- Guard: Razorpay not configured ---
+      await Transaction.create(
+        [{
+          order: pendingOrder._id,
+          orderType: 'Order',
+          user: req.user._id,
+          amount: pricing.totalAmount,
+          currency: 'INR',
+          status: 'pending',
+          gatewayResponse: { paymentMethod: 'cod' },
+        }],
+        { session }
+      );
+
+      // Decrement stock immediately for COD
+      for (const item of pendingOrder.items) {
+        const product = await Product.findById(item.product).session(session);
+        if (!product) throw new Error(`Product ${item.product} no longer exists`);
+        if (product.stock < item.quantity) {
+          throw new Error(`Insufficient stock for "${product.name}"`);
+        }
+        await Product.findByIdAndUpdate(
+          item.product,
+          { $inc: { stock: -item.quantity, sold: item.quantity } },
+          { session }
+        );
+      }
+
+      await session.commitTransaction();
+      session.endSession();
+
+      logger.info(`COD Order created cleanly: order=${pendingOrder._id}`);
+      return res.json({
+        success: true,
+        orderId: pendingOrder._id, // COD completes immediately
+        pendingOrderId: pendingOrder._id,
+        pricing,
+      });
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      logger.error(`Failed to create COD order: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        message: err.message || 'Failed to create Cash on Delivery order. Please try again.',
+      });
+    }
+  }
+
+  // --- Razorpay Flow ---
+  // --- Guard early: Razorpay not configured ---
   if (!isRazorpayConfigured) {
-    // Clean up intent records before throwing
-    await Order.deleteOne({ _id: pendingOrder._id });
-    await Transaction.deleteOne({ _id: transaction._id });
     return res.status(503).json({
       success: false,
       message: 'Payment gateway is not configured. Please add Razorpay keys to .env',
+    });
+  }
+
+  // --- Atomic intent record creation ---
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  let pendingOrder;
+  let transaction;
+
+  try {
+    [pendingOrder] = await Order.create(
+      [{
+        user: req.user._id,
+        items: orderItems,
+        shippingAddress,
+        payment: { status: 'pending', method: 'razorpay' },
+        itemsPrice: pricing.itemsPrice,
+        shippingPrice: pricing.shippingPrice,
+        taxPrice: pricing.taxPrice,
+        totalAmount: pricing.totalAmount,
+        orderStatus: 'confirmed',
+        // Seed initial tracking history so admin always has a full audit trail
+        trackingHistory: [{
+          status: 'confirmed',
+          comment: 'Order created. Awaiting payment confirmation.',
+          timestamp: new Date(),
+        }],
+      }],
+      { session }
+    );
+
+    [transaction] = await Transaction.create(
+      [{
+        order: pendingOrder._id,
+        orderType: 'Order',
+        user: req.user._id,
+        amount: pricing.totalAmount,
+        currency: 'INR',
+        status: 'pending',
+      }],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    logger.error(`Failed to create payment intent records: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to initiate payment. Please try again.',
     });
   }
 
@@ -193,12 +375,10 @@ const verifyPayment = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid pending order ID' });
   }
 
-  // --- Verify HMAC signature (cryptographic check — must happen before DB writes) ---
+  // --- Verify HMAC signature ---
   const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
   if (!isValid) {
-    // Log suspicious activity
     logger.warn(`Signature verification FAILED for razorpayOrder=${razorpayOrderId}, user=${req.user._id}`);
-    // Mark transaction as failed
     await Transaction.findOneAndUpdate(
       { razorpayOrderId },
       { status: 'failed', failReason: 'Signature verification failed' }
@@ -217,95 +397,111 @@ const verifyPayment = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not authorized for this order' });
   }
 
-  // --- Idempotency check: already confirmed? ---
+  // --- Idempotency: already confirmed? ---
   if (pendingOrder.payment.status === 'paid') {
     logger.warn(`Duplicate verify-payment attempt for order=${pendingOrderId}`);
     return res.json({ success: true, message: 'Order already confirmed', order: pendingOrder });
   }
 
-  // --- MongoDB Session: atomic commit BEGIN ──────────────────────────────────
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId);
 
-  try {
-    // 1. Decrement stock for each item (within session)
-    for (const item of pendingOrder.items) {
-      const product = await Product.findById(item.product).session(session);
-      if (!product) throw new Error(`Product ${item.product} no longer exists`);
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for "${product.name}" (available: ${product.stock})`);
-      }
-      await Product.findByIdAndUpdate(
-        item.product,
-        { $inc: { stock: -item.quantity, sold: item.quantity } },
-        { session }
-      );
-    }
-
-    // 2. Confirm the order (within session)
-    const confirmedOrder = await Order.findByIdAndUpdate(
-      pendingOrderId,
-      {
-        orderStatus: 'confirmed',
-        'payment.razorpayPaymentId': razorpayPaymentId,
-        'payment.razorpaySignature': razorpaySignature,
-        'payment.status': 'paid',
-        'payment.paidAt': new Date(),
-      },
-      { new: true, session }
-    );
-
-    // 3. Update Transaction to success (within session)
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
-      {
-        order: pendingOrderId,
-        razorpayPaymentId,
-        razorpaySignature,
-        status: 'success',
-        gatewayResponse: { razorpayOrderId, razorpayPaymentId },
-      },
-      { session }
-    );
-
-    // 4. Commit — all writes become durable atomically
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info(`Payment confirmed: order=${pendingOrderId}, razorpayPayment=${razorpayPaymentId}`);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Payment verified. Order placed successfully!',
-      order: confirmedOrder,
-    });
-  } catch (err) {
-    // ─── ROLLBACK ───────────────────────────────────────────────────────────
-    // All writes within the session (stock changes, order update, transaction) are discarded.
-    await session.abortTransaction();
-    session.endSession();
-
-    logger.error(`Payment verification transaction rolled back: ${err.message}`, {
-      pendingOrderId,
-      razorpayOrderId,
-      userId: req.user._id,
-    });
-
-    // Mark the order and transaction as failed so the user can retry
-    await Order.findByIdAndUpdate(pendingOrderId, {
-      'payment.status': 'failed',
-      'payment.failReason': err.message,
-    });
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
-      { status: 'failed', failReason: err.message }
-    );
-
+  if (!result.success) {
     return res.status(500).json({
       success: false,
-      message: `Payment confirmation failed: ${err.message}. If money was deducted, it will be auto-refunded within 5–7 business days.`,
+      message: `Payment confirmation failed: ${result.error}. If money was deducted, it will be auto-refunded within 5–7 business days.`,
     });
   }
+
+  return res.status(200).json({
+    success: true,
+    message: 'Payment verified. Order placed successfully!',
+    order: result.order,
+  });
+};
+
+// ─── Retry Verify Payment (Recovery path for failed network / browser crash) ──
+// @route   POST /api/orders/:id/retry-verify
+// @access  Private
+const retryVerifyPayment = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.isValidObjectId(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+
+  const order = await Order.findById(id);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  // Ownership check
+  if (order.user.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not authorized for this order' });
+  }
+
+  // Idempotency
+  if (order.payment.status === 'paid') {
+    return res.json({ success: true, message: 'Order is already confirmed', order });
+  }
+
+  const razorpayOrderId = order.payment.razorpayOrderId;
+  if (!razorpayOrderId) {
+    return res.status(400).json({
+      success: false,
+      message: 'No Razorpay order ID found for this order. Payment may not have been initiated.',
+    });
+  }
+
+  if (!isRazorpayConfigured) {
+    return res.status(503).json({ success: false, message: 'Payment gateway not configured.' });
+  }
+
+  // Fetch the Razorpay order to check actual payment status
+  let rzpOrder;
+  try {
+    rzpOrder = await razorpay.orders.fetch(razorpayOrderId);
+  } catch (err) {
+    logger.error(`retry-verify: Razorpay fetch failed for order=${id}: ${err.message}`);
+    return res.status(502).json({ success: false, message: 'Could not verify payment status. Please try again.' });
+  }
+
+  if (rzpOrder.status !== 'paid') {
+    return res.status(402).json({
+      success: false,
+      message: 'Payment was not captured by Razorpay. You may try paying again from the Checkout page.',
+    });
+  }
+
+  // Fetch the captured payment details from Razorpay
+  let payments;
+  try {
+    payments = await razorpay.orders.fetchPayments(razorpayOrderId);
+  } catch (err) {
+    logger.error(`retry-verify: fetchPayments failed for razorpayOrder=${razorpayOrderId}: ${err.message}`);
+    return res.status(502).json({ success: false, message: 'Could not retrieve payment details. Support team has been notified.' });
+  }
+
+  const capturedPayment = payments?.items?.find((p) => p.status === 'captured');
+  if (!capturedPayment) {
+    return res.status(402).json({ success: false, message: 'No captured payment found.' });
+  }
+
+  logger.info(`retry-verify: Payment confirmed via Razorpay API for order=${id}, payment=${capturedPayment.id}`);
+
+  const result = await atomicConfirmOrder(order, capturedPayment.id, capturedPayment.id, razorpayOrderId);
+
+  if (!result.success) {
+    return res.status(500).json({
+      success: false,
+      message: `Recovery failed: ${result.error}. Please contact support with your order ID.`,
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: 'Payment recovered successfully! Your order is now confirmed.',
+    order: result.order,
+  });
 };
 
 // ─── Phase 3: Fail Payment (user dismissed / payment failed on client) ───────
@@ -335,36 +531,143 @@ const failPayment = async (req, res) => {
 
   const failReason = reason || 'Payment cancelled by user';
 
-  await Order.findByIdAndUpdate(pendingOrderId, {
-    orderStatus: 'cancelled',
-    'payment.status': 'failed',
-    'payment.failReason': failReason,
-  });
+  const failSession = await mongoose.startSession();
+  failSession.startTransaction();
 
-  // Update transaction audit trail
-  await Transaction.findOneAndUpdate(
-    { order: pendingOrderId, status: 'pending' },
-    { status: 'failed', failReason }
-  );
+  try {
+    await Order.findByIdAndUpdate(
+      pendingOrderId,
+      { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': failReason },
+      { session: failSession }
+    );
+
+    await Transaction.findOneAndUpdate(
+      { order: pendingOrderId, status: 'pending' },
+      { status: 'failed', failReason },
+      { session: failSession }
+    );
+
+    await failSession.commitTransaction();
+    failSession.endSession();
+  } catch (err) {
+    await failSession.abortTransaction();
+    failSession.endSession();
+    logger.error(`Failed to record payment failure for order=${pendingOrderId}: ${err.message}`);
+    return res.status(500).json({ success: false, message: 'Failed to record payment failure. Please retry.' });
+  }
 
   logger.info(`Payment failed/cancelled: order=${pendingOrderId}, reason="${failReason}"`);
 
   res.json({ success: true, message: 'Payment failure recorded' });
 };
 
+// ─── Razorpay Webhook Handler ─────────────────────────────────────────────────
+// @route   POST /api/webhook/razorpay
+// @access  Public (signature-verified)
+const handleWebhook = async (req, res) => {
+  // 1. Always acknowledge immediately — Razorpay will retry on non-200
+  res.status(200).json({ received: true });
+
+  const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    logger.warn('RAZORPAY_WEBHOOK_SECRET is not set — skipping webhook signature verification');
+  } else {
+    // 2. Verify webhook signature
+    const signature = req.headers['x-razorpay-signature'];
+    const expectedSig = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(req.body) // raw buffer from express.raw()
+      .digest('hex');
+
+    if (expectedSig !== signature) {
+      logger.warn(`Webhook signature mismatch. Rejecting event.`);
+      return;
+    }
+  }
+
+  let event;
+  try {
+    event = JSON.parse(req.body.toString());
+  } catch {
+    logger.error('Failed to parse webhook body');
+    return;
+  }
+
+  const eventType = event.event;
+  logger.info(`Razorpay webhook received: ${eventType}`);
+
+  // 3. Handle payment.captured (main success path)
+  if (eventType === 'payment.captured') {
+    const payment = event.payload?.payment?.entity;
+    if (!payment) return;
+
+    const razorpayOrderId = payment.order_id;
+    const razorpayPaymentId = payment.id;
+
+    // Find our pending order via the razorpayOrderId stored on it
+    const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': razorpayOrderId });
+    if (!pendingOrder) {
+      logger.warn(`Webhook: No order found for razorpayOrder=${razorpayOrderId}`);
+      return;
+    }
+
+    // Idempotency — already confirmed (e.g., verify-payment was called first)
+    if (pendingOrder.payment.status === 'paid') {
+      logger.info(`Webhook: Order ${pendingOrder._id} already confirmed — skipping`);
+      return;
+    }
+
+    const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, '', razorpayOrderId);
+    if (result.success) {
+      logger.info(`Webhook: Order ${pendingOrder._id} confirmed via payment.captured event`);
+    } else {
+      logger.error(`Webhook: atomicConfirmOrder failed: ${result.error}`);
+    }
+    return;
+  }
+
+  // 4. Handle payment.failed
+  if (eventType === 'payment.failed') {
+    const payment = event.payload?.payment?.entity;
+    if (!payment) return;
+
+    const razorpayOrderId = payment.order_id;
+    const failReason = payment.error_description || 'Payment failed (Razorpay event)';
+
+    const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': razorpayOrderId });
+    if (!pendingOrder) return;
+
+    // Don't overwrite an already-confirmed order
+    if (pendingOrder.payment.status === 'paid') return;
+
+    await Order.findByIdAndUpdate(pendingOrder._id, {
+      orderStatus: 'cancelled',
+      'payment.status': 'failed',
+      'payment.failReason': failReason,
+    });
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId },
+      { status: 'failed', failReason }
+    );
+
+    logger.info(`Webhook: Order ${pendingOrder._id} marked failed via payment.failed event`);
+  }
+};
+
 // ─── Get User's Orders ───────────────────────────────────────────────────────
 // @route   GET /api/orders/my-orders
 // @access  Private
 const getMyOrders = async (req, res) => {
-  // Only show orders that were paid or are in progress (exclude failed/cancelled with no payment)
   const orders = await Order.find({
     user: req.user._id,
     $or: [
       { 'payment.status': 'paid' },
-      { 'payment.status': 'pending', orderStatus: { $ne: 'cancelled' } },
+      { 'payment.status': 'pending' },
+      { 'payment.status': 'failed', 'payment.razorpayOrderId': { $exists: true, $ne: '' } },
     ],
   })
-    .select('-payment.razorpaySignature -trackingHistory') // don't expose signature
+    .select('-payment.razorpaySignature -payment.razorpaySignature')
+    .populate('items.product', 'name images price')
     .sort({ createdAt: -1 })
     .lean();
 
@@ -381,14 +684,15 @@ const getOrder = async (req, res) => {
 
   const order = await Order.findById(req.params.id)
     .select('-payment.razorpaySignature')
-    .populate('items.product', 'name images price');
+    .populate('items.product', 'name images price')
+    .populate('trackingHistory.updatedBy', 'name role')  // include admin name in timeline
+    .populate('user', 'name email phone');
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  // Only allow owner or admin
-  if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorized' });
   }
 
@@ -399,11 +703,30 @@ const getOrder = async (req, res) => {
 // @route   GET /api/orders
 // @access  Admin
 const getAllOrders = async (req, res) => {
-  const { page = 1, limit = 20, status, paymentStatus } = req.query;
+  const { page = 1, limit = 20, status, paymentStatus = 'all' } = req.query;
 
   const query = {};
-  if (status) query.orderStatus = status;
-  if (paymentStatus) query['payment.status'] = paymentStatus;
+
+  if (status === 'needs_attention') {
+    // Only flag orders that genuinely need admin intervention:
+    // 1. Payment failed but order is still actionable (not already resolved as 'failed', 'returned_refunded', or legacy 'cancelled')
+    // 2. COD with payment still pending, but order is actively progressing
+    query.$or = [
+      { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
+      { 'payment.method': 'cod', 'payment.status': 'pending', orderStatus: { $nin: ['delivered', 'failed', 'returned_refunded', 'cancelled'] } },
+    ];
+  } else {
+    if (status) query.orderStatus = status;
+
+    if (paymentStatus === 'paid') {
+      // "All Paid" strictly means fully paid online OR valid completed COD payments
+      query['payment.status'] = 'paid';
+    } else if (paymentStatus === 'pending') {
+      query['payment.status'] = 'pending';
+    } else if (paymentStatus === 'failed') {
+      query['payment.status'] = 'failed';
+    }
+  }
 
   const skip = (Number(page) - 1) * Number(limit);
 
@@ -427,53 +750,128 @@ const getAllOrders = async (req, res) => {
   });
 };
 
+// ─── Delivery Lifecycle State Machine ────────────────────────────────────────
+//
+// Valid forward transitions only:
+//   processing → confirmed
+//   confirmed  → ready_to_ship | cancelled
+//   ready_to_ship → shipped | cancelled
+//   shipped    → delivered
+//   delivered  → (terminal — no further transitions)
+//   cancelled  → (terminal)
+//
+const DELIVERY_TRANSITIONS = {
+  confirmed:         ['in_production', 'failed'],
+  in_production:     ['ready_to_ship', 'failed'],
+  ready_to_ship:     ['shipped', 'failed'],
+  shipped:           ['delivered', 'failed', 'returned_refunded'],
+  delivered:         ['returned_refunded'],
+  returned_refunded: [],
+  failed:            ['returned_refunded'],
+};
+
 // ─── Update Order Status (Admin) ─────────────────────────────────────────────
 // @route   PUT /api/orders/:id/status
 // @access  Admin
 const updateOrderStatus = async (req, res) => {
-  const { status, trackingNumber, trackingUrl, courierPartner, comment } = req.body;
+  // Internal courier system: only status, estimatedDelivery, and comment are accepted from clients.
+  // trackingNumber, trackingUrl, courierPartner are NOT externally supplied — managed by the system.
+  const { status, comment, estimatedDelivery, paymentReceived, paymentStatus } = req.body;
 
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
   }
 
-  const validStatuses = ['processing', 'confirmed', 'shipped', 'delivered', 'cancelled', 'return_requested', 'returned'];
+  const validStatuses = Object.keys(DELIVERY_TRANSITIONS);
   if (!validStatuses.includes(status)) {
-    return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+    return res.status(400).json({
+      success: false,
+      message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+    });
   }
 
-  const order = await Order.findById(req.params.id);
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  // Prevent regressing status (e.g. delivered → processing)
-  const statusOrder = validStatuses;
-  const currentIdx = statusOrder.indexOf(order.orderStatus);
-  const newIdx = statusOrder.indexOf(status);
-  if (newIdx < currentIdx && status !== 'cancelled') {
+  const current = order.orderStatus;
+  const currentPaymentStatus = order.payment.status;
+
+  // ── Idempotency: already in the target state ──
+  if (current === status && (!paymentStatus || paymentStatus === currentPaymentStatus) && !comment) {
+    logger.info(`Order ${order._id} already in status "${status}" — idempotent response`);
+    return res.json({ success: true, order, message: 'Order is already up to date' });
+  }
+
+  // ── State machine: validate transition ────────────────────────────────────
+  const allowed = DELIVERY_TRANSITIONS[current] || [];
+  if (current !== status && !allowed.includes(status)) {
     return res.status(400).json({
       success: false,
-      message: `Cannot revert status from "${order.orderStatus}" to "${status}"`,
+      message: `Invalid transition: "${current}" → "${status}". Allowed next states: [${allowed.join(', ') || 'none'}]`,
     });
   }
 
-  order.orderStatus = status;
-  if (trackingNumber) order.trackingNumber = trackingNumber;
-  if (trackingUrl) order.trackingUrl = trackingUrl;
-  if (courierPartner) order.courierPartner = courierPartner;
-  if (status === 'delivered') order.deliveredAt = new Date();
+  // ── Dispatch: auto-generate deliveryId + set internal tracking ref ───────────
+  if (status === 'shipped' || status === 'delivered') {
+    // Generate a collision-free UUID delivery ID (idempotent — only created once per order)
+    if (!order.deliveryId) {
+      order.deliveryId = crypto.randomUUID();
+      logger.info(`deliveryId generated for order ${order._id}: ${order.deliveryId}`);
+    }
+    order.trackingNumber = order.deliveryId || order.trackingNumber;
+    order.dispatchedAt   = order.dispatchedAt || new Date();
+  }
 
-  // Append tracking history
+  // ── Apply status + optional fields ──────────────────────────────────────────
+  order.orderStatus = status;
+  if (estimatedDelivery) order.estimatedDelivery = new Date(estimatedDelivery);
+
+  // ── Handle Payment State Updates ───────────────────────────────────────────
+  if (paymentStatus && ['pending', 'paid', 'failed', 'refunded'].includes(paymentStatus)) {
+    order.payment.status = paymentStatus;
+    if (paymentStatus === 'paid' && !order.payment.paidAt) {
+      order.payment.paidAt = new Date();
+    }
+  } else if (order.payment.method === 'cod' && paymentReceived) {
+    // Legacy mapping for AdminDelivery dashboard quick-check
+    order.payment.status = 'paid';
+    order.payment.paidAt = new Date();
+  }
+
+  // Sync Transaction state if COD is finally marked as paid
+  if (order.payment.status === 'paid' && order.payment.method === 'cod') {
+    await Transaction.findOneAndUpdate(
+      { order: order._id, status: 'pending' },
+      { status: 'success' }
+    );
+  }
+
+  // ── Pre-Delivery Validation ────────────────────────────────────────────────
+  if (status === 'delivered') {
+    if (order.payment.status !== 'paid') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Payment needs to be done before marking as delivered.' 
+      });
+    }
+    order.deliveredAt = new Date();
+  }
+
   order.trackingHistory.push({
     status,
     comment: comment || '',
     updatedBy: req.user._id,
+    timestamp: new Date(),
   });
 
   await order.save();
 
-  logger.info(`Order ${order._id} status updated to "${status}" by admin ${req.user._id}`);
+  logger.info(
+    `Order ${order._id} transitioned "${current}" → "${status}" by admin ${req.user._id}` +
+    (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : '')
+  );
 
   res.json({ success: true, order });
 };
@@ -482,24 +880,35 @@ const updateOrderStatus = async (req, res) => {
 // @route   GET /api/orders/stats
 // @access  Admin
 const getStats = async (req, res) => {
-  const [totalOrders, revenueAgg, statusCounts, recentOrders] = await Promise.all([
-    Order.countDocuments({ 'payment.status': 'paid' }),
+  const validOrderQuery = { orderStatus: { $nin: ['failed', 'returned_refunded'] } };
+
+  const [totalOrders, revenueAgg, statusCounts, recentOrders, pendingCount] = await Promise.all([
+    Order.countDocuments(validOrderQuery),
 
     Order.aggregate([
-      { $match: { 'payment.status': 'paid' } },
+      { $match: validOrderQuery },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } },
     ]),
 
     Order.aggregate([
+      { $match: validOrderQuery },
       { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
     ]),
 
-    Order.find({ 'payment.status': 'paid' })
+    Order.find(validOrderQuery)
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('user', 'name email')
       .select('totalAmount orderStatus createdAt user items')
       .lean(),
+
+    // Pending count for "needs attention" badge
+    Order.countDocuments({
+      $or: [
+        { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
+        { 'payment.method': 'cod', 'payment.status': 'pending', orderStatus: { $nin: ['delivered', 'failed', 'returned_refunded', 'cancelled'] } },
+      ]
+    }),
   ]);
 
   res.json({
@@ -509,6 +918,61 @@ const getStats = async (req, res) => {
       totalRevenue: revenueAgg[0]?.total || 0,
       statusCounts: statusCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {}),
       recentOrders,
+      needsAttention: pendingCount,
+    },
+  });
+};
+
+// ─── Delivery Stats (Admin) — unified Order + CustomOrder ─────────────────────
+// @route   GET /api/orders/delivery-stats
+// @access  Admin
+// Single query set covering both regular orders and custom orders.
+const getDeliveryStats = async (req, res) => {
+  const CustomOrder = require('../models/CustomOrder');
+  const now = new Date();
+
+  // Custom order delivery statuses mapped to the same pipeline stages:
+  // final_payment_paid → "confirmed" (in production, fully paid, pending dispatch)
+  // ready_to_ship → ready_to_ship
+  // shipped → shipped
+  // delivered → delivered
+  const CUSTOM_DELIVERY_STATUSES = ['final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'];
+
+  const [
+    orderCounts, orderOverdue,
+    customCounts, customOverdue,
+  ] = await Promise.all([
+    Order.aggregate([
+      { $match: { orderStatus: { $in: ['confirmed', 'ready_to_ship', 'shipped', 'delivered'] } } },
+      { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
+    ]),
+    Order.countDocuments({ orderStatus: 'shipped', estimatedDelivery: { $lt: now } }),
+    CustomOrder.aggregate([
+      { $match: { status: { $in: CUSTOM_DELIVERY_STATUSES } } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]),
+    CustomOrder.countDocuments({ status: 'shipped', estimatedDelivery: { $lt: now } }),
+  ]);
+
+  const oc = orderCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
+  const cc = customCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
+
+  // Merge: CustomOrder.final_payment_paid maps to "confirmed" bucket
+  const confirmed     = (oc.confirmed     || 0) + (cc.final_payment_paid || 0);
+  const ready_to_ship = (oc.ready_to_ship || 0) + (cc.ready_to_ship     || 0);
+  const shipped       = (oc.shipped       || 0) + (cc.shipped            || 0);
+  const delivered     = (oc.delivered     || 0) + (cc.delivered          || 0);
+  const overdue       = orderOverdue + customOverdue;
+
+  res.json({
+    success: true,
+    stats: {
+      confirmed,
+      ready_to_ship,
+      shipped,
+      delivered,
+      overdue,
+      pipeline: confirmed + ready_to_ship + shipped,
     },
   });
 };
@@ -516,10 +980,13 @@ const getStats = async (req, res) => {
 module.exports = {
   createPayment,
   verifyPayment,
+  retryVerifyPayment,
   failPayment,
+  handleWebhook,
   getMyOrders,
   getOrder,
   getAllOrders,
   updateOrderStatus,
   getStats,
+  getDeliveryStats,
 };

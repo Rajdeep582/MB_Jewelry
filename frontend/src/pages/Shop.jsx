@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -20,7 +20,7 @@ const SORT_OPTIONS = [
 
 export default function Shop() {
   const dispatch = useDispatch();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const products = useSelector(selectProducts);
   const loading = useSelector(selectProductsLoading);
   const pagination = useSelector(selectProductsPagination);
@@ -53,6 +53,7 @@ export default function Shop() {
     // If navigating generically without focusSearch, clear search state too
     if (!location.state?.focusSearch && Array.from(searchParams.keys()).length === 0) {
       newFilters.search = '';
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearch('');
     }
     
@@ -61,11 +62,11 @@ export default function Shop() {
 
   useEffect(() => {
     dispatch(fetchProducts(filters));
-  }, [dispatch, filters.type, filters.category, filters.material, filters.search, filters.sort, filters.page, filters.minPrice, filters.maxPrice]);
+  }, [dispatch, filters]);
 
-  const debouncedSearch = useCallback(
-    debounce((val) => dispatch(setFilters({ search: val })), 400),
-    []
+  const debouncedSearch = useMemo(
+    () => debounce((val) => dispatch(setFilters({ search: val })), 400),
+    [dispatch]
   );
 
   const handleSearchChange = (e) => {

@@ -105,16 +105,19 @@ export default function Footer() {
                 { Icon: FiInstagram, label: 'Instagram', href: '#' },
                 { Icon: FiTwitter, label: 'Twitter', href: '#' },
                 { Icon: FiFacebook, label: 'Facebook', href: '#' },
-              ].map(({ Icon, label, href }) => (
+              ].map((item) => {
+                 
+                const SIcon = item.Icon;
+                return (
                 <a
-                  key={label}
-                  href={href}
-                  aria-label={label}
+                  key={item.label}
+                  href={item.href}
+                  aria-label={item.label}
                   className="w-9 h-9 rounded-full bg-dark-800 border border-white/10 flex items-center justify-center text-dark-400 hover:text-gold-500 hover:border-gold-500/30 transition-all duration-200"
                 >
-                  <Icon size={15} />
+                  <SIcon size={15} />
                 </a>
-              ))}
+              )})}
             </div>
           </div>
 

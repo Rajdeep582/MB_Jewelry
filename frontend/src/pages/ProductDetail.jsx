@@ -56,7 +56,7 @@ export default function ProductDetail() {
     );
   }
 
-  const { name, description, price, discountedPrice, images, material, type, stock, averageRating, numReviews, ratings, category } = product;
+  const { name, description, price, discountedPrice, images, material, type, stock, averageRating, numReviews, ratings } = product;
 
   const handleAddToCart = () => {
     if (stock === 0) return;

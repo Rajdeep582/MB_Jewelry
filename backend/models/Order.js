@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const orderItemSchema = new mongoose.Schema({
   product: {
@@ -56,10 +57,16 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     orderStatus: {
       type: String,
-      enum: ['processing', 'confirmed', 'shipped', 'delivered', 'cancelled', 'return_requested', 'returned'],
-      default: 'processing',
+      enum: ['confirmed', 'in_production', 'ready_to_ship', 'shipped', 'delivered', 'returned_refunded', 'failed'],
+      default: 'confirmed',
     },
     deliveredAt: { type: Date },
+    dispatchedAt: { type: Date },                                         // set automatically when shipped
+    estimatedDelivery: { type: Date },
+    orderId: { type: String, unique: true, sparse: true },
+    // System-generated UUID assigned at dispatch — immutable, collision-free, internal traceability ID
+    // Separate from courier AWB (trackingNumber) — format displayed as MB-XXXXXXXX (last 8 chars)
+    deliveryId: { type: String, unique: true, sparse: true },
     trackingNumber: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
     courierPartner: { type: String, default: '' },
@@ -74,5 +81,15 @@ orderSchema.index({ user: 1 });
 orderSchema.index({ 'payment.status': 1 });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ createdAt: -1 });
+orderSchema.index({ orderId: 1 }, { sparse: true, unique: true });
+orderSchema.index({ deliveryId: 1 }, { sparse: true, unique: true }); // sparse: null values don't conflict
+
+// Auto-generate orderId
+orderSchema.pre('save', function (next) {
+  if (!this.orderId) {
+    this.orderId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+  next();
+});
 
 module.exports = mongoose.model('Order', orderSchema);

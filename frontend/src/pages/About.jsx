@@ -93,9 +93,12 @@ export default function About() {
             <div className="gold-divider mt-4" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {values.map(({ icon: Icon, title, desc }, i) => (
+            {values.map((item, i) => {
+               
+              const SIcon = item.icon;
+              return (
               <motion.div
-                key={title}
+                key={item.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -103,12 +106,12 @@ export default function About() {
                 className="card p-6 text-center"
               >
                 <div className="w-12 h-12 rounded-2xl glass-gold flex items-center justify-center mx-auto mb-4">
-                  <Icon size={20} className="text-gold-500" />
+                  <SIcon size={20} className="text-gold-500" />
                 </div>
-                <h3 className="font-display text-white text-lg mb-2">{title}</h3>
-                <p className="text-dark-400 text-sm leading-relaxed">{desc}</p>
+                <h3 className="font-display text-white text-lg mb-2">{item.title}</h3>
+                <p className="text-dark-400 text-sm leading-relaxed">{item.desc}</p>
               </motion.div>
-            ))}
+            )})}
           </div>
         </div>
       </section>

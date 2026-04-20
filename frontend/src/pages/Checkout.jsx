@@ -8,6 +8,7 @@ import { selectUser } from '../store/authSlice';
 import { orderService, userService } from '../services/services';
 import { formatPrice } from '../utils/helpers';
 import toast from 'react-hot-toast';
+import AddressSelector from '../components/common/AddressSelector';
 
 // ─── Load Razorpay SDK (memoised) ────────────────────────────────────────────
 let razorpayScriptPromise = null;
@@ -29,23 +30,7 @@ function loadRazorpaySdk() {
   return razorpayScriptPromise;
 }
 
-// ─── Address Form Fields Config ───────────────────────────────────────────────
-const ADDRESS_FIELDS = [
-  { name: 'fullName',     label: 'Full Name',                  col: 2 },
-  { name: 'phone',        label: 'Phone Number',               col: 1 },
-  { name: 'addressLine1', label: 'Address Line 1',             col: 2 },
-  { name: 'addressLine2', label: 'Address Line 2 (optional)',  col: 2 },
-  { name: 'city',         label: 'City',                       col: 1 },
-  { name: 'state',        label: 'State',                      col: 1 },
-  { name: 'pincode',      label: 'PIN Code',                   col: 1 },
-];
-
-const REQUIRED_ADDR_FIELDS = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'pincode'];
-
-const BLANK_ADDRESS = {
-  fullName: '', phone: '', addressLine1: '', addressLine2: '',
-  city: '', state: '', pincode: '', country: 'India',
-};
+import { BLANK_ADDRESS, REQUIRED_ADDR_FIELDS } from '../utils/helpers';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Checkout() {
@@ -61,6 +46,7 @@ export default function Checkout() {
   const [newAddr,         setNewAddr]          = useState({ ...BLANK_ADDRESS, fullName: user?.name || '' });
   const [processing,      setProcessing]       = useState(false);
   const [addrLoading,     setAddrLoading]      = useState(true);
+  const [paymentMethod,   setPaymentMethod]    = useState('razorpay'); // 'razorpay' | 'cod'
 
   // Track pending order ID so we can report failure on modal dismiss
   const pendingOrderIdRef = useRef(null);
@@ -152,7 +138,20 @@ export default function Checkout() {
     pendingOrderIdRef.current = null;
 
     try {
-      // 1. Load Razorpay SDK
+      // 1. COD Flow
+      if (paymentMethod === 'cod') {
+        const { data } = await orderService.createPayment({
+          items: items.map((i) => ({ productId: i._id, quantity: i.quantity })),
+          shippingAddress,
+          method: 'cod',
+        });
+        dispatch(clearCart());
+        toast.success('Order placed successfully via Cash on Delivery! 🎉', { duration: 5000 });
+        navigate(`/orders/${data.orderId}`);
+        return;
+      }
+
+      // 2. Razorpay Flow: Load SDK
       const loaded = await loadRazorpaySdk();
       if (!loaded) {
         toast.error('Payment gateway failed to load. Please check your internet connection.', { duration: 5000 });
@@ -160,10 +159,11 @@ export default function Checkout() {
         return;
       }
 
-      // 2. Phase 1: Create pending order on backend (server-verified prices)
+      // Phase 1: Create pending order on backend (server-verified prices)
       const { data } = await orderService.createPayment({
         items: items.map((i) => ({ productId: i._id, quantity: i.quantity })),
         shippingAddress,
+        method: 'razorpay',
       });
 
       // Store pending order ID so we can handle failures
@@ -171,7 +171,7 @@ export default function Checkout() {
 
       // 3. Open Razorpay modal
       const options = {
-        key:         import.meta.env.VITE_RAZORPAY_KEY_ID,
+        key:         data.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount:      data.amount,
         currency:    data.currency,
         name:        'M&B Jewelry',
@@ -264,108 +264,52 @@ export default function Checkout() {
                 <h2 className="font-display text-xl text-white">Delivery Address</h2>
               </div>
 
-              {addrLoading ? (
-                <div className="space-y-3">
-                  {[1, 2].map((i) => (
-                    <div key={i} className="h-20 rounded-xl bg-dark-800 animate-pulse" />
-                  ))}
-                </div>
-              ) : (
-                <>
-                  {/* Saved addresses */}
-                  <div className="space-y-3 mb-4">
-                    {addresses.map((addr) => (
-                      <div
-                        key={addr._id}
-                        onClick={() => { setSelectedAddrId(addr._id); setShowNewAddr(false); }}
-                        className={`p-4 rounded-xl border cursor-pointer transition-all ${
-                          selectedAddrId === addr._id && !showNewAddr
-                            ? 'border-gold-500 bg-gold-500/5'
-                            : 'border-white/10 hover:border-white/30'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="text-white text-sm font-medium">{addr.fullName}</p>
-                              {addr.isDefault && (
-                                <span className="badge badge-gold text-xs">Default</span>
-                              )}
-                            </div>
-                            <p className="text-dark-400 text-xs">
-                              {addr.addressLine1}, {addr.city}, {addr.state} — {addr.pincode}
-                            </p>
-                            <p className="text-dark-500 text-xs mt-0.5">{addr.phone}</p>
-                          </div>
-                          {/* Radio dot */}
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                            selectedAddrId === addr._id && !showNewAddr
-                              ? 'border-gold-500'
-                              : 'border-dark-500'
-                          }`}>
-                            {selectedAddrId === addr._id && !showNewAddr && (
-                              <div className="w-2.5 h-2.5 rounded-full bg-gold-500" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              <AddressSelector
+                addresses={addresses}
+                selectedAddrId={selectedAddrId}
+                setSelectedAddrId={setSelectedAddrId}
+                showNewAddr={showNewAddr}
+                setShowNewAddr={setShowNewAddr}
+                newAddr={newAddr}
+                setNewAddr={setNewAddr}
+                addrLoading={addrLoading}
+              />
+            </div>
+
+            {/* Payment Method Selector */}
+            <div className="card p-5">
+              <h2 className="font-display text-xl text-white mb-4">Payment Method</h2>
+              <div className="space-y-3">
+                <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${paymentMethod === 'razorpay' ? 'border-gold-500/50 bg-gold-500/5' : 'border-white/5 bg-dark-900/50 hover:border-white/20'}`}>
+                  <input type="radio" name="paymentMethod" value="razorpay" checked={paymentMethod === 'razorpay'} onChange={() => setPaymentMethod('razorpay')} className="mt-1" />
+                  <div>
+                    <p className="text-white text-sm font-medium">Online Payment (Razorpay)</p>
+                    <p className="text-dark-400 text-xs mt-0.5">Pay securely using UPI, Credit/Debit Cards, or Net Banking.</p>
                   </div>
-
-                  {/* Toggle new address form */}
-                  <button
-                    onClick={() => {
-                      setShowNewAddr(!showNewAddr);
-                      if (!showNewAddr) setSelectedAddrId(null);
-                    }}
-                    className="flex items-center gap-2 text-gold-500 hover:text-gold-400 text-sm transition-colors"
-                  >
-                    <FiPlus size={16} />
-                    {showNewAddr ? 'Use saved address' : 'Use a different address'}
-                  </button>
-
-                  {/* New address form */}
-                  <AnimatePresence>
-                    {showNewAddr && (
-                      <motion.div
-                        key="new-addr"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-hidden"
-                      >
-                        {ADDRESS_FIELDS.map(({ name, label, col }) => (
-                          <div key={name} className={col === 2 ? 'sm:col-span-2' : ''}>
-                            <label className="label-dark">{label}</label>
-                            <input
-                              id={`checkout-addr-${name}`}
-                              type="text"
-                              value={newAddr[name]}
-                              onChange={(e) => setNewAddr((prev) => ({ ...prev, [name]: e.target.value }))}
-                              className="input-dark text-sm"
-                              autoComplete={name === 'phone' ? 'tel' : 'off'}
-                            />
-                          </div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </>
-              )}
+                </label>
+                <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${paymentMethod === 'cod' ? 'border-gold-500/50 bg-gold-500/5' : 'border-white/5 bg-dark-900/50 hover:border-white/20'}`}>
+                  <input type="radio" name="paymentMethod" value="cod" checked={paymentMethod === 'cod'} onChange={() => setPaymentMethod('cod')} className="mt-1" />
+                  <div>
+                    <p className="text-white text-sm font-medium">Cash on Delivery</p>
+                    <p className="text-dark-400 text-xs mt-0.5">Pay at your doorstep when the order is delivered.</p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {/* Payment Note */}
-            <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
-              <FiCreditCard className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
-              <div>
-                <p className="text-white text-sm font-medium mb-1">Secure Payment via Razorpay</p>
-                <p className="text-dark-400 text-xs leading-relaxed">
-                  All transactions are 100% secure and encrypted. We accept UPI, Debit/Credit Cards,
-                  Net Banking, and Wallets. Payment is processed only after you confirm on the Razorpay screen.
-                  If a payment fails, any deducted amount will be automatically refunded within 5–7 business days.
-                </p>
+            {paymentMethod === 'razorpay' && (
+              <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
+                <FiCreditCard className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
+                <div>
+                  <p className="text-white text-sm font-medium mb-1">Secure Payment via Razorpay</p>
+                  <p className="text-dark-400 text-xs leading-relaxed">
+                    All transactions are 100% secure and encrypted. We accept UPI, Debit/Credit Cards,
+                    Net Banking, and Wallets. Payment is processed only after you confirm on the Razorpay screen.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* ── Right: Order Summary ───────────────────────────────────── */}
@@ -438,7 +382,7 @@ export default function Checkout() {
                 ) : (
                   <>
                     <FiCheck size={16} />
-                    Pay {formatPrice(grandTotal)} Securely
+                    {paymentMethod === 'cod' ? `Place COD Order: ${formatPrice(grandTotal)}` : `Pay ${formatPrice(grandTotal)} Securely`}
                   </>
                 )}
               </button>

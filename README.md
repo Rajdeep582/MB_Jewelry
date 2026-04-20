@@ -19,14 +19,13 @@
 
 ---
 
-## 🌟 Key Features
-
-* **Secure Authentication:** JWT implementation with HTTP-only refresh cookies for optimal security.
+* **Secure OTP Authentication:** 6-digit email verification flow for secure registration, preventing bot signups and ensuring valid user emails.
+* **Standardized Order Lifecycle:** A rigorous, sequential fulfillment pipeline (`confirmed` → `in_production` → `ready_to_ship` → `shipped` → `delivered`) with audit trails.
 * **Premium User Interface:** Responsive, luxury dark theme enriched with gold accents and Framer Motion micro-animations.
 * **Complete Shopping Journey:** Featuring a persistent shopping cart (Redux + LocalStorage) and sophisticated product filtering/sorting.
 * **Seamless Payments:** Integrated Razorpay payment gateway handling with backend HMAC signature verification.
 * **Media Optimization:** Cloudinary integration for scalable product image uploads and optimizations.
-* **Admin Dashboard:** Full-fledged control panel for product catalogs, user management, and order tracking.
+* **Admin Control Center:** production-grade management of catalogs, users, and standardized order tracking.
 
 ---
 
@@ -134,6 +133,20 @@ npm run dev
 ```
 
 The application client runs on `http://localhost:5173`, and the API server starts on `http://localhost:5000`.
+
+---
+
+## 📦 Order Lifecycle Pipeline
+
+The platform enforces a strict, production-grade fulfillment sequence for all standard orders:
+
+1. **Confirmed:** Initial state upon successful payment (Razorpay) or COD verification.
+2. **In Production:** Item is being handcrafted/curated.
+3. **Ready to Ship:** Quality checked and packaged.
+4. **Shipped:** Handed over to logistics with tracking history initiated.
+5. **Delivered:** Final destination reached.
+
+*Note: Administrative failsafes like `Returned & Refunded` or `Failed` are handled as terminal states with full audit comments.*
 
 ---
 

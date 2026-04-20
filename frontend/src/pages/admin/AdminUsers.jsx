@@ -30,6 +30,7 @@ export default function AdminUsers() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadUsers(); }, [page]);
 
   const filteredUsers = users.filter((u) => {

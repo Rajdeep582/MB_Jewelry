@@ -33,24 +33,27 @@ export default function Contact() {
             <div className="card p-5">
               <h2 className="font-display text-xl text-white mb-4">Reach Out</h2>
               {[
-                { Icon: FiMail, title: 'Email', value: 'hello@mbjewelry.com', href: 'mailto:hello@mbjewelry.com' },
-                { Icon: FiPhone, title: 'Phone', value: '+91 98765 43210', href: 'tel:+919876543210' },
-                { Icon: FiMapPin, title: 'Store', value: 'Bandra West, Mumbai\nMaharashtra — 400050', href: null },
-              ].map(({ Icon, title, value, href }) => (
-                <div key={title} className="flex gap-3 mb-4">
+                { icon: FiMail, title: 'Email', value: 'hello@mbjewelry.com', href: 'mailto:hello@mbjewelry.com' },
+                { icon: FiPhone, title: 'Phone', value: '+91 98765 43210', href: 'tel:+919876543210' },
+                { icon: FiMapPin, title: 'Store', value: 'Bandra West, Mumbai\nMaharashtra — 400050', href: null },
+              ].map((item) => {
+                 
+                const SIcon = item.icon;
+                return (
+                <div key={item.title} className="flex gap-3 mb-4">
                   <div className="w-9 h-9 rounded-xl glass-gold flex items-center justify-center flex-shrink-0">
-                    <Icon size={15} className="text-gold-500" />
+                    <SIcon size={15} className="text-gold-500" />
                   </div>
                   <div>
-                    <p className="text-xs text-dark-500 uppercase tracking-wider mb-0.5">{title}</p>
-                    {href ? (
-                      <a href={href} className="text-dark-300 text-sm hover:text-gold-400 transition-colors">{value}</a>
+                    <p className="text-xs text-dark-500 uppercase tracking-wider mb-0.5">{item.title}</p>
+                    {item.href ? (
+                      <a href={item.href} className="text-dark-300 text-sm hover:text-gold-400 transition-colors">{item.value}</a>
                     ) : (
-                      <p className="text-dark-300 text-sm whitespace-pre">{value}</p>
+                      <p className="text-dark-300 text-sm whitespace-pre">{item.value}</p>
                     )}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
 
             <div className="card p-5">
@@ -70,11 +73,14 @@ export default function Contact() {
             <div className="card p-5">
               <h3 className="text-white font-medium mb-3">Follow Us</h3>
               <div className="flex gap-3">
-                {[FiInstagram, FiTwitter].map((Icon, i) => (
+                {[FiInstagram, FiTwitter].map((SIcon, i) => {
+                   
+                  const ActiveIcon = SIcon;
+                  return (
                   <a key={i} href="#" className="w-9 h-9 rounded-full glass-gold flex items-center justify-center text-gold-400 hover:scale-110 transition-transform">
-                    <Icon size={16} />
+                    <ActiveIcon size={16} />
                   </a>
-                ))}
+                )})}
               </div>
             </div>
           </div>

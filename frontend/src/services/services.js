@@ -3,12 +3,14 @@ import api from './api';
 export const orderService = {
   createPayment: (data) => api.post('/orders/create-payment', data),
   verifyPayment: (data) => api.post('/orders/verify-payment', data),
-  failPayment: (data) => api.post('/orders/fail-payment', data),    // report payment failure/dismissal
+  failPayment: (data) => api.post('/orders/fail-payment', data),
+  retryVerify: (id) => api.post(`/orders/${id}/retry-verify`),   // recovery path for failed network/browser crash
   getMyOrders: () => api.get('/orders/my-orders'),
   getOrder: (id) => api.get(`/orders/${id}`),
   getAllOrders: (params) => api.get('/orders', { params }),
   updateOrderStatus: (id, data) => api.put(`/orders/${id}/status`, data),
   getStats: () => api.get('/orders/stats'),
+  getDeliveryStats: () => api.get('/orders/delivery-stats'), // single-query delivery pipeline counts
 };
 
 export const userService = {
@@ -45,4 +47,20 @@ export const categoryService = {
 export const adminService = {
   bulkUpdatePricing: (data) => api.post('/admin/bulk-pricing', data),
   bulkUpdateDiscounts: (data) => api.post('/admin/bulk-discounts', data),
+};
+
+export const customOrderService = {
+  // User
+  create: (formData) =>
+    api.post('/custom-orders', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  getMyOrders: () => api.get('/custom-orders/my-orders'),
+  getOrder: (id) => api.get(`/custom-orders/${id}`),
+  createPayment: (data) => api.post('/custom-orders/create-payment', data),
+  verifyPayment: (data) => api.post('/custom-orders/verify-payment', data),
+  failPayment: (data) => api.post('/custom-orders/fail-payment', data),
+  // Admin
+  getAllOrders: (params) => api.get('/custom-orders', { params }),
+  setQuote: (id, data) => api.put(`/custom-orders/${id}/quote`, data),
+  updateStatus: (id, data) => api.put(`/custom-orders/${id}/status`, data),
+  getStats: () => api.get('/custom-orders/stats'),
 };

@@ -20,7 +20,7 @@ const loadCartState = () => {
       return undefined;
     }
     return { items: parsed.items, isOpen: false }; // always reset isOpen
-  } catch (e) {
+  } catch {
     // Corrupt data — clear it
     localStorage.removeItem(CART_STORAGE_KEY);
     return undefined;
@@ -50,7 +50,7 @@ store.subscribe(() => {
     prevCartItems = nextCartItems;
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({ items: nextCartItems }));
-    } catch (e) {
+    } catch {
       // Storage quota — silently ignore
     }
   }

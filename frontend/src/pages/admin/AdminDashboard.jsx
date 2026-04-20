@@ -5,7 +5,9 @@ import { FiShoppingBag, FiPackage, FiUsers, FiDollarSign, FiTrendingUp, FiArrowR
 import { orderService, userService, productService } from '../../services/services';
 import { formatPrice, formatDate, getOrderStatusColor } from '../../utils/helpers';
 
-function StatCard({ icon: Icon, title, value, subtitle, color = 'gold' }) {
+function StatCard({ icon, title, value, subtitle, color = 'gold' }) {
+   
+  const SIcon = icon;
   const colors = {
     gold:  'bg-gold-500/10 text-gold-500 border-gold-500/20',
     blue:  'bg-blue-500/10 text-blue-400 border-blue-500/20',
@@ -20,7 +22,7 @@ function StatCard({ icon: Icon, title, value, subtitle, color = 'gold' }) {
     >
       <div className="flex items-start justify-between mb-3">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colors[color]}`}>
-          <Icon size={18} />
+          <SIcon size={18} />
         </div>
       </div>
       <p className="text-2xl font-display font-medium text-white">{value}</p>
@@ -130,17 +132,20 @@ export default function AdminDashboard() {
               { label: 'Add New Product', to: '/admin/products', icon: FiShoppingBag },
               { label: 'View All Orders', to: '/admin/orders', icon: FiPackage },
               { label: 'Manage Users', to: '/admin/users', icon: FiUsers },
-            ].map(({ label, to, icon: Icon }) => (
-              <Link key={to} to={to}
+            ].map((item) => {
+               
+              const SIcon = item.icon;
+              return (
+              <Link key={item.to} to={item.to}
                 className="flex items-center gap-3 p-3 rounded-xl bg-dark-800 hover:bg-dark-700 border border-white/5 hover:border-white/10 transition-all group"
               >
                 <div className="w-8 h-8 rounded-lg glass-gold flex items-center justify-center">
-                  <Icon size={14} className="text-gold-500" />
+                  <SIcon size={14} className="text-gold-500" />
                 </div>
-                <span className="text-dark-300 group-hover:text-white text-sm transition-colors">{label}</span>
+                <span className="text-dark-300 group-hover:text-white text-sm transition-colors">{item.label}</span>
                 <FiArrowRight size={14} className="ml-auto text-dark-600 group-hover:text-gold-400 transition-colors" />
               </Link>
-            ))}
+            )})}
           </div>
         </div>
       </div>

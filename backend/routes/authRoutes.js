@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const { register, login, logout, refreshToken, getMe } = require('../controllers/authController');
+const { register, verifyOTP, login, logout, refreshToken, getMe } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 // Validation middleware
@@ -25,6 +25,7 @@ const loginRules = [
 ];
 
 router.post('/register', registerRules, validate, register);
+router.post('/verify-otp', verifyOTP);
 router.post('/login', loginRules, validate, login);
 router.post('/logout', protect, logout);
 router.post('/refresh', refreshToken);

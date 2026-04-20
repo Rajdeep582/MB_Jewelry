@@ -20,11 +20,28 @@ const orderRoutes = require('./routes/orderRoutes');
 const userRoutes = require('./routes/userRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const customOrderRoutes = require('./routes/customOrderRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 
-// Connect to MongoDB
-connectDB();
+// Utils
+const { cleanupStaleOrders } = require('./utils/cleanupStaleOrders');
+
+// Connect to MongoDB, then start background jobs
+connectDB().then(() => {
+  // Run stale order cleanup immediately on startup, then every 15 minutes
+  cleanupStaleOrders();
+  setInterval(() => cleanupStaleOrders(), 15 * 60 * 1000);
+  logger.info('Stale-order cleanup scheduler started (every 15 min)');
+});
 
 const app = express();
+
+// ─── Webhook Route (must be BEFORE body parsers — needs raw body for HMAC) ───
+app.use(
+  '/api/webhook',
+  express.raw({ type: 'application/json' }),
+  webhookRoutes
+);
 
 // ─── Static Files (Bypass Helmet CSP for pure images) ─────────
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -92,6 +109,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/custom-orders', customOrderRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

@@ -1,4 +1,5 @@
 const Razorpay = require('razorpay');
+const logger = require('../utils/logger');
 
 const keyId = process.env.RAZORPAY_KEY_ID;
 const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -19,7 +20,7 @@ if (isConfigured) {
     },
   };
   if (process.env.NODE_ENV !== 'test') {
-    console.warn('⚠️  Razorpay not configured — payment endpoints will return errors');
+    logger.warn('Razorpay not configured — payment endpoints will return 503 until keys are added to .env');
   }
 }
 
