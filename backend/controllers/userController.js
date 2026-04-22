@@ -74,8 +74,8 @@ const deleteAddress = async (req, res) => {
 const getAllUsers = async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
   const [users, total] = await Promise.all([
-    User.find().sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
-    User.countDocuments(),
+    User.find({ isVerified: true }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
+    User.countDocuments({ isVerified: true }),
   ]);
   res.json({ success: true, users, total, pages: Math.ceil(total / limit) });
 };
