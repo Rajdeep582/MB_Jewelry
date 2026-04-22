@@ -81,8 +81,7 @@ orderSchema.index({ user: 1 });
 orderSchema.index({ 'payment.status': 1 });
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ createdAt: -1 });
-orderSchema.index({ orderId: 1 }, { sparse: true, unique: true });
-orderSchema.index({ deliveryId: 1 }, { sparse: true, unique: true }); // sparse: null values don't conflict
+
 
 // Auto-generate orderId
 orderSchema.pre('save', function (next) {

@@ -8,13 +8,35 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Request interceptor — attach access token
+/**
+ * Read a cookie value by name from document.cookie.
+ * The backend sets csrfToken with httpOnly:false so the browser can read it here.
+ */
+const getCookie = (name) => {
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+// Request interceptor — attach access token + CSRF token
 api.interceptors.request.use(
   (config) => {
+    // 1. Attach JWT access token
     const token = store.getState().auth.accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // 2. Attach CSRF token for every state-mutating request (POST, PUT, DELETE, PATCH)
+    //    The backend's validateCsrf middleware requires the cookie value to be echoed
+    //    back in the x-csrf-token header (Double Submit Cookie pattern).
+    const SAFE_METHODS = ['GET', 'HEAD', 'OPTIONS'];
+    if (!SAFE_METHODS.includes((config.method || 'GET').toUpperCase())) {
+      const csrfToken = getCookie('csrfToken');
+      if (csrfToken) {
+        config.headers['x-csrf-token'] = csrfToken;
+      }
+    }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -37,6 +59,33 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // ── CSRF auto-seed: if the cookie was not yet set (e.g. first page load),
+    //    the backend returns 403 "Invalid or missing CSRF token".
+    //    Fix: hit GET /health to seed the cookie, then retry the original request once.
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.message === 'Invalid or missing CSRF token' &&
+      !originalRequest._csrfRetry
+    ) {
+      originalRequest._csrfRetry = true;
+      try {
+        // Any GET to the backend triggers attachCsrfCookie middleware
+        await axios.get(
+          (import.meta.env.VITE_API_URL || 'http://localhost:5000/api') + '/health',
+          { withCredentials: true }
+        );
+        // Re-read the now-seeded cookie and inject it
+        const freshCsrf = getCookie('csrfToken');
+        if (freshCsrf) {
+          originalRequest.headers['x-csrf-token'] = freshCsrf;
+        }
+        return api(originalRequest);
+      } catch {
+        // Seed failed — fall through and reject normally
+      }
+    }
+
+    // ── JWT access token expired: attempt silent refresh ──────────────────
     if (
       error.response?.status === 401 &&
       error.response?.data?.code === 'TOKEN_EXPIRED' &&

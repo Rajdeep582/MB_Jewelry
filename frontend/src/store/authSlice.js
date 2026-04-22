@@ -21,6 +21,24 @@ export const loginUser = createAsyncThunk('auth/login', async (data, { rejectWit
   }
 });
 
+export const loginWithGoogle = createAsyncThunk('auth/google', async (idToken, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/auth/google', { idToken });
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Google login failed');
+  }
+});
+
+export const loginWithFacebook = createAsyncThunk('auth/facebook', async (accessToken, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/auth/facebook', { accessToken });
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Facebook login failed');
+  }
+});
+
 export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWithValue }) => {
   try {
     await api.post('/auth/logout');
@@ -132,6 +150,26 @@ const authSlice = createSlice({
         persistAuth(payload.accessToken, payload.user);
       })
       .addCase(loginUser.rejected, handleRejected)
+
+      // Google Login
+      .addCase(loginWithGoogle.pending, handlePending)
+      .addCase(loginWithGoogle.fulfilled, (state, { payload }) => {
+        state.loading = false;
+        state.user = payload.user;
+        state.accessToken = payload.accessToken;
+        persistAuth(payload.accessToken, payload.user);
+      })
+      .addCase(loginWithGoogle.rejected, handleRejected)
+
+      // Facebook Login
+      .addCase(loginWithFacebook.pending, handlePending)
+      .addCase(loginWithFacebook.fulfilled, (state, { payload }) => {
+        state.loading = false;
+        state.user = payload.user;
+        state.accessToken = payload.accessToken;
+        persistAuth(payload.accessToken, payload.user);
+      })
+      .addCase(loginWithFacebook.rejected, handleRejected)
 
       // Logout — always clear regardless of server response
       .addCase(logoutUser.fulfilled, (state) => {

@@ -82,7 +82,7 @@ productSchema.index({ type: 1 });
 productSchema.index({ purity: 1 });
 productSchema.index({ isHallmarked: 1 });
 productSchema.index({ isFeatured: 1 });
-productSchema.index({ productId: 1 }, { sparse: true, unique: true });
+
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 
 // Auto-generate productId

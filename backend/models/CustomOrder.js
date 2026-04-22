@@ -147,8 +147,7 @@ customOrderSchema.index({ status:    1 });
 customOrderSchema.index({ createdAt: -1 });
 customOrderSchema.index({ 'advancePayment.status': 1 });
 customOrderSchema.index({ 'finalPayment.status':   1 });
-customOrderSchema.index({ customOrderId: 1 }, { sparse: true, unique: true });
-customOrderSchema.index({ deliveryId: 1 }, { sparse: true, unique: true });
+
 
 // Auto-generate customOrderId
 customOrderSchema.pre('save', function (next) {

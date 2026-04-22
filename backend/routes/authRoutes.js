@@ -1,34 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const { body, validationResult } = require('express-validator');
-const { register, verifyOTP, login, logout, refreshToken, getMe } = require('../controllers/authController');
-const { protect } = require('../middleware/auth');
+const rateLimit = require('express-rate-limit');
+const { validateSchema, schemas } = require('../middleware/validation');
+const { otpLimiter, loginLimiter, authLimiter } = require('../middleware/rateLimiter');
 
-// Validation middleware
-const validate = (req, res, next) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ success: false, errors: errors.array() });
-  }
-  next();
-};
+// ─── Validation rule sets ─────────────────────────────────────────────────────
+// Validation is imported from validation.js
 
-const registerRules = [
-  body('name').trim().notEmpty().withMessage('Name is required').isLength({ max: 50 }),
-  body('email').isEmail().withMessage('Valid email required').normalizeEmail(),
-  body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-];
+// ─── Routes ───────────────────────────────────────────────────────────────────
 
-const loginRules = [
-  body('email').isEmail().withMessage('Valid email required').normalizeEmail(),
-  body('password').notEmpty().withMessage('Password is required'),
-];
+// ─── Routes ───────────────────────────────────────────────────────────────────
+router.post('/register', authLimiter, validateSchema(schemas.register), require('../controllers/authController').register);
+router.post('/verify-otp', authLimiter, validateSchema(schemas.verifyOtp), require('../controllers/authController').verifyOTP);
+router.post('/login', loginLimiter, validateSchema(schemas.login), require('../controllers/authController').login);
+router.post('/google', authLimiter, validateSchema(schemas.googleOAuth), require('../controllers/authController').googleLogin);
+router.post('/facebook', authLimiter, validateSchema(schemas.facebookOAuth), require('../controllers/authController').facebookLogin);
+router.post('/logout', require('../middleware/auth').protect, require('../controllers/authController').logout);
+router.post('/refresh', require('../controllers/authController').refreshToken);
+router.get('/me', require('../middleware/auth').protect, require('../controllers/authController').getMe);
 
-router.post('/register', registerRules, validate, register);
-router.post('/verify-otp', verifyOTP);
-router.post('/login', loginRules, validate, login);
-router.post('/logout', protect, logout);
-router.post('/refresh', refreshToken);
-router.get('/me', protect, getMe);
+// Forgot password flow
+router.post('/forgot-password', otpLimiter, validateSchema(schemas.forgotPassword), require('../controllers/authController').forgotPassword);
+router.post('/verify-reset-otp', otpLimiter, validateSchema(schemas.verifyOtp), require('../controllers/authController').verifyResetOtp);
+router.post('/reset-password', validateSchema(schemas.resetPassword), require('../controllers/authController').resetPassword);
+
+// Device / Session management
+router.get('/sessions', require('../middleware/auth').protect, require('../controllers/authController').getActiveSessions);
+router.delete('/sessions/all', require('../middleware/auth').protect, require('../controllers/authController').revokeAllSessions);
+router.delete('/sessions/:id', require('../middleware/auth').protect, require('../controllers/authController').revokeSession);
 
 module.exports = router;

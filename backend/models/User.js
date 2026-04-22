@@ -32,17 +32,27 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
-      minlength: [8, 'Password must be at least 8 characters'],
+      required: [
+        function () {
+          return this.providers && this.providers.some(p => p.providerType === 'local');
+        },
+        'Password is required for local accounts',
+      ],
       validate: {
         validator: function (v) {
-          // Requires at least one letter, one number, and one special char
+          if (!this.providers || !this.providers.some(p => p.providerType === 'local')) return true;
+          if (!v) return false;
           return /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(v);
         },
-        message: 'Password must contain at least one letter, one number, and one special character'
+        message: 'Password must be at least 8 characters and contain at least one letter, one number, and one special character',
       },
       select: false,
     },
+    providers: [{
+      providerType: { type: String, enum: ['local', 'google', 'facebook'], required: true },
+      providerId: { type: String }, // e.g. google sub, facebook id
+      _id: false,
+    }],
     role: {
       type: String,
       enum: ['user', 'admin', 'delivery'],
@@ -53,26 +63,47 @@ const userSchema = new mongoose.Schema(
     vehicleNumber: { type: String, default: '' },
     dispatchZone: { type: String, default: '' },
     addresses: [addressSchema],
-    refreshToken: { type: String, select: false },
+    sessions: [{
+      tokenHash: { type: String, required: true },
+      deviceId: { type: String },
+      deviceInfo: { type: String },
+      ipAddress: { type: String },
+      createdAt: { type: Date, default: Date.now },
+      expiresAt: { type: Date, required: true },
+      _id: false,
+    }],
     isActive: { type: Boolean, default: true },
     isVerified: { type: Boolean, default: false },
     otpHash: { type: String, select: false },
     otpExpires: { type: Date, select: false },
     otpAttempts: { type: Number, default: 0 },
+    // Password-reset OTP (kept separate from registration OTP)
+    pwdResetOtpHash: { type: String, select: false },
+    pwdResetOtpExpires: { type: Date, select: false },
+    pwdResetOtpAttempts: { type: Number, default: 0 },
+    // Strict replacement for signed short-lived JWT strategy
+    pwdResetTokenHash: { type: String, select: false },
+    pwdResetTokenExpires: { type: Date, select: false },
     loginAttempts: { type: Number, required: true, default: 0 },
     lockUntil: { type: Date },
     lastLogin: { type: Date },
     userId: { type: String, unique: true, sparse: true },
+    auditLogs: [{
+      action: String,
+      ipAddress: String,
+      timestamp: { type: Date, default: Date.now },
+      details: String,
+      _id: false,
+    }],
   },
   { timestamps: true }
 );
 
-// Hash password before save
 userSchema.pre('save', async function (next) {
   if (!this.userId) {
     this.userId = `USR-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
   }
-  if (!this.isModified('password')) return next();
+  if (!this.password || !this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -86,7 +117,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // Index for faster lookups
 userSchema.index({ role: 1 });
 userSchema.index({ otpHash: 1 });
-userSchema.index({ userId: 1 }, { sparse: true, unique: true });
+
 
 // Instance method to check if user is locked out
 userSchema.methods.isLocked = function () {
