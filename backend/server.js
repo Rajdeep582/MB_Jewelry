@@ -69,7 +69,7 @@ app.use(
 // Global rate limiter — skipped in test environment to prevent bleed between tests
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: process.env.NODE_ENV === 'test' ? 10000 : 200,
+  max: process.env.NODE_ENV === 'test' ? 10000 : 1500,
   message: { success: false, message: 'Too many requests, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,

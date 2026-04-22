@@ -4,7 +4,9 @@ const User = require('../models/User');
 // @route   GET /api/users/profile
 // @access  Private
 const getProfile = async (req, res) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id)
+    .select('+sessions')
+    .populate('wishlist');
   res.json({ success: true, user });
 };
 
@@ -12,12 +14,21 @@ const getProfile = async (req, res) => {
 // @route   PUT /api/users/profile
 // @access  Private
 const updateProfile = async (req, res) => {
-  const { name, phone } = req.body;
+  const { name, phone, username, alternateEmail, preferences, gender } = req.body;
+  const updateData = { name, phone };
+  if (username !== undefined) updateData.username = username;
+  if (alternateEmail !== undefined) updateData.alternateEmail = alternateEmail;
+  if (preferences !== undefined) updateData.preferences = preferences;
+  if (gender !== undefined) updateData.gender = gender;
+
   const user = await User.findByIdAndUpdate(
     req.user._id,
-    { name, phone },
+    updateData,
     { new: true, runValidators: true }
-  );
+  )
+    .select('+sessions')
+    .populate('wishlist');
+    
   res.json({ success: true, user });
 };
 
@@ -108,4 +119,25 @@ const updateUserRole = async (req, res) => {
   res.json({ success: true, user });
 };
 
-module.exports = { getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole };
+// @desc    Toggle item in wishlist
+// @route   POST /api/users/wishlist/:productId
+// @access  Private
+const toggleWishlist = async (req, res) => {
+  const productId = req.params.productId;
+  const user = await User.findById(req.user._id);
+  
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  const index = user.wishlist.findIndex(id => id.toString() === productId);
+  if (index === -1) {
+    user.wishlist.push(productId);
+  } else {
+    user.wishlist.splice(index, 1);
+  }
+  
+  await user.save();
+  const populatedUser = await User.findById(req.user._id).select('+sessions').populate('wishlist');
+  res.json({ success: true, user: populatedUser });
+};
+
+module.exports = { getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole, toggleWishlist };

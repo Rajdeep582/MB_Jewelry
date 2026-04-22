@@ -59,6 +59,14 @@ const userSchema = new mongoose.Schema(
       default: 'user',
     },
     phone: { type: String, default: '' },
+    gender: { type: String, enum: ['male', 'female', 'other', ''], default: '' },
+    username: { type: String, unique: true, sparse: true, trim: true },
+    alternateEmail: { type: String, trim: true, lowercase: true, match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'] },
+    preferences: {
+      emailNotifications: { type: Boolean, default: true },
+      smsNotifications: { type: Boolean, default: false }
+    },
+    wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
     avatar: { type: String, default: '' },
     vehicleNumber: { type: String, default: '' },
     dispatchZone: { type: String, default: '' },

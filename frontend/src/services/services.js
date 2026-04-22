@@ -16,6 +16,7 @@ export const orderService = {
 export const userService = {
   getProfile: () => api.get('/users/profile'),
   updateProfile: (data) => api.put('/users/profile', data),
+  toggleWishlist: (productId) => api.post(`/users/wishlist/${productId}`),
   addAddress: (data) => api.post('/users/addresses', data),
   updateAddress: (id, data) => api.put(`/users/addresses/${id}`, data),
   deleteAddress: (id) => api.delete(`/users/addresses/${id}`),

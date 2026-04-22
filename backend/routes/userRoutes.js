@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const {
-  getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole
+  getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole, toggleWishlist
 } = require('../controllers/userController');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.get('/profile', protect, getProfile);
 router.put('/profile', protect, updateProfile);
+router.post('/wishlist/:productId', protect, toggleWishlist);
 router.post('/addresses', protect, addAddress);
 router.put('/addresses/:addressId', protect, updateAddress);
 router.delete('/addresses/:addressId', protect, deleteAddress);
