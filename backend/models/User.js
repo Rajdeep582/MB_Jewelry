@@ -72,6 +72,7 @@ const userSchema = new mongoose.Schema(
     dispatchZone: { type: String, default: '' },
     addresses: [addressSchema],
     sessions: [{
+      sessionId: { type: String, required: true },
       tokenHash: { type: String, required: true },
       deviceId: { type: String },
       deviceInfo: { type: String },

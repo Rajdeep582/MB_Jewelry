@@ -123,13 +123,16 @@ const login = async (req, res) => {
   const accessToken = generateAccessToken(user._id, user.role);
   const refreshToken = generateRefreshToken(user._id);
 
+  user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
+
   user.sessions.push({
+    sessionId: crypto.randomUUID(),
     tokenHash: hashToken(refreshToken),
     deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
     ipAddress,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   });
-  
+
   user.lastLogin = new Date();
   addAuditLog(user, 'LOGGED_IN', 'Local login', ipAddress);
   await user.save({ validateBeforeSave: false });
@@ -149,6 +152,8 @@ const refreshToken = async (req, res) => {
   catch (e) { return res.status(401).json({ success: false, message: 'Invalid token' }); }
 
   const user = await User.findById(decoded.id).select('+sessions');
+  user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
+
   const hashedRToken = hashToken(token);
   const sessionIndex = user.sessions.findIndex(s => s.tokenHash === hashedRToken);
 
@@ -166,6 +171,7 @@ const refreshToken = async (req, res) => {
   const newRefreshToken = generateRefreshToken(user._id);
 
   user.sessions[sessionIndex] = {
+    sessionId: user.sessions[sessionIndex].sessionId,
     tokenHash: hashToken(newRefreshToken),
     deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
     ipAddress: req.ip,
@@ -227,6 +233,7 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
     const splitRToken = generateRefreshToken(user._id);
     
     user.sessions.push({
+      sessionId: crypto.randomUUID(),
       tokenHash: hashToken(splitRToken),
       deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
       ipAddress: req.ip,
@@ -237,7 +244,7 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
     await user.save({ validateBeforeSave: false });
 
     sendRefreshTokenCookie(res, splitRToken);
-    res.json({ success: true, accessToken, user });
+    res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
   } catch (err) {
     logger.error(`${providerName} login error: ` + err.message);
     res.status(401).json({ success: false, message: `${providerName} integration failed.` });
@@ -343,7 +350,14 @@ const resetPassword = async (req, res) => {
 
 const getActiveSessions = async (req, res) => {
   const user = await User.findById(req.user._id).select('+sessions');
+  const now = new Date();
+  const before = user.sessions.length;
+  user.sessions = user.sessions.filter(s => s.expiresAt > now);
+  if (user.sessions.length !== before) {
+    await user.save({ validateBeforeSave: false });
+  }
   const sessionsSafe = user.sessions.map(s => ({
+    sessionId: s.sessionId,
     deviceId: s.deviceId,
     ipAddress: s.ipAddress,
     createdAt: s.createdAt,
@@ -354,10 +368,13 @@ const getActiveSessions = async (req, res) => {
 };
 
 const revokeSession = async (req, res) => {
-  const sessionIdOrHash = req.params.id; // Just passing exact tokenHash to strip if we want
-  // Depending on architecture, maybe map index, but since we just need an ID, tokenHash is a good unique id.
+  const targetSessionId = req.params.id;
   const user = await User.findById(req.user._id).select('+sessions');
-  user.sessions = user.sessions.filter(s => s.tokenHash !== sessionIdOrHash);
+  const before = user.sessions.length;
+  user.sessions = user.sessions.filter(s => s.sessionId !== targetSessionId);
+  if (user.sessions.length === before) {
+    return res.status(404).json({ success: false, message: 'Session not found.' });
+  }
   await user.save({ validateBeforeSave: false });
   res.json({ success: true, message: 'Device revoked.' });
 };

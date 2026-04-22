@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const rateLimit = require('express-rate-limit');
 const { validateSchema, schemas } = require('../middleware/validation');
 const { otpLimiter, loginLimiter, authLimiter } = require('../middleware/rateLimiter');
 

@@ -89,6 +89,59 @@ const schemas = {
       'string.length': 'OTP must be exactly 6 digits'
     })
   }),
+
+  profileUpdate: Joi.object({
+    name: Joi.string().trim().max(50).messages({
+      'string.max': 'Name cannot exceed 50 characters'
+    }),
+    phone: Joi.string().trim().max(15).allow('').messages({
+      'string.max': 'Phone cannot exceed 15 characters'
+    }),
+    username: Joi.string().trim().max(30).pattern(/^[a-zA-Z0-9_]+$/).allow('', null).messages({
+      'string.max': 'Username cannot exceed 30 characters',
+      'string.pattern.base': 'Username can only contain letters, numbers, and underscores'
+    }),
+    alternateEmail: Joi.string().email().lowercase().trim().allow('', null).messages({
+      'string.email': 'Valid email required'
+    }),
+    gender: Joi.string().valid('male', 'female', 'other', '').messages({
+      'any.only': 'Gender must be male, female, other, or empty'
+    }),
+    preferences: Joi.object({
+      emailNotifications: Joi.boolean(),
+      smsNotifications: Joi.boolean(),
+    }),
+  }),
+
+  address: Joi.object({
+    fullName: Joi.string().trim().max(50).required().messages({
+      'string.empty': 'Full name is required',
+      'string.max': 'Full name cannot exceed 50 characters'
+    }),
+    phone: Joi.string().trim().required().pattern(/^(\+91[-\s]?)?[6-9]\d{9}$/).messages({
+      'string.empty': 'Phone is required',
+      'string.pattern.base': 'Please enter a valid Indian mobile number'
+    }),
+    addressLine1: Joi.string().trim().max(200).required().messages({
+      'string.empty': 'Address line 1 is required',
+      'string.max': 'Address line 1 cannot exceed 200 characters'
+    }),
+    addressLine2: Joi.string().trim().max(200).allow('').default(''),
+    city: Joi.string().trim().max(50).required().messages({
+      'string.empty': 'City is required',
+      'string.max': 'City cannot exceed 50 characters'
+    }),
+    state: Joi.string().trim().max(50).required().messages({
+      'string.empty': 'State is required',
+      'string.max': 'State cannot exceed 50 characters'
+    }),
+    pincode: Joi.string().trim().required().pattern(/^\d{6}$/).messages({
+      'string.empty': 'Pincode is required',
+      'string.pattern.base': 'Pincode must be exactly 6 digits'
+    }),
+    country: Joi.string().trim().max(50).default('India'),
+    isDefault: Joi.boolean().default(false),
+  }),
 };
 
 module.exports = { validateSchema, schemas };

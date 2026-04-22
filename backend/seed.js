@@ -74,6 +74,8 @@ async function seed() {
       role: 'admin',
       phone: '+91-9876543210',
       isActive: true,
+      isVerified: true,
+      providers: [{ providerType: 'local' }],
     },
     {
       name: 'Priya Sharma',
@@ -82,6 +84,8 @@ async function seed() {
       role: 'user',
       phone: '+91-9123456789',
       isActive: true,
+      isVerified: true,
+      providers: [{ providerType: 'local' }],
       addresses: [{
         fullName: 'Priya Sharma',
         phone: '+91-9123456789',
@@ -99,6 +103,8 @@ async function seed() {
       role: 'user',
       phone: '+91-9988776655',
       isActive: true,
+      isVerified: true,
+      providers: [{ providerType: 'local' }],
     },
   ]);
   console.log(`   ${users.length} users created.`);
