@@ -110,6 +110,45 @@ const getCustomOrder = async (req, res) => {
   res.json({ success: true, order });
 };
 
+// ─── Cancel Custom Order (User) ───────────────────────────────────────────────
+// @route   PUT /api/custom-orders/:id/cancel
+// @access  Private (Owner only)
+const cancelCustomOrderUser = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+
+  const order = await CustomOrder.findById(req.params.id);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Custom order not found' });
+  }
+
+  // Only the owner can cancel it
+  if (order.user.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not authorised to cancel this order' });
+  }
+
+  // Can only cancel if payment hasn't started (pending or quoted)
+  if (!['pending', 'quoted'].includes(order.status)) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Order cannot be cancelled at this stage. Please contact support.' 
+    });
+  }
+
+  order.status = 'cancelled';
+  order.trackingHistory.push({
+    status: 'cancelled',
+    comment: 'Order cancelled by customer',
+    updatedBy: req.user._id,
+  });
+
+  await order.save();
+  logger.info(`Custom order ${order._id} cancelled by user ${req.user._id}`);
+
+  res.json({ success: true, message: 'Order cancelled successfully', order });
+};
+
 // ─── Phase 1: Create Payment Intent ───────────────────────────────────────────
 // @route   POST /api/custom-orders/create-payment
 // @access  Private
@@ -139,7 +178,7 @@ const createCustomPayment = async (req, res) => {
     }
     amountToPay = order.advanceAmount;
   } else if (phase === 'final') {
-    if (order.status !== 'final_payment_pending') {
+    if (order.status !== 'shipped') {
       return res.status(400).json({ success: false, message: `Cannot pay final balance. Order is in "${order.status}" status.` });
     }
     amountToPay = order.finalAmount;
@@ -150,7 +189,7 @@ const createCustomPayment = async (req, res) => {
   if ((!amountToPay || amountToPay <= 0) && order.quoteAmount > 0) {
     const taxAmount     = Math.round(order.quoteAmount * 0.18);
     const totalAmount   = order.quoteAmount + taxAmount;
-    const advanceAmount = Math.round(totalAmount * 0.25);
+    const advanceAmount = Math.round(totalAmount * 0.70);
     const finalAmount   = totalAmount - advanceAmount;
 
     // Persist the recomputed amounts so future requests don't need to recompute
@@ -293,7 +332,9 @@ const verifyCustomPayment = async (req, res) => {
   session.startTransaction();
 
   try {
-    const nextStatus = phase === 'advance' ? 'advance_paid' : 'final_payment_paid';
+    // Advance payment sets status to advance_paid;
+    // Final payment leaves order status as 'shipped'; admin manually confirms delivery.
+    const nextStatus = phase === 'advance' ? 'advance_paid' : order.status;
 
     // Update payment fields on the custom order
     await CustomOrder.findByIdAndUpdate(
@@ -325,7 +366,7 @@ const verifyCustomPayment = async (req, res) => {
     const confirmedOrder = await CustomOrder.findById(customOrderId).session(session);
     confirmedOrder.trackingHistory.push({
       status: nextStatus,
-      comment: phase === 'advance' ? 'Advance payment (25%) received.' : 'Final balance (75%) received.',
+      comment: phase === 'advance' ? 'Advance payment (70%) received.' : 'Final balance (30%) received.',
       updatedBy: req.user._id,
     });
     await confirmedOrder.save({ session });
@@ -431,7 +472,7 @@ const getAllCustomOrders = async (req, res) => {
 // @route   PUT /api/custom-orders/:id/quote
 // @access  Admin
 const setQuote = async (req, res) => {
-  const { quoteAmount, quoteNote, adminNotes } = req.body;
+  const { quoteAmount, quoteNote, expectedDeliveryDate, adminNotes } = req.body;
 
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
@@ -443,24 +484,35 @@ const setQuote = async (req, res) => {
   const order = await CustomOrder.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: 'Custom order not found' });
 
-  // Can only quote a pending or already-quoted order
-  if (!['pending', 'quoted'].includes(order.status)) {
+  // Can only update quote if not delivered or cancelled
+  if (['delivered', 'cancelled'].includes(order.status)) {
     return res.status(400).json({
       success: false,
-      message: `Cannot set quote on order with status "${order.status}"`,
+      message: `Cannot update quote on order with status "${order.status}"`,
     });
   }
 
   order.quoteAmount   = Number(quoteAmount);
   order.taxAmount     = Math.round(order.quoteAmount * 0.18);
   order.totalAmount   = order.quoteAmount + order.taxAmount;
-  order.advanceAmount = Math.round(order.totalAmount * 0.25);
-  order.finalAmount   = order.totalAmount - order.advanceAmount;
+
+  if (order.advancePayment?.status === 'paid') {
+    // If advance is already paid, keep the existing advanceAmount
+    // and absorb any difference in the finalAmount.
+    order.finalAmount = order.totalAmount - order.advanceAmount;
+  } else {
+    order.advanceAmount = Math.round(order.totalAmount * 0.70);
+    order.finalAmount   = order.totalAmount - order.advanceAmount;
+  }
 
   order.quoteNote   = quoteNote   || '';
+  if (expectedDeliveryDate) order.expectedDeliveryDate = expectedDeliveryDate;
   if (adminNotes !== undefined) order.adminNotes = adminNotes;
   order.quotedAt    = new Date();
-  order.status      = 'quoted';
+  
+  if (order.status === 'pending') {
+    order.status = 'quoted';
+  }
 
   order.trackingHistory.push({
     status:    'quoted',
@@ -512,6 +564,14 @@ const updateCustomOrderStatus = async (req, res) => {
     return res.status(400).json({
       success: false,
       message: `Cannot revert status from "${current}" to "${status}"`,
+    });
+  }
+
+  // ── Guard: cannot deliver unless final payment is done ──
+  if (status === 'delivered' && order.finalPayment?.status !== 'paid') {
+    return res.status(400).json({
+      success: false,
+      message: 'Cannot mark as delivered. Final payment (30%) has not been received yet.',
     });
   }
 
@@ -580,6 +640,7 @@ module.exports = {
   createCustomOrder,
   getMyCustomOrders,
   getCustomOrder,
+  cancelCustomOrderUser,
   createCustomPayment,
   verifyCustomPayment,
   failCustomPayment,

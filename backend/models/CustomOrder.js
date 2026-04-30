@@ -74,10 +74,11 @@ const customOrderSchema = new mongoose.Schema(
     quoteAmount:   { type: Number, default: null }, // Base price excl. GST
     taxAmount:     { type: Number, default: 0 },    // 18% GST
     totalAmount:   { type: Number, default: 0 },    // quoteAmount + taxAmount
-    advanceAmount: { type: Number, default: 0 },    // 25% of totalAmount
-    finalAmount:   { type: Number, default: 0 },    // 75% of totalAmount
+    advanceAmount: { type: Number, default: 0 },    // 70% of totalAmount
+    finalAmount:   { type: Number, default: 0 },    // 30% of totalAmount
     quotedAt:      { type: Date },
     quoteNote:     { type: String, default: '' }, // Visible to user
+    expectedDeliveryDate: { type: Date },         // Admin provided expected date
     adminNotes:    { type: String, default: '' }, // Internal only
 
     // ── Status Lifecycle ──────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard } from 'react-icons/fi';
+import { FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { customOrderService } from '../services/services';
 import { formatPrice, formatDate, getCustomOrderStatusColor } from '../utils/helpers';
@@ -25,10 +25,10 @@ function loadRazorpaySdk() {
 }
 
 // ─── Status Steps for production orders ──────────────────────────────────────
-const STATUS_STEPS = ['advance_paid', 'in_production', 'final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'];
+const STATUS_STEPS = ['advance_paid', 'shipped', 'delivered'];
 const STATUS_LABELS = {
-  advance_paid:       'Advance Paid',
-  in_production:      'In Production',
+  advance_paid:       'Confirmed & In Production',
+  in_production:      'Confirmed & In Production',
   final_payment_pending: 'Review Pending',
   final_payment_paid: 'Balance Paid',
   ready_to_ship:      'Ready to Ship',
@@ -139,7 +139,7 @@ function CustomOrderDetail({ id }) {
       const quoteAmt   = order.quoteAmount || 0;
       const taxAmt     = order.taxAmount    > 0 ? order.taxAmount    : Math.round(quoteAmt * 0.18);
       const totalAmt   = order.totalAmount  > 0 ? order.totalAmount  : quoteAmt + taxAmt;
-      const advanceAmt = order.advanceAmount > 0 ? order.advanceAmount : Math.round(totalAmt * 0.25);
+      const advanceAmt = order.advanceAmount > 0 ? order.advanceAmount : Math.round(totalAmt * 0.70);
       const finalAmt   = order.finalAmount  > 0 ? order.finalAmount  : totalAmt - advanceAmt;
       const amtForPhase = phase === 'advance' ? advanceAmt : finalAmt;
 
@@ -162,7 +162,7 @@ function CustomOrderDetail({ id }) {
         amount:      data.amount,
         currency:    data.currency,
         name:        'M&B Jewelry',
-        description: `Custom ${order.type} — ${phase === 'advance' ? '25% Advance' : '75% Balance'}`,
+        description: `Custom ${order.type} — ${phase === 'advance' ? '70% Advance' : '30% Balance'}`,
         order_id:    data.razorpayOrderId,
         prefill: {
           name:    user?.name  || '',
@@ -186,7 +186,7 @@ function CustomOrderDetail({ id }) {
               setOrder(verifyRes.data.order);
             }
             setProcessing(false);
-            toast.success(phase === 'advance' ? 'Advance paid! Your order is now in production. 🎉' : 'Final balance paid! We will ship it shortly. 🎉', { duration: 6000 });
+            toast.success(phase === 'advance' ? 'Advance paid! Your order is now in production. 🎉' : 'Final payment complete! We will confirm delivery shortly. 🎉', { duration: 6000 });
             // Reload the order to get fresh data in case the response was partial
             customOrderService.getOrder(order._id)
               .then((res) => { if (res.data?.order) setOrder(res.data.order); })
@@ -222,6 +222,21 @@ function CustomOrderDetail({ id }) {
     }
   };
 
+  const handleCancelOrder = async () => {
+    if (!window.confirm('Are you sure you want to cancel this custom order? This action cannot be undone.')) return;
+    
+    setProcessing(true);
+    try {
+      const res = await customOrderService.cancelOrder(order._id);
+      setOrder(res.data.order);
+      toast.success('Order cancelled successfully');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to cancel order');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   if (loading) return <OrderCardSkeleton />;
   if (!order)  return <p className="text-dark-400 text-center py-12">Order not found</p>;
 
@@ -250,7 +265,7 @@ function CustomOrderDetail({ id }) {
             const quoteAmt   = order.quoteAmount;
             const taxAmt     = order.taxAmount    > 0 ? order.taxAmount    : Math.round(quoteAmt * 0.18);
             const totalAmt   = order.totalAmount  > 0 ? order.totalAmount  : quoteAmt + taxAmt;
-            const advanceAmt = order.advanceAmount > 0 ? order.advanceAmount : Math.round(totalAmt * 0.25);
+            const advanceAmt = order.advanceAmount > 0 ? order.advanceAmount : Math.round(totalAmt * 0.70);
             const finalAmt   = order.finalAmount  > 0 ? order.finalAmount  : totalAmt - advanceAmt;
 
             return (
@@ -258,7 +273,12 @@ function CustomOrderDetail({ id }) {
                 <div className="flex justify-between flex-wrap items-start">
                   <div>
                     <h3 className="text-white font-display text-lg mb-1">Your Item Quote</h3>
-                    <p className="text-dark-400 text-sm mb-4">{order.quoteNote || 'Our artisans have reviewed your request.'}</p>
+                    <p className="text-dark-400 text-sm mb-2">{order.quoteNote || 'Our artisans have reviewed your request.'}</p>
+                    {order.expectedDeliveryDate && (
+                      <p className="text-gold-400 text-sm font-medium mb-4 flex items-center gap-1.5">
+                        <FiTruck size={14} /> Expected Delivery: {new Date(order.expectedDeliveryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
                   </div>
                   {order.quotedAt && <p className="text-dark-500 text-xs">Quoted on {formatDate(order.quotedAt)}</p>}
                 </div>
@@ -283,14 +303,14 @@ function CustomOrderDetail({ id }) {
                 <div className="grid grid-cols-2 gap-3 mb-5">
                   <div className={`p-4 rounded-xl border ${order.advancePayment?.status === 'paid' ? 'border-green-500/30 bg-green-500/5' : 'border-gold-500/30 bg-gold-500/5'}`}>
                     <div className="flex justify-between items-start mb-1 text-xs">
-                      <span className="text-dark-300">25% Advance</span>
+                      <span className="text-dark-300">70% Advance</span>
                       {order.advancePayment?.status === 'paid' && <FiCheck className="text-green-500" />}
                     </div>
                     <p className="font-display sm:text-xl text-lg text-white">{formatPrice(advanceAmt)}</p>
                   </div>
                   <div className={`p-4 rounded-xl border ${order.finalPayment?.status === 'paid' ? 'border-green-500/30 bg-green-500/5' : 'border-white/5'}`}>
                     <div className="flex justify-between items-start mb-1 text-xs">
-                      <span className="text-dark-400">75% Balance</span>
+                      <span className="text-dark-400">30% Balance</span>
                       {order.finalPayment?.status === 'paid' && <FiCheck className="text-green-500" />}
                     </div>
                     <p className="font-display sm:text-xl text-lg text-dark-300">{formatPrice(finalAmt)}</p>
@@ -310,29 +330,34 @@ function CustomOrderDetail({ id }) {
                         Processing…
                       </span>
                     ) : (
-                      <><FiCreditCard size={16} /> Pay 25% Advance ({formatPrice(advanceAmt)})</>
+                      <><FiCreditCard size={16} /> Pay 70% Advance ({formatPrice(advanceAmt)})</>
                     )}
                   </button>
                 )}
 
-                {order.status === 'final_payment_pending' && (
-                  <button
-                    onClick={() => handlePay('final')}
-                    disabled={processing}
-                    className="btn-gold w-full py-3.5 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {processing ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        Processing…
-                      </span>
-                    ) : (
-                      <><FiCreditCard size={16} /> Pay 75% Balance ({formatPrice(finalAmt)})</>
-                    )}
-                  </button>
+                {order.status === 'shipped' && order.finalPayment?.status !== 'paid' && (
+                  <>
+                    <div className="mt-2 mb-2 text-center">
+                      <p className="text-dark-400 text-xs">Your order has been shipped! Complete the final payment to confirm delivery.</p>
+                    </div>
+                    <button
+                      onClick={() => handlePay('final')}
+                      disabled={processing}
+                      className="btn-gold w-full py-3.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {processing ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
+                          Processing…
+                        </span>
+                      ) : (
+                        <><FiCreditCard size={16} /> Pay 30% Balance ({formatPrice(finalAmt)})</>
+                      )}
+                    </button>
+                  </>
                 )}
 
-                {(order.status === 'quoted' || order.status === 'final_payment_pending') && processing && (
+                {(order.status === 'quoted' || order.status === 'shipped') && processing && (
                   <p className="text-dark-500 text-xs text-center mt-2 flex items-center justify-center gap-1">
                     <FiAlertCircle size={11} /> Do not close this tab while payment is in progress
                   </p>
@@ -406,6 +431,44 @@ function CustomOrderDetail({ id }) {
           )}
         </div>
       )}
+
+      {/* Delivery Confirmation */}
+      {order.status === 'delivered' && (
+        <div className="card p-5 border-green-500/30 bg-green-500/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
+              <FiCheck size={20} />
+            </div>
+            <div>
+              <h3 className="text-white font-medium text-sm">Delivered Successfully</h3>
+              <p className="text-dark-400 text-xs mt-0.5">
+                Confirmed on {order.deliveredAt ? new Date(order.deliveredAt).toLocaleString('en-IN', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                  hour: 'numeric', minute: '2-digit', hour12: true
+                }) : formatDate(order.updatedAt)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Footer: Cancel Order & Contact Support */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-white/5">
+        <div className="flex items-center gap-2 text-dark-400 text-sm">
+          <FiMessageSquare size={16} className="text-gold-500" />
+          <span>Need help? <a href="mailto:support@mbjewelry.com" className="text-white hover:text-gold-400 underline decoration-white/20 underline-offset-4 transition-colors">Contact Support</a></span>
+        </div>
+        
+        {['pending', 'quoted'].includes(order.status) && (
+          <button 
+            onClick={handleCancelOrder}
+            disabled={processing}
+            className="text-red-400 hover:text-red-300 text-sm transition-colors disabled:opacity-50"
+          >
+            Cancel Order
+          </button>
+        )}
+      </div>
     </div>
   );
 }
