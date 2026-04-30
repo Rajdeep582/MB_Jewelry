@@ -141,7 +141,9 @@ function StatusModal({ order, onClose, onSaved }) {
 
   const availableStatuses = STATUS_AFTER_PAYMENT.filter((s) => {
     const allStatuses = STATUS_OPTIONS.slice(1);
-    return allStatuses.indexOf(s) >= allStatuses.indexOf(order.status) || s === 'cancelled';
+    const isForward = allStatuses.indexOf(s) >= allStatuses.indexOf(order.status) || s === 'cancelled';
+    const isNotPaymentEvent = s !== 'advance_paid' && s !== 'final_payment_paid';
+    return isForward && isNotPaymentEvent;
   });
 
   return (
@@ -301,7 +303,8 @@ export default function AdminCustomOrders() {
                 <th className="text-left py-2 pr-4">Type / Material</th>
                 <th className="text-left py-2 pr-4">Budget</th>
                 <th className="text-left py-2 pr-4">Quote</th>
-                <th className="text-left py-2 pr-4">Status</th>
+                <th className="text-left py-2 pr-4">Payment</th>
+                <th className="text-left py-2 pr-4">Stage</th>
                 <th className="text-left py-2 pr-4">Date</th>
                 <th className="text-right py-2">Actions</th>
               </tr>
@@ -329,6 +332,15 @@ export default function AdminCustomOrders() {
                     {order.quoteAmount
                       ? <span className="text-gold-500 font-medium">{formatPrice(order.quoteAmount)}</span>
                       : <span className="text-dark-600 text-xs italic">Not set</span>}
+                  </td>
+                  <td className="py-3 pr-4">
+                    {order.finalPayment?.status === 'paid' ? (
+                      <span className="text-green-400 text-xs font-medium">Fully Paid</span>
+                    ) : order.advancePayment?.status === 'paid' ? (
+                      <span className="text-blue-400 text-xs font-medium">Advance Paid</span>
+                    ) : (
+                      <span className="text-dark-400 text-xs">Pending</span>
+                    )}
                   </td>
                   <td className="py-3 pr-4">
                     <span className={getCustomOrderStatusColor(order.status)}>{order.status.replace(/_/g, ' ')}</span>

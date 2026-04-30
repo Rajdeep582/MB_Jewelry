@@ -9,7 +9,7 @@ export const fetchProducts = createAsyncThunk('products/fetchAll', async (params
     if (res.data?.products?.length > 0) return res.data;
     // Fallback: filter + paginate demo products locally
     return buildDemoPage(params);
-  } catch {
+  } catch (error) {
     return buildDemoPage(params);
   }
 });

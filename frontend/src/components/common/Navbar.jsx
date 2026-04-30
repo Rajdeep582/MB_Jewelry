@@ -99,6 +99,7 @@ export default function Navbar() {
                 <Link
                   key={to}
                   to={to}
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                   className={`nav-link relative ${isActive ? 'nav-link-active text-gold-500' : ''} ${
                     highlight && !isActive ? 'text-gold-400 hover:text-gold-300' : ''
                   }`}
@@ -266,7 +267,7 @@ export default function Navbar() {
                   <Link
                     key={to}
                     to={to}
-                    onClick={() => setMobileOpen(false)}
+                    onClick={() => { setMobileOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                     className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${
                       isActive
                         ? 'bg-gold-500/10 text-gold-400'

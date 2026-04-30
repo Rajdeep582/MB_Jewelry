@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiFilter, FiX, FiChevronDown } from 'react-icons/fi';
-import { setFilters, resetFilters, selectProductsFilter } from '../../store/productSlice';
+import { selectProductsFilter } from '../../store/productSlice';
 import { categoryService } from '../../services/services';
 import { debounce } from '../../utils/helpers';
 
@@ -41,8 +42,8 @@ function FilterSection({ title, children }) {
 }
 
 export default function FilterSidebar() {
-  const dispatch = useDispatch();
   const filters = useSelector(selectProductsFilter);
+  const [, setSearchParams] = useSearchParams();
   const [categories, setCategories] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -61,14 +62,27 @@ export default function FilterSidebar() {
   }, [filters.minPrice, filters.maxPrice]);
 
   const handleChange = (key, value) => {
-    dispatch(setFilters({ [key]: filters[key] === value ? '' : value }));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (filters[key] === value) next.delete(key);
+      else if (value) next.set(key, value);
+      else next.delete(key);
+      next.delete('page');
+      return next;
+    });
   };
 
   const debouncedPriceChange = useMemo(
     () => debounce((key, val) => {
-      dispatch(setFilters({ [key]: val }));
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (val) next.set(key, val);
+        else next.delete(key);
+        next.delete('page');
+        return next;
+      });
     }, 600),
-    [dispatch]
+    [setSearchParams]
   );
 
   const handleMinChange = (e) => {
@@ -82,7 +96,7 @@ export default function FilterSidebar() {
   };
 
   const handleReset = () => {
-    dispatch(resetFilters());
+    setSearchParams(new URLSearchParams());
   };
 
   const renderFilterContent = () => (
@@ -171,7 +185,13 @@ export default function FilterSidebar() {
                   } else {
                     newPurities.push(purity);
                   }
-                  dispatch(setFilters({ purity: newPurities.join(',') }));
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev);
+                    if (newPurities.length > 0) next.set('purity', newPurities.join(','));
+                    else next.delete('purity');
+                    next.delete('page');
+                    return next;
+                  });
                 }}
               >
                 <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
@@ -191,7 +211,13 @@ export default function FilterSidebar() {
               className="flex items-center justify-between cursor-pointer w-full group"
               onClick={(e) => {
                 e.preventDefault();
-                dispatch(setFilters({ isHallmarked: filters.isHallmarked === 'true' ? '' : 'true' }));
+                setSearchParams(prev => {
+                  const next = new URLSearchParams(prev);
+                  if (filters.isHallmarked === 'true') next.delete('isHallmarked');
+                  else next.set('isHallmarked', 'true');
+                  next.delete('page');
+                  return next;
+                });
               }}
             >
               <span className={`text-sm transition-colors ${filters.isHallmarked === 'true' ? 'text-white font-medium' : 'text-dark-400'} group-hover:text-white`}>
