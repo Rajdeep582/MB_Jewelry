@@ -40,16 +40,16 @@ const customOrderSchema = new mongoose.Schema(
     type: {
       type: String,
       required: [true, 'Jewelry type is required'],
-      enum: ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle'],
+      enum: ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Bala'],
     },
     material: {
       type: String,
       required: [true, 'Material is required'],
-      enum: ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'],
+      enum: ['Gold', 'Silver', 'Diamond'],
     },
     purity: {
       type: String,
-      enum: ['24K', '22K', 'None'],
+      enum: ['22K', '18K', '14K', 'Hallmark', 'Normal', 'None'],
       default: 'None',
     },
     description: {
