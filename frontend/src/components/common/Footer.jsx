@@ -14,15 +14,13 @@ const footerLinks = {
   Company: [
     { label: 'About Us', to: '/about' },
     { label: 'Contact', to: '/contact' },
-    { label: 'Blog', to: '/blog' },
-    { label: 'Careers', to: '/careers' },
+    { label: 'Custom Jewelry', to: '/custom-order' },
   ],
-  Support: [
-    { label: 'FAQ', to: '/faq' },
-    { label: 'Shipping Policy', to: '/shipping' },
-    { label: 'Returns & Refunds', to: '/returns' },
-    { label: 'Size Guide', to: '/size-guide' },
-    { label: 'Privacy Policy', to: '/privacy' },
+  Materials: [
+    { label: 'Gold Jewelry', to: '/shop?material=Gold' },
+    { label: 'Silver Jewelry', to: '/shop?material=Silver' },
+    { label: 'Diamond Jewelry', to: '/shop?material=Diamond' },
+    { label: 'Platinum Jewelry', to: '/shop?material=Platinum' },
   ],
 };
 
@@ -130,6 +128,7 @@ export default function Footer() {
                   <li key={label}>
                     <Link
                       to={to}
+                      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                       className="text-dark-400 hover:text-gold-400 text-sm transition-colors duration-200"
                     >
                       {label}

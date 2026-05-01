@@ -40,16 +40,16 @@ const customOrderSchema = new mongoose.Schema(
     type: {
       type: String,
       required: [true, 'Jewelry type is required'],
-      enum: ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle'],
+      enum: ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Bala'],
     },
     material: {
       type: String,
       required: [true, 'Material is required'],
-      enum: ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'],
+      enum: ['Gold', 'Silver', 'Diamond'],
     },
     purity: {
       type: String,
-      enum: ['24K', '22K', 'None'],
+      enum: ['22K', '18K', '14K', 'Hallmark', 'Normal', 'None'],
       default: 'None',
     },
     description: {
@@ -74,10 +74,11 @@ const customOrderSchema = new mongoose.Schema(
     quoteAmount:   { type: Number, default: null }, // Base price excl. GST
     taxAmount:     { type: Number, default: 0 },    // 18% GST
     totalAmount:   { type: Number, default: 0 },    // quoteAmount + taxAmount
-    advanceAmount: { type: Number, default: 0 },    // 25% of totalAmount
-    finalAmount:   { type: Number, default: 0 },    // 75% of totalAmount
+    advanceAmount: { type: Number, default: 0 },    // 70% of totalAmount
+    finalAmount:   { type: Number, default: 0 },    // 30% of totalAmount
     quotedAt:      { type: Date },
     quoteNote:     { type: String, default: '' }, // Visible to user
+    expectedDeliveryDate: { type: Date },         // Admin provided expected date
     adminNotes:    { type: String, default: '' }, // Internal only
 
     // ── Status Lifecycle ──────────────────────────────────────────────────────

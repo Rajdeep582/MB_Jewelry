@@ -20,7 +20,7 @@ const SORT_OPTIONS = [
 
 export default function Shop() {
   const dispatch = useDispatch();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const products = useSelector(selectProducts);
   const loading = useSelector(selectProductsLoading);
   const pagination = useSelector(selectProductsPagination);
@@ -43,30 +43,41 @@ export default function Shop() {
 
   useEffect(() => {
     document.title = 'Shop — M&B Jewelry';
-    const type = searchParams.get('type') || '';
-    const category = searchParams.get('category') || '';
-    const material = searchParams.get('material') || '';
     
-    // Strict URL synchronization: clear existing state when URL dictates so
-    const newFilters = { type, category, material };
+    // Parse ALL possible filters from URL perfectly
+    const newFilters = {
+      type: searchParams.get('type') || '',
+      category: searchParams.get('category') || '',
+      material: searchParams.get('material') || '',
+      search: searchParams.get('search') || '',
+      purity: searchParams.get('purity') || '',
+      isHallmarked: searchParams.get('isHallmarked') || '',
+      minPrice: searchParams.get('minPrice') || '',
+      maxPrice: searchParams.get('maxPrice') || '',
+      sort: searchParams.get('sort') || '',
+      page: Number(searchParams.get('page')) || 1,
+    };
     
-    // If navigating generically without focusSearch, clear search state too
-    if (!location.state?.focusSearch && Array.from(searchParams.keys()).length === 0) {
-      newFilters.search = '';
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSearch('');
-    }
+    // Only update local search input if it doesn't match the URL (e.g. external link or reset)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSearch(newFilters.search);
     
+    // Update Redux state and fetch products in one go to prevent race conditions
     dispatch(setFilters(newFilters));
-  }, [searchParams, location.state, dispatch]);
-
-  useEffect(() => {
-    dispatch(fetchProducts(filters));
-  }, [dispatch, filters]);
+    dispatch(fetchProducts(newFilters));
+  }, [searchParams, dispatch]);
 
   const debouncedSearch = useMemo(
-    () => debounce((val) => dispatch(setFilters({ search: val })), 400),
-    [dispatch]
+    () => debounce((val) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (val) next.set('search', val);
+        else next.delete('search');
+        next.set('page', '1');
+        return next;
+      });
+    }, 400),
+    [setSearchParams]
   );
 
   const handleSearchChange = (e) => {
@@ -74,9 +85,22 @@ export default function Shop() {
     debouncedSearch(e.target.value);
   };
 
-  const handleSort = (e) => dispatch(setFilters({ sort: e.target.value }));
+  const handleSort = (e) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (e.target.value) next.set('sort', e.target.value);
+      else next.delete('sort');
+      next.set('page', '1');
+      return next;
+    });
+  };
+
   const handlePage = (page) => {
-    dispatch(setFilters({ page }));
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('page', page);
+      return next;
+    });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 

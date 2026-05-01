@@ -5,6 +5,7 @@ const {
   createCustomOrder,
   getMyCustomOrders,
   getCustomOrder,
+  cancelCustomOrderUser,
   createCustomPayment,
   verifyCustomPayment,
   failCustomPayment,
@@ -23,6 +24,7 @@ router.get('/my-orders',   protect, getMyCustomOrders);
 router.post('/create-payment', protect, createCustomPayment);
 router.post('/verify-payment', protect, verifyCustomPayment);
 router.post('/fail-payment',   protect, failCustomPayment);
+router.put('/:id/cancel',      protect, cancelCustomOrderUser);
 
 // ── Admin Routes ──────────────────────────────────────────────────────────────
 router.get('/stats', protect, adminOnly, getCustomOrderStats);

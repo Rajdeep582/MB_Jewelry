@@ -59,6 +59,7 @@ export const customOrderService = {
   createPayment: (data) => api.post('/custom-orders/create-payment', data),
   verifyPayment: (data) => api.post('/custom-orders/verify-payment', data),
   failPayment: (data) => api.post('/custom-orders/fail-payment', data),
+  cancelOrder: (id) => api.put(`/custom-orders/${id}/cancel`),
   // Admin
   getAllOrders: (params) => api.get('/custom-orders', { params }),
   setQuote: (id, data) => api.put(`/custom-orders/${id}/quote`, data),

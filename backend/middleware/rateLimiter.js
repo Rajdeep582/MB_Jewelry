@@ -19,7 +19,7 @@ const authLimiter = rateLimit({
 // Login limiter (Strict prevents brute force)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 mins
-  max: IS_TEST ? 10000 : 5, // 5 attempts
+  max: IS_TEST ? 10000 : 10, // 10 attempts
   message: { success: false, message: 'Too many login attempts, please try again after 15 minutes.' },
   handler: (req, res, next, options) => {
     logAlert('BRUTE_FORCE_ATTEMPT', `Login endpoints hit max attempts from IP ${req.ip}`);

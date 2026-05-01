@@ -13,9 +13,13 @@ import toast from 'react-hot-toast';
 import AddressSelector from '../components/common/AddressSelector';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const JEWELRY_TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle'];
-const MATERIALS     = ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'];
-const PURITIES      = ['24K', '22K', 'None'];
+const JEWELRY_TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Bala'];
+const MATERIALS     = ['Gold', 'Silver', 'Diamond'];
+const PURITY_MAP    = {
+  Gold:    ['22K', '18K'],
+  Silver:  ['Hallmark', 'Normal'],
+  Diamond: ['22K', '18K', '14K'],
+};
 
 // ─── Step Indicator ───────────────────────────────────────────────────────────
 const STEPS = ['Design', 'Images', 'Delivery', 'Review'];
@@ -244,19 +248,19 @@ export default function CustomOrder() {
                 <label className="label-dark">Material <span className="text-red-400">*</span></label>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {MATERIALS.map((m) => (
-                    <OptionBtn key={m} active={form.material === m} onClick={() => setForm((f) => ({ ...f, material: m }))}>
+                    <OptionBtn key={m} active={form.material === m} onClick={() => setForm((f) => ({ ...f, material: m, purity: 'None' }))}>
                       {m}
                     </OptionBtn>
                   ))}
                 </div>
               </div>
 
-              {/* Purity — shown only for Gold / Silver / Platinum */}
-              {['Gold', 'Silver', 'Platinum', 'Rose Gold'].includes(form.material) && (
+              {/* Purity — dynamic options based on selected material */}
+              {form.material && PURITY_MAP[form.material] && (
                 <div>
                   <label className="label-dark">Purity</label>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {PURITIES.map((p) => (
+                    {PURITY_MAP[form.material].map((p) => (
                       <OptionBtn key={p} active={form.purity === p} onClick={() => setForm((f) => ({ ...f, purity: p }))}>
                         {p}
                       </OptionBtn>

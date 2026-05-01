@@ -20,6 +20,13 @@ const testimonials = [
   { name: 'Kavita Nair', rating: 5, text: 'Exceptional quality and the customer service was outstanding. My go-to jewelry store now.', location: 'Kochi' },
 ];
 
+const collectionTypeMap = {
+  Rings: 'Ring',
+  Necklaces: 'Necklace',
+  Earrings: 'Earrings',
+  Bracelets: 'Bracelet',
+};
+
 const collections = [
   { name: 'Rings', image: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600&q=80', count: '48 pieces' },
   { name: 'Necklaces', image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&q=80', count: '62 pieces' },
@@ -130,7 +137,7 @@ export default function Home() {
                 whileHover={{ scale: 1.02 }}
               >
                 <Link
-                  to={`/shop?type=${name.slice(0, -1)}`}
+                  to={`/shop?type=${collectionTypeMap[name]}`}
                   id={`collection-${name.toLowerCase()}`}
                   className="block relative rounded-2xl overflow-hidden aspect-[3/4] group"
                 >
