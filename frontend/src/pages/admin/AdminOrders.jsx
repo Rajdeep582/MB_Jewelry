@@ -27,7 +27,6 @@ const STATUS_LABELS = {
 
 const PAYMENT_METHOD_LABELS = {
   razorpay: 'Razorpay (Online)',
-  cod:      'Cash on Delivery',
 };
 
 const QUICK_FILTERS = [
@@ -232,7 +231,6 @@ function UpdateModal({ order, onClose, onSaved }) {
 function OrderDetailDrawer({ order, onUpdate }) {
   const [showTimeline, setShowTimeline] = useState(true);
   const reversed = [...(order.trackingHistory || [])].reverse();
-  const isCOD = order.payment?.method === 'cod';
 
   return (
     <motion.div
@@ -304,9 +302,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
               <div>
                 <p className="text-dark-500 mb-0.5">Method</p>
                 <div className="flex items-center gap-1.5">
-                  {isCOD && (
-                    <span className="text-[10px] font-bold border border-blue-500/30 text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">COD</span>
-                  )}
                   <p className="text-dark-300 font-medium">{PAYMENT_METHOD_LABELS[order.payment?.method] || order.payment?.method}</p>
                 </div>
               </div>
@@ -473,7 +468,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
 
 // ─── Order Row ──────────────────────────────────────────────────────────────────
 function OrderRow({ order, onUpdate, expanded, onToggle }) {
-  const isCOD = order.payment?.method === 'cod';
 
   return (
     <div className={`border-b border-white/5 last:border-0 transition-all duration-150 ${expanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}>
@@ -506,16 +500,10 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
           <p className="text-gold-400 font-semibold text-sm tabular-nums truncate">{formatPrice(order.totalAmount)}</p>
         </div>
 
-        {/* Payment status + COD tag */}
         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
           <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize truncate`}>
             {order.payment?.status || '—'}
           </span>
-          {isCOD && (
-            <span className="inline-flex items-center text-[9px] font-bold border border-blue-500/25 text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full leading-none">
-              COD
-            </span>
-          )}
         </div>
 
         {/* Order status */}

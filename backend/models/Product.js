@@ -96,4 +96,3 @@ productSchema.pre('save', function (next) {
 module.exports = mongoose.model('Product', productSchema);
 
 
-//I am Debmalyo Barman. i am currently working on a project that involves creating a jewelry business website. I am facing an issue with the product management section. The products are not being displayed properly in the frontend. Could you please help me fix this issue?
