@@ -35,7 +35,6 @@ const STATUS_DESCRIPTIONS = {
 
 const PAYMENT_METHOD_LABELS = {
   razorpay: 'Online (Razorpay)',
-  cod:      'Cash on Delivery',
 };
 
 const FILTER_OPTIONS = [
@@ -222,7 +221,6 @@ function OrderDetailView({ id }) {
   if (!order)  return <p className="text-dark-400 text-center py-12">Order not found.</p>;
 
   const reversed = [...(order.trackingHistory || [])].reverse();
-  const isCOD    = order.payment?.method === 'cod';
 
   return (
     <div className="space-y-5">
@@ -289,19 +287,6 @@ function OrderDetailView({ id }) {
         </div>
       )}
 
-      {/* ── COD Pending Notice ────────────────────────────────────────────────── */}
-      {isCOD && order.payment?.status === 'pending' && order.orderStatus !== 'delivered' && (
-        <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 px-5 py-4 flex items-start gap-3">
-          <FiCreditCard className="text-blue-400 flex-shrink-0 mt-0.5" size={18} />
-          <div>
-            <p className="text-white text-sm font-medium">Cash on Delivery — Payment Pending</p>
-            <p className="text-dark-400 text-xs mt-0.5">
-              Payment of <span className="text-white font-medium">{formatPrice(order.totalAmount)}</span> is
-              due when the order is delivered to your doorstep.
-            </p>
-          </div>
-        </div>
-      )}
 
       {/* ── Payment Details ───────────────────────────────────────────────────── */}
       <div className="card p-5">
@@ -330,12 +315,7 @@ function OrderDetailView({ id }) {
               <p className="text-white font-mono text-xs break-all">{order.payment.razorpayPaymentId}</p>
             </div>
           )}
-          {isCOD && (
-            <div className="col-span-2 sm:col-span-3">
-              <p className="text-dark-500 text-xs mb-0.5">COD Reference</p>
-              <p className="text-white font-mono text-xs">{order.orderId}</p>
-            </div>
-          )}
+
           {order.payment?.failReason && (
             <div className="col-span-2 sm:col-span-3">
               <p className="text-dark-500 text-xs mb-0.5">Failure Reason</p>
@@ -488,7 +468,6 @@ function OrderDetailView({ id }) {
 
 // ─── Order List Card ──────────────────────────────────────────────────────────
 function OrderCard({ order }) {
-  const isCOD = order.payment?.method === 'cod';
   return (
     <Link to={`/orders/${order._id}`} className="block card-hover p-4 group">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
@@ -501,11 +480,6 @@ function OrderCard({ order }) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {isCOD && (
-            <span className="text-[10px] font-semibold border border-blue-500/30 text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-full">
-              COD
-            </span>
-          )}
           <span className={getPaymentStatusColor(order.payment?.status)}>
             {order.payment?.status}
           </span>

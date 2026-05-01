@@ -153,6 +153,11 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
 const createPayment = async (req, res) => {
   const { items, shippingAddress, method = 'razorpay' } = req.body;
 
+  // --- Guard: COD is no longer supported ---
+  if (method === 'cod') {
+    return res.status(400).json({ success: false, message: 'Cash on Delivery is no longer available. Please use online payment.' });
+  }
+
   // --- Guard: empty cart ---
   if (!items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ success: false, message: 'Cart is empty' });
@@ -174,81 +179,6 @@ const createPayment = async (req, res) => {
 
   // --- Compute server-side pricing ---
   const pricing = computePricing(orderItems);
-
-  // --- Cash on Delivery Flow ---
-  if (method === 'cod') {
-    const session = await mongoose.startSession();
-    session.startTransaction();
-
-    let pendingOrder;
-    try {
-      [pendingOrder] = await Order.create(
-        [{
-          user: req.user._id,
-          items: orderItems,
-          shippingAddress,
-          payment: { status: 'pending', method: 'cod' },
-          itemsPrice: pricing.itemsPrice,
-          shippingPrice: pricing.shippingPrice,
-          taxPrice: pricing.taxPrice,
-          totalAmount: pricing.totalAmount,
-          orderStatus: 'confirmed', // initial state universally confirmed
-          trackingHistory: [{
-            status: 'confirmed',
-            comment: 'Order placed via Cash on Delivery.',
-            timestamp: new Date(),
-          }],
-        }],
-        { session }
-      );
-
-      await Transaction.create(
-        [{
-          order: pendingOrder._id,
-          orderType: 'Order',
-          user: req.user._id,
-          amount: pricing.totalAmount,
-          currency: 'INR',
-          status: 'pending',
-          gatewayResponse: { paymentMethod: 'cod' },
-        }],
-        { session }
-      );
-
-      // Decrement stock immediately for COD
-      for (const item of pendingOrder.items) {
-        const product = await Product.findById(item.product).session(session);
-        if (!product) throw new Error(`Product ${item.product} no longer exists`);
-        if (product.stock < item.quantity) {
-          throw new Error(`Insufficient stock for "${product.name}"`);
-        }
-        await Product.findByIdAndUpdate(
-          item.product,
-          { $inc: { stock: -item.quantity, sold: item.quantity } },
-          { session }
-        );
-      }
-
-      await session.commitTransaction();
-      session.endSession();
-
-      logger.info(`COD Order created cleanly: order=${pendingOrder._id}`);
-      return res.json({
-        success: true,
-        orderId: pendingOrder._id, // COD completes immediately
-        pendingOrderId: pendingOrder._id,
-        pricing,
-      });
-    } catch (err) {
-      await session.abortTransaction();
-      session.endSession();
-      logger.error(`Failed to create COD order: ${err.message}`);
-      return res.status(500).json({
-        success: false,
-        message: err.message || 'Failed to create Cash on Delivery order. Please try again.',
-      });
-    }
-  }
 
   // --- Razorpay Flow ---
   // --- Guard early: Razorpay not configured ---
@@ -709,17 +639,14 @@ const getAllOrders = async (req, res) => {
 
   if (status === 'needs_attention') {
     // Only flag orders that genuinely need admin intervention:
-    // 1. Payment failed but order is still actionable (not already resolved as 'failed', 'returned_refunded', or legacy 'cancelled')
-    // 2. COD with payment still pending, but order is actively progressing
+    // Payment failed but order is still actionable (not already resolved as 'failed', 'returned_refunded', or legacy 'cancelled')
     query.$or = [
       { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
-      { 'payment.method': 'cod', 'payment.status': 'pending', orderStatus: { $nin: ['delivered', 'failed', 'returned_refunded', 'cancelled'] } },
     ];
   } else {
     if (status) query.orderStatus = status;
 
     if (paymentStatus === 'paid') {
-      // "All Paid" strictly means fully paid online OR valid completed COD payments
       query['payment.status'] = 'paid';
     } else if (paymentStatus === 'pending') {
       query['payment.status'] = 'pending';
@@ -834,18 +761,6 @@ const updateOrderStatus = async (req, res) => {
     if (paymentStatus === 'paid' && !order.payment.paidAt) {
       order.payment.paidAt = new Date();
     }
-  } else if (order.payment.method === 'cod' && paymentReceived) {
-    // Legacy mapping for AdminDelivery dashboard quick-check
-    order.payment.status = 'paid';
-    order.payment.paidAt = new Date();
-  }
-
-  // Sync Transaction state if COD is finally marked as paid
-  if (order.payment.status === 'paid' && order.payment.method === 'cod') {
-    await Transaction.findOneAndUpdate(
-      { order: order._id, status: 'pending' },
-      { status: 'success' }
-    );
   }
 
   // ── Pre-Delivery Validation ────────────────────────────────────────────────
@@ -904,10 +819,8 @@ const getStats = async (req, res) => {
 
     // Pending count for "needs attention" badge
     Order.countDocuments({
-      $or: [
-        { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
-        { 'payment.method': 'cod', 'payment.status': 'pending', orderStatus: { $nin: ['delivered', 'failed', 'returned_refunded', 'cancelled'] } },
-      ]
+      'payment.status': 'failed',
+      orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] },
     }),
   ]);
 

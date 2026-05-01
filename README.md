@@ -140,7 +140,7 @@ The application client runs on `http://localhost:5173`, and the API server start
 
 The platform enforces a strict, production-grade fulfillment sequence for all standard orders:
 
-1. **Confirmed:** Initial state upon successful payment (Razorpay) or COD verification.
+1. **Confirmed:** Initial state upon successful online payment via Razorpay.
 2. **In Production:** Item is being handcrafted/curated.
 3. **Ready to Ship:** Quality checked and packaged.
 4. **Shipped:** Handed over to logistics with tracking history initiated.
