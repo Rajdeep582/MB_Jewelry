@@ -276,22 +276,15 @@ function DispatchModal({ item, onClose, onSaved }) {
 function DeliveryConfirmModal({ item, onClose, onSaved }) {
   const [comment, setComment] = useState('');
   const [saving, setSaving]   = useState(false);
-  const [paymentReceived, setPaymentReceived] = useState(false);
   const isCustom = item._sourceType === 'custom_order';
-  const requiresCodPayment = !isCustom && item.payment?.method === 'cod' && item.payment?.status === 'pending';
 
   const handleConfirm = async () => {
-    if (requiresCodPayment && !paymentReceived) {
-      toast.error('Please confirm that you have received the COD payment.');
-      return;
-    }
 
     setSaving(true);
     try {
       const payload = { 
         status: 'delivered', 
         comment: comment.trim() || 'Delivered to recipient.',
-        paymentReceived: requiresCodPayment ? true : undefined,
       };
       if (isCustom) {
         await customOrderService.updateStatus(item._id, payload);
@@ -324,15 +317,6 @@ function DeliveryConfirmModal({ item, onClose, onSaved }) {
         </div>
         <p className="text-dark-400 text-sm mb-4">This is a <span className="text-white font-medium">final, irreversible</span> action. Confirm only after physical delivery has been verified.</p>
         
-        {requiresCodPayment && (
-          <div className="mb-5 p-4 rounded-xl border border-gold-500/30 bg-gold-500/5">
-            <p className="text-gold-400 text-sm font-semibold mb-3">Cash on Delivery Collection</p>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="checkbox" checked={paymentReceived} onChange={(e) => setPaymentReceived(e.target.checked)} className="mt-1" />
-              <span className="text-sm text-white">I confirm that <strong className="text-gold-500">{formatPrice(item.totalAmount)}</strong> has been collected from the customer.</span>
-            </label>
-          </div>
-        )}
 
         <div className="mb-5">
           <label className="label-dark">Delivery Note <span className="text-dark-500 font-normal">(optional)</span></label>
@@ -425,8 +409,8 @@ function DeliveryCard({ item, onReadyToShip, onDispatch, onConfirmDelivery }) {
         </div>
         <div className="flex items-center gap-3">
           {item.payment && (
-            <span className={`text-xs px-2 py-0.5 border rounded border-dark-600 font-mono flex items-center gap-1 ${item.payment.method === 'cod' ? 'text-amber-400 border-amber-500/30' : 'text-blue-400 border-blue-500/30'}`}>
-              {item.payment.method === 'cod' ? 'COD' : 'ONLINE'}
+            <span className={`text-xs px-2 py-0.5 border rounded border-dark-600 font-mono flex items-center gap-1 text-blue-400 border-blue-500/30`}>
+              ONLINE
               {item.payment.status === 'pending' ? ' (PENDING)' : ' (PAID)'}
             </span>
           )}

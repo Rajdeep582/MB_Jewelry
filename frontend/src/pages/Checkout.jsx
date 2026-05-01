@@ -46,7 +46,6 @@ export default function Checkout() {
   const [newAddr,         setNewAddr]          = useState({ ...BLANK_ADDRESS, fullName: user?.name || '' });
   const [processing,      setProcessing]       = useState(false);
   const [addrLoading,     setAddrLoading]      = useState(true);
-  const [paymentMethod,   setPaymentMethod]    = useState('razorpay'); // 'razorpay' | 'cod'
 
   // Track pending order ID so we can report failure on modal dismiss
   const pendingOrderIdRef = useRef(null);
@@ -138,20 +137,7 @@ export default function Checkout() {
     pendingOrderIdRef.current = null;
 
     try {
-      // 1. COD Flow
-      if (paymentMethod === 'cod') {
-        const { data } = await orderService.createPayment({
-          items: items.map((i) => ({ productId: i._id, quantity: i.quantity })),
-          shippingAddress,
-          method: 'cod',
-        });
-        dispatch(clearCart());
-        toast.success('Order placed successfully via Cash on Delivery! 🎉', { duration: 5000 });
-        navigate(`/orders/${data.orderId}`);
-        return;
-      }
-
-      // 2. Razorpay Flow: Load SDK
+      // Razorpay Flow: Load SDK
       const loaded = await loadRazorpaySdk();
       if (!loaded) {
         toast.error('Payment gateway failed to load. Please check your internet connection.', { duration: 5000 });
@@ -276,40 +262,32 @@ export default function Checkout() {
               />
             </div>
 
-            {/* Payment Method Selector */}
+            {/* Payment Method */}
             <div className="card p-5">
-              <h2 className="font-display text-xl text-white mb-4">Payment Method</h2>
-              <div className="space-y-3">
-                <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${paymentMethod === 'razorpay' ? 'border-gold-500/50 bg-gold-500/5' : 'border-white/5 bg-dark-900/50 hover:border-white/20'}`}>
-                  <input type="radio" name="paymentMethod" value="razorpay" checked={paymentMethod === 'razorpay'} onChange={() => setPaymentMethod('razorpay')} className="mt-1" />
-                  <div>
-                    <p className="text-white text-sm font-medium">Online Payment (Razorpay)</p>
-                    <p className="text-dark-400 text-xs mt-0.5">Pay securely using UPI, Credit/Debit Cards, or Net Banking.</p>
-                  </div>
-                </label>
-                <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${paymentMethod === 'cod' ? 'border-gold-500/50 bg-gold-500/5' : 'border-white/5 bg-dark-900/50 hover:border-white/20'}`}>
-                  <input type="radio" name="paymentMethod" value="cod" checked={paymentMethod === 'cod'} onChange={() => setPaymentMethod('cod')} className="mt-1" />
-                  <div>
-                    <p className="text-white text-sm font-medium">Cash on Delivery</p>
-                    <p className="text-dark-400 text-xs mt-0.5">Pay at your doorstep when the order is delivered.</p>
-                  </div>
-                </label>
+              <div className="flex items-center gap-2 mb-4">
+                <FiCreditCard className="text-gold-500" />
+                <h2 className="font-display text-xl text-white">Payment Method</h2>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-xl border border-gold-500/50 bg-gold-500/5">
+                <FiCreditCard className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
+                <div>
+                  <p className="text-white text-sm font-medium">Online Payment (Razorpay)</p>
+                  <p className="text-dark-400 text-xs mt-0.5">Pay securely using UPI, Credit/Debit Cards, or Net Banking.</p>
+                </div>
               </div>
             </div>
 
             {/* Payment Note */}
-            {paymentMethod === 'razorpay' && (
-              <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
-                <FiCreditCard className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
-                <div>
-                  <p className="text-white text-sm font-medium mb-1">Secure Payment via Razorpay</p>
-                  <p className="text-dark-400 text-xs leading-relaxed">
-                    All transactions are 100% secure and encrypted. We accept UPI, Debit/Credit Cards,
-                    Net Banking, and Wallets. Payment is processed only after you confirm on the Razorpay screen.
-                  </p>
-                </div>
+            <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
+              <FiCreditCard className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
+              <div>
+                <p className="text-white text-sm font-medium mb-1">Secure Payment via Razorpay</p>
+                <p className="text-dark-400 text-xs leading-relaxed">
+                  All transactions are 100% secure and encrypted. We accept UPI, Debit/Credit Cards,
+                  Net Banking, and Wallets. Payment is processed only after you confirm on the Razorpay screen.
+                </p>
               </div>
-            )}
+            </div>
           </div>
 
           {/* ── Right: Order Summary ───────────────────────────────────── */}
@@ -382,7 +360,7 @@ export default function Checkout() {
                 ) : (
                   <>
                     <FiCheck size={16} />
-                    {paymentMethod === 'cod' ? `Place COD Order: ${formatPrice(grandTotal)}` : `Pay ${formatPrice(grandTotal)} Securely`}
+                    {`Pay ${formatPrice(grandTotal)} Securely`}
                   </>
                 )}
               </button>
