@@ -38,7 +38,7 @@ const getProducts = async (req, res) => {
 
   // Search
   if (search) {
-    query.$text = { $search: search };
+    query.$text = { $search: String(search) };
   }
 
   // Filters
@@ -50,7 +50,7 @@ const getProducts = async (req, res) => {
   // Jewelry filters
   if (purity) {
     // Allows comma-separated purities (e.g., '22K,18K')
-    const purities = purity.split(',').map((p) => p.trim());
+    const purities = String(purity).split(',').map((p) => String(p).trim());
     query.purity = { $in: purities };
   }
   if (isHallmarked === 'true') query.isHallmarked = true;
