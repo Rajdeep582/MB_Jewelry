@@ -1,10 +1,11 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const Transaction = require('../models/Transaction');
 const { razorpay, isRazorpayConfigured } = require('../config/razorpay');
 const { verifyRazorpaySignature } = require('../utils/razorpayHelper');
+
 const logger = require('../utils/logger');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
 
     // 3. Update Transaction to success
     await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
+      { razorpayOrderId: String(razorpayOrderId) },
       {
         order: pendingOrder._id,
         orderType: 'Order',
@@ -310,7 +311,7 @@ const verifyPayment = async (req, res) => {
   if (!isValid) {
     logger.warn(`Signature verification FAILED for razorpayOrder=${razorpayOrderId}, user=${req.user._id}`);
     await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
+      { razorpayOrderId: String(razorpayOrderId) },
       { status: 'failed', failReason: 'Signature verification failed' }
     );
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
@@ -472,7 +473,7 @@ const failPayment = async (req, res) => {
     );
 
     await Transaction.findOneAndUpdate(
-      { order: pendingOrderId, status: 'pending' },
+      { order: String(pendingOrderId), status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );
@@ -491,6 +492,53 @@ const failPayment = async (req, res) => {
   res.json({ success: true, message: 'Payment failure recorded' });
 };
 
+// ─── Webhook Helpers ──────────────────────────────────────────────────────────
+
+async function processWebhookCaptured(payment) {
+  const razorpayOrderId = payment.order_id;
+  const razorpayPaymentId = payment.id;
+
+  const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': String(razorpayOrderId) });
+  if (!pendingOrder) {
+    logger.warn(`Webhook: No order found for razorpayOrder=${razorpayOrderId}`);
+    return;
+  }
+
+  if (pendingOrder.payment.status === 'paid') {
+    logger.info(`Webhook: Order ${pendingOrder._id} already confirmed — skipping`);
+    return;
+  }
+
+  const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, '', razorpayOrderId);
+  if (result.success) {
+    logger.info(`Webhook: Order ${pendingOrder._id} confirmed via payment.captured event`);
+  } else {
+    logger.error(`Webhook: atomicConfirmOrder failed: ${result.error}`);
+  }
+}
+
+async function processWebhookFailed(payment) {
+  const razorpayOrderId = payment.order_id;
+  const failReason = payment.error_description || 'Payment failed (Razorpay event)';
+
+  const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': String(razorpayOrderId) });
+  if (!pendingOrder) return;
+
+  if (pendingOrder.payment.status === 'paid') return;
+
+  await Order.findByIdAndUpdate(pendingOrder._id, {
+    orderStatus: 'cancelled',
+    'payment.status': 'failed',
+    'payment.failReason': failReason,
+  });
+  await Transaction.findOneAndUpdate(
+    { razorpayOrderId: String(razorpayOrderId) },
+    { status: 'failed', failReason }
+  );
+
+  logger.info(`Webhook: Order ${pendingOrder._id} marked failed via payment.failed event`);
+}
+
 // ─── Razorpay Webhook Handler ─────────────────────────────────────────────────
 // @route   POST /api/webhook/razorpay
 // @access  Public (signature-verified)
@@ -499,9 +547,7 @@ const handleWebhook = async (req, res) => {
   res.status(200).json({ received: true });
 
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    logger.warn('RAZORPAY_WEBHOOK_SECRET is not set — skipping webhook signature verification');
-  } else {
+  if (webhookSecret) {
     // 2. Verify webhook signature
     const signature = req.headers['x-razorpay-signature'];
     const expectedSig = crypto
@@ -510,9 +556,11 @@ const handleWebhook = async (req, res) => {
       .digest('hex');
 
     if (expectedSig !== signature) {
-      logger.warn(`Webhook signature mismatch. Rejecting event.`);
+      logger.warn('Webhook signature mismatch. Rejecting event.');
       return;
     }
+  } else {
+    logger.warn('RAZORPAY_WEBHOOK_SECRET is not set — skipping webhook signature verification');
   }
 
   let event;
@@ -526,61 +574,15 @@ const handleWebhook = async (req, res) => {
   const eventType = event.event;
   logger.info(`Razorpay webhook received: ${eventType}`);
 
-  // 3. Handle payment.captured (main success path)
   if (eventType === 'payment.captured') {
     const payment = event.payload?.payment?.entity;
-    if (!payment) return;
-
-    const razorpayOrderId = payment.order_id;
-    const razorpayPaymentId = payment.id;
-
-    // Find our pending order via the razorpayOrderId stored on it
-    const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': razorpayOrderId });
-    if (!pendingOrder) {
-      logger.warn(`Webhook: No order found for razorpayOrder=${razorpayOrderId}`);
-      return;
-    }
-
-    // Idempotency — already confirmed (e.g., verify-payment was called first)
-    if (pendingOrder.payment.status === 'paid') {
-      logger.info(`Webhook: Order ${pendingOrder._id} already confirmed — skipping`);
-      return;
-    }
-
-    const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, '', razorpayOrderId);
-    if (result.success) {
-      logger.info(`Webhook: Order ${pendingOrder._id} confirmed via payment.captured event`);
-    } else {
-      logger.error(`Webhook: atomicConfirmOrder failed: ${result.error}`);
-    }
+    if (payment) await processWebhookCaptured(payment);
     return;
   }
 
-  // 4. Handle payment.failed
   if (eventType === 'payment.failed') {
     const payment = event.payload?.payment?.entity;
-    if (!payment) return;
-
-    const razorpayOrderId = payment.order_id;
-    const failReason = payment.error_description || 'Payment failed (Razorpay event)';
-
-    const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': razorpayOrderId });
-    if (!pendingOrder) return;
-
-    // Don't overwrite an already-confirmed order
-    if (pendingOrder.payment.status === 'paid') return;
-
-    await Order.findByIdAndUpdate(pendingOrder._id, {
-      orderStatus: 'cancelled',
-      'payment.status': 'failed',
-      'payment.failReason': failReason,
-    });
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
-      { status: 'failed', failReason }
-    );
-
-    logger.info(`Webhook: Order ${pendingOrder._id} marked failed via payment.failed event`);
+    if (payment) await processWebhookFailed(payment);
   }
 };
 
@@ -644,7 +646,7 @@ const getAllOrders = async (req, res) => {
       { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
     ];
   } else {
-    if (status) query.orderStatus = status;
+    if (status) query.orderStatus = String(status);
 
     if (paymentStatus === 'paid') {
       query['payment.status'] = 'paid';
@@ -696,52 +698,10 @@ const DELIVERY_TRANSITIONS = {
   failed:            ['returned_refunded'],
 };
 
-// ─── Update Order Status (Admin) ─────────────────────────────────────────────
-// @route   PUT /api/orders/:id/status
-// @access  Admin
-const updateOrderStatus = async (req, res) => {
-  // Internal courier system: only status, estimatedDelivery, and comment are accepted from clients.
-  // trackingNumber, trackingUrl, courierPartner are NOT externally supplied — managed by the system.
-  const { status, comment, estimatedDelivery, paymentReceived, paymentStatus } = req.body;
-
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ success: false, message: 'Invalid order ID' });
-  }
-
-  const validStatuses = Object.keys(DELIVERY_TRANSITIONS);
-  if (!validStatuses.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
-    });
-  }
-
-  const order = await Order.findById(req.params.id).populate('user', 'name email');
-  if (!order) {
-    return res.status(404).json({ success: false, message: 'Order not found' });
-  }
-
-  const current = order.orderStatus;
-  const currentPaymentStatus = order.payment.status;
-
-  // ── Idempotency: already in the target state ──
-  if (current === status && (!paymentStatus || paymentStatus === currentPaymentStatus) && !comment) {
-    logger.info(`Order ${order._id} already in status "${status}" — idempotent response`);
-    return res.json({ success: true, order, message: 'Order is already up to date' });
-  }
-
-  // ── State machine: validate transition ────────────────────────────────────
-  const allowed = DELIVERY_TRANSITIONS[current] || [];
-  if (current !== status && !allowed.includes(status)) {
-    return res.status(400).json({
-      success: false,
-      message: `Invalid transition: "${current}" → "${status}". Allowed next states: [${allowed.join(', ') || 'none'}]`,
-    });
-  }
-
+// ─── Transition Helper ────────────────────────────────────────────────────────
+function applyOrderTransition(order, status, paymentStatus, estimatedDelivery) {
   // ── Dispatch: auto-generate deliveryId + set internal tracking ref ───────────
   if (status === 'shipped' || status === 'delivered') {
-    // Generate a collision-free UUID delivery ID (idempotent — only created once per order)
     if (!order.deliveryId) {
       order.deliveryId = crypto.randomUUID();
       logger.info(`deliveryId generated for order ${order._id}: ${order.deliveryId}`);
@@ -762,16 +722,48 @@ const updateOrderStatus = async (req, res) => {
     }
   }
 
-  // ── Pre-Delivery Validation ────────────────────────────────────────────────
-  if (status === 'delivered') {
-    if (order.payment.status !== 'paid') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Payment needs to be done before marking as delivered.' 
-      });
-    }
-    order.deliveredAt = new Date();
+  if (status === 'delivered') order.deliveredAt = new Date();
+}
+
+// ─── Update Order Status (Admin) ─────────────────────────────────────────────
+// @route   PUT /api/orders/:id/status
+// @access  Admin
+const updateOrderStatus = async (req, res) => {
+  const { status, comment, estimatedDelivery, paymentStatus } = req.body;
+
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
   }
+
+  const validStatuses = Object.keys(DELIVERY_TRANSITIONS);
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+  }
+
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+  const current = order.orderStatus;
+  const currentPaymentStatus = order.payment.status;
+
+  // ── Idempotency: already in the target state ──
+  if (current === status && (!paymentStatus || paymentStatus === currentPaymentStatus) && !comment) {
+    logger.info(`Order ${order._id} already in status "${status}" — idempotent response`);
+    return res.json({ success: true, order, message: 'Order is already up to date' });
+  }
+
+  // ── State machine: validate transition ────────────────────────────────────
+  const allowed = DELIVERY_TRANSITIONS[current] || [];
+  if (current !== status && !allowed.includes(status)) {
+    return res.status(400).json({ success: false, message: `Invalid transition: "${current}" → "${status}". Allowed next states: [${allowed.join(', ') || 'none'}]` });
+  }
+
+  // ── Pre-Delivery Validation ────────────────────────────────────────────────
+  if (status === 'delivered' && order.payment.status !== 'paid' && paymentStatus !== 'paid') {
+    return res.status(400).json({ success: false, message: 'Payment needs to be done before marking as delivered.' });
+  }
+
+  applyOrderTransition(order, status, paymentStatus, estimatedDelivery);
 
   order.trackingHistory.push({
     status,
@@ -782,10 +774,7 @@ const updateOrderStatus = async (req, res) => {
 
   await order.save();
 
-  logger.info(
-    `Order ${order._id} transitioned "${current}" → "${status}" by admin ${req.user._id}` +
-    (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : '')
-  );
+  logger.info(`Order ${order._id} transitioned "${current}" → "${status}" by admin ${req.user._id}` + (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : ''));
 
   res.json({ success: true, order });
 };

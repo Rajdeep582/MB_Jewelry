@@ -10,42 +10,27 @@ const getProfile = async (req, res) => {
   res.json({ success: true, user });
 };
 
-// @desc    Update user profile
-// @route   PUT /api/users/profile
-// @access  Private
-const updateProfile = async (req, res) => {
-  const { name, phone, alternateEmail, preferences, gender } = req.body;
-
-  // Fetch the current user so we can compare values and avoid
-  // unnecessary writes to sparse-unique fields.
-  const currentUser = await User.findById(req.user._id);
-  if (!currentUser) {
-    return res.status(404).json({ success: false, message: 'User not found' });
-  }
-
+// ─── Profile Update Helper ───────────────────────────────────────────────────
+function getProfileUpdates(currentUser, body) {
+  const { name, phone, alternateEmail, preferences, gender } = body;
   const updateData = {};
 
-  // Always update name if provided
   if (name !== undefined && name !== currentUser.name) {
     updateData.name = name;
   }
 
-  // Phone – just a normal field
   if (phone !== undefined && phone !== (currentUser.phone || '')) {
     updateData.phone = phone;
   }
 
-  // Gender
   if (gender !== undefined && gender !== (currentUser.gender || '')) {
     updateData.gender = gender;
   }
 
-  // Preferences
   if (preferences !== undefined) {
     updateData.preferences = preferences;
   }
 
-  // Alternate email
   if (alternateEmail !== undefined) {
     const newVal = alternateEmail.trim().toLowerCase() || null;
     const oldVal = currentUser.alternateEmail || null;
@@ -53,6 +38,20 @@ const updateProfile = async (req, res) => {
       updateData.alternateEmail = newVal;
     }
   }
+
+  return updateData;
+}
+
+// @desc    Update user profile
+// @route   PUT /api/users/profile
+// @access  Private
+const updateProfile = async (req, res) => {
+  const currentUser = await User.findById(req.user._id);
+  if (!currentUser) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const updateData = getProfileUpdates(currentUser, req.body);
 
   // Only hit the database if something actually changed
   let user;

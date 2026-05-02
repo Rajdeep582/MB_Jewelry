@@ -1,4 +1,5 @@
 const Product = require('../models/Product');
+
 const logger = require('../utils/logger');
 
 // @route   POST /api/admin/bulk-pricing
@@ -15,8 +16,8 @@ const bulkUpdatePricing = async (req, res) => {
   }
 
   const query = {};
-  if (material) query.material = material;
-  if (category) query.category = category;
+  if (material) query.material = String(material);
+  if (category) query.category = String(category);
 
   if (Object.keys(query).length === 0) {
     return res.status(400).json({ success: false, message: 'Must specify material or category to update' });
@@ -94,10 +95,10 @@ const bulkUpdateDiscounts = async (req, res) => {
   const query = {};
   if (targetType === 'category') {
     if (!targetId) return res.status(400).json({ success: false, message: 'Category ID required' });
-    query.category = targetId;
+    query.category = String(targetId);
   } else if (targetType === 'product') {
     if (!targetId) return res.status(400).json({ success: false, message: 'Product ID required' });
-    query._id = targetId;
+    query._id = String(targetId);
   }
 
   const products = await Product.find(query).select('price').lean();

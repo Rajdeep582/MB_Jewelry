@@ -1,9 +1,11 @@
 const mongoose = require('mongoose');
-const crypto   = require('crypto');
+const crypto   = require('node:crypto');
 const CustomOrder = require('../models/CustomOrder');
 const Transaction  = require('../models/Transaction');
 const { razorpay, isRazorpayConfigured } = require('../config/razorpay');
 const { verifyRazorpaySignature }        = require('../utils/razorpayHelper');
+const { ORDER_STATUSES } = require('../utils/constants');
+
 const logger = require('../utils/logger');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ const createCustomOrder = async (req, res) => {
 
   // Build reference images from uploaded files (multer populates req.files)
   const referenceImages = (req.files || []).map((file) => {
-    if (file.path && file.path.startsWith('http')) {
+    if (file.path?.startsWith('http')) {
       return { url: file.path, publicId: file.filename };
     }
     const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
@@ -150,6 +152,28 @@ const cancelCustomOrderUser = async (req, res) => {
 };
 
 // ─── Phase 1: Create Payment Intent ───────────────────────────────────────────
+
+// Helper to determine the payment amount and validate order state
+function getCustomOrderPaymentAmounts(order, phase) {
+  let amountToPay = 0;
+  let errorMsg = null;
+
+  if (phase === 'advance') {
+    if (order.status !== 'quoted') {
+      errorMsg = `Cannot pay advance. Order is in "${order.status}" status.`;
+    } else {
+      amountToPay = order.advanceAmount;
+    }
+  } else if (phase === 'final') {
+    if (order.status !== 'shipped') {
+      errorMsg = `Cannot pay final balance. Order is in "${order.status}" status.`;
+    } else {
+      amountToPay = order.finalAmount;
+    }
+  }
+  return { amountToPay, errorMsg };
+}
+
 // @route   POST /api/custom-orders/create-payment
 // @access  Private
 const createCustomPayment = async (req, res) => {
@@ -171,25 +195,16 @@ const createCustomPayment = async (req, res) => {
   }
 
   // Pre-flight checks based on phase
-  let amountToPay = 0;
-  if (phase === 'advance') {
-    if (order.status !== 'quoted') {
-      return res.status(400).json({ success: false, message: `Cannot pay advance. Order is in "${order.status}" status.` });
-    }
-    amountToPay = order.advanceAmount;
-  } else if (phase === 'final') {
-    if (order.status !== 'shipped') {
-      return res.status(400).json({ success: false, message: `Cannot pay final balance. Order is in "${order.status}" status.` });
-    }
-    amountToPay = order.finalAmount;
+  let { amountToPay, errorMsg } = getCustomOrderPaymentAmounts(order, phase);
+  if (errorMsg) {
+    return res.status(400).json({ success: false, message: errorMsg });
   }
-
   // ── Self-heal: legacy orders quoted before two-phase amounts were computed ──
   // If quoteAmount is set but the derived amounts are 0, recompute and persist them.
   if ((!amountToPay || amountToPay <= 0) && order.quoteAmount > 0) {
     const taxAmount     = Math.round(order.quoteAmount * 0.18);
     const totalAmount   = order.quoteAmount + taxAmount;
-    const advanceAmount = Math.round(totalAmount * 0.70);
+    const advanceAmount = Math.round(totalAmount * 0.7);
     const finalAmount   = totalAmount - advanceAmount;
 
     // Persist the recomputed amounts so future requests don't need to recompute
@@ -212,7 +227,7 @@ const createCustomPayment = async (req, res) => {
   }
 
   // Razorpay's per-transaction limit is ₹5,00,00,000 (5 crore)
-  const RAZORPAY_MAX_INR = 5_00_00_000;
+  const RAZORPAY_MAX_INR = 50000000;
   if (amountToPay > RAZORPAY_MAX_INR) {
     return res.status(400).json({
       success: false,
@@ -313,7 +328,7 @@ const verifyCustomPayment = async (req, res) => {
 
   const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
   if (!isValid) {
-    await Transaction.findOneAndUpdate({ razorpayOrderId }, { status: 'failed', failReason: 'Signature mismatch' });
+    await Transaction.findOneAndUpdate({ razorpayOrderId: String(razorpayOrderId) }, { status: 'failed', failReason: 'Signature mismatch' });
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
   }
 
@@ -350,7 +365,7 @@ const verifyCustomPayment = async (req, res) => {
     );
 
     await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
+      { razorpayOrderId: String(razorpayOrderId) },
       {
         razorpayPaymentId,
         razorpaySignature,
@@ -423,7 +438,7 @@ const failCustomPayment = async (req, res) => {
       { session: failSession }
     );
     await Transaction.findOneAndUpdate(
-      { order: customOrderId, status: 'pending' },
+      { order: String(customOrderId), status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );
@@ -432,6 +447,7 @@ const failCustomPayment = async (req, res) => {
   } catch (err) {
     await failSession.abortTransaction();
     failSession.endSession();
+    logger.error(`Failed to record custom order payment failure: ${err.message}`);
     return res.status(500).json({ success: false, message: 'Failed to record payment failure.' });
   }
 
@@ -444,7 +460,7 @@ const failCustomPayment = async (req, res) => {
 const getAllCustomOrders = async (req, res) => {
   const { page = 1, limit = 20, status } = req.query;
   const query = {};
-  if (status) query.status = status;
+  if (status) query.status = String(status);
 
   const skip = (Number(page) - 1) * Number(limit);
 
@@ -501,7 +517,7 @@ const setQuote = async (req, res) => {
     // and absorb any difference in the finalAmount.
     order.finalAmount = order.totalAmount - order.advanceAmount;
   } else {
-    order.advanceAmount = Math.round(order.totalAmount * 0.70);
+    order.advanceAmount = Math.round(order.totalAmount * 0.7);
     order.finalAmount   = order.totalAmount - order.advanceAmount;
   }
 
@@ -526,6 +542,43 @@ const setQuote = async (req, res) => {
   res.json({ success: true, order });
 };
 
+// Helper to validate and apply state transitions for Custom Orders
+function applyCustomOrderTransition(order, status) {
+  const current = order.status;
+  const validStatuses = Object.values(ORDER_STATUSES);
+
+  // ── Regression guard ──
+  const currentIdx = validStatuses.indexOf(current);
+  const newIdx     = validStatuses.indexOf(status);
+  if (newIdx < currentIdx && status !== 'cancelled') {
+    return { error: `Cannot revert status from "${current}" to "${status}"` };
+  }
+
+  // ── Guard: cannot cancel after advance payment is received ──
+  if (status === 'cancelled' && order.advancePayment?.status === 'paid') {
+    return { error: 'Cannot cancel order after advance payment has been received.' };
+  }
+
+  // ── Guard: cannot deliver unless final payment is done ──
+  if (status === 'delivered' && order.finalPayment?.status !== 'paid') {
+    return { error: 'Cannot mark as delivered. Final payment (30%) has not been received yet.' };
+  }
+
+  // ── Dispatch: auto-generate deliveryId + set internal tracking ref ──
+  if (status === 'shipped') {
+    if (order.deliveryId) {
+      logger.info(`deliveryId reused for custom order ${order._id} (idempotent)`);
+    } else {
+      order.deliveryId    = crypto.randomUUID();
+      logger.info(`deliveryId generated for custom order ${order._id}: ${order.deliveryId}`);
+    }
+    order.trackingNumber = order.deliveryId;
+    order.dispatchedAt   = order.dispatchedAt || new Date();
+  }
+
+  return { error: null };
+}
+
 // ─── Update Custom Order Status (Admin) ──────────────────────────────────────
 // @route   PUT /api/custom-orders/:id/status
 // @access  Admin
@@ -537,11 +590,7 @@ const updateCustomOrderStatus = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
   }
 
-  const validStatuses = [
-    'pending', 'quoted', 'advance_paid', 'in_production',
-    'final_payment_pending', 'final_payment_paid',
-    'ready_to_ship', 'shipped', 'delivered', 'cancelled',
-  ];
+  const validStatuses = Object.values(ORDER_STATUSES);
 
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ success: false, message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
@@ -557,42 +606,10 @@ const updateCustomOrderStatus = async (req, res) => {
     return res.json({ success: true, order, message: 'Order is already in this status' });
   }
 
-  // ── Regression guard ──
-  const currentIdx = validStatuses.indexOf(current);
-  const newIdx     = validStatuses.indexOf(status);
-  if (newIdx < currentIdx && status !== 'cancelled') {
-    return res.status(400).json({
-      success: false,
-      message: `Cannot revert status from "${current}" to "${status}"`,
-    });
-  }
-
-  // ── Guard: cannot cancel after advance payment is received ──
-  if (status === 'cancelled' && order.advancePayment?.status === 'paid') {
-    return res.status(400).json({
-      success: false,
-      message: 'Cannot cancel order after advance payment has been received.',
-    });
-  }
-
-  // ── Guard: cannot deliver unless final payment is done ──
-  if (status === 'delivered' && order.finalPayment?.status !== 'paid') {
-    return res.status(400).json({
-      success: false,
-      message: 'Cannot mark as delivered. Final payment (30%) has not been received yet.',
-    });
-  }
-
-  // ── Dispatch: auto-generate deliveryId + set internal tracking ref ──
-  if (status === 'shipped') {
-    if (!order.deliveryId) {
-      order.deliveryId    = crypto.randomUUID();
-      logger.info(`deliveryId generated for custom order ${order._id}: ${order.deliveryId}`);
-    } else {
-      logger.info(`deliveryId reused for custom order ${order._id} (idempotent)`);
-    }
-    order.trackingNumber = order.deliveryId;
-    order.dispatchedAt   = order.dispatchedAt || new Date();
+  // Delegate validation and field updates to helper
+  const transition = applyCustomOrderTransition(order, status);
+  if (transition.error) {
+    return res.status(400).json({ success: false, message: transition.error });
   }
 
   // ── Apply fields ──

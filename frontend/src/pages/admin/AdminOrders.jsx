@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FiChevronDown, FiX, FiAlertCircle, FiRefreshCw, FiSearch,
-  FiPackage, FiTruck, FiCheck, FiClock, FiUser, FiMail,
-  FiPhone, FiMapPin, FiCreditCard, FiHash, FiCalendar,
-  FiChevronUp, FiEdit2, FiFilter, FiExternalLink, FiRadio,
+  FiPackage, FiTruck, FiClock, FiUser, FiMail,
+  FiPhone, FiMapPin, FiCreditCard, FiCalendar,
+  FiChevronUp, FiEdit2, FiFilter, FiRadio,
 } from 'react-icons/fi';
+import PropTypes from 'prop-types';
 import { orderService } from '../../services/services';
 import {
   formatPrice, formatDate, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl,
@@ -52,10 +53,68 @@ function formatDateTime(date) {
   });
 }
 
+/** Helper: get placeholder text for admin note input */
+function getNotePlaceholder(status) {
+  if (status === 'shipped') return 'e.g. Dispatched via courier…';
+  if (status === 'delivered') return 'e.g. Delivered to recipient…';
+  return 'Admin note…';
+}
+
+// ─── Shared PropTypes ───────────────────────────────────────────────────────────
+const orderPropType = PropTypes.shape({
+  _id: PropTypes.string.isRequired,
+  orderId: PropTypes.string,
+  orderStatus: PropTypes.string,
+  totalAmount: PropTypes.number,
+  itemsPrice: PropTypes.number,
+  shippingPrice: PropTypes.number,
+  taxPrice: PropTypes.number,
+  createdAt: PropTypes.string,
+  estimatedDelivery: PropTypes.string,
+  dispatchedAt: PropTypes.string,
+  deliveredAt: PropTypes.string,
+  deliveryId: PropTypes.string,
+  payment: PropTypes.shape({
+    status: PropTypes.string,
+    method: PropTypes.string,
+    paidAt: PropTypes.string,
+    razorpayPaymentId: PropTypes.string,
+    failReason: PropTypes.string,
+  }),
+  user: PropTypes.shape({
+    name: PropTypes.string,
+    email: PropTypes.string,
+  }),
+  shippingAddress: PropTypes.shape({
+    fullName: PropTypes.string,
+    phone: PropTypes.string,
+    addressLine1: PropTypes.string,
+    addressLine2: PropTypes.string,
+    city: PropTypes.string,
+    state: PropTypes.string,
+    pincode: PropTypes.string,
+    country: PropTypes.string,
+  }),
+  items: PropTypes.arrayOf(PropTypes.shape({
+    _id: PropTypes.string,
+    product: PropTypes.string,
+    name: PropTypes.string,
+    image: PropTypes.string,
+    price: PropTypes.number,
+    quantity: PropTypes.number,
+  })),
+  trackingHistory: PropTypes.arrayOf(PropTypes.shape({
+    status: PropTypes.string,
+    comment: PropTypes.string,
+    timestamp: PropTypes.string,
+    createdAt: PropTypes.string,
+    updatedBy: PropTypes.shape({ name: PropTypes.string }),
+  })),
+});
+
 // ─── Update Status Modal ────────────────────────────────────────────────────────
 function UpdateModal({ order, onClose, onSaved }) {
   const isPaid = order.payment?.status === 'paid';
-  const isDelivered = order.orderStatus === 'delivered';
   const [form, setForm] = useState({
     status:        order.orderStatus === 'confirmed' ? 'ready_to_ship' : order.orderStatus,
     comment:       '',
@@ -136,15 +195,16 @@ function UpdateModal({ order, onClose, onSaved }) {
         <form onSubmit={handleSubmit} className="space-y-3">
           {/* Delivery status */}
           <div>
-            <label className="label-dark text-xs">Delivery Status</label>
+            <label htmlFor="delivery-status" className="label-dark text-xs">Delivery Status</label>
             <select
+              id="delivery-status"
               value={form.status}
               onChange={(e) => setForm({ ...form, status: e.target.value })}
               className="input-dark text-sm"
             >
               {DELIVERY_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {STATUS_LABELS[s] || s.replace(/_/g, ' ')}
+                  {STATUS_LABELS[s] || s.replaceAll('_', ' ')}
                 </option>
               ))}
             </select>
@@ -153,8 +213,9 @@ function UpdateModal({ order, onClose, onSaved }) {
           {/* Estimated delivery date (show when shipping-related) */}
           {['ready_to_ship', 'shipped'].includes(form.status) && (
             <div>
-              <label className="label-dark text-xs">Estimated Delivery Date</label>
+              <label htmlFor="est-delivery-date" className="label-dark text-xs">Estimated Delivery Date</label>
               <input
+                id="est-delivery-date"
                 type="date"
                 value={form.estimatedDelivery}
                 onChange={(e) => setForm({ ...form, estimatedDelivery: e.target.value })}
@@ -165,15 +226,12 @@ function UpdateModal({ order, onClose, onSaved }) {
 
           {/* Comment */}
           <div>
-            <label className="label-dark text-xs">Admin Note <span className="text-dark-600 font-normal">(optional)</span></label>
+            <label htmlFor="admin-note" className="label-dark text-xs">Admin Note <span className="text-dark-600 font-normal">(optional)</span></label>
             <input
+              id="admin-note"
               value={form.comment}
               onChange={(e) => setForm({ ...form, comment: e.target.value })}
-              placeholder={
-                form.status === 'shipped' ? 'e.g. Dispatched via courier…' :
-                form.status === 'delivered' ? 'e.g. Delivered to recipient…' :
-                'Admin note…'
-              }
+              placeholder={getNotePlaceholder(form.status)}
               className="input-dark text-sm"
             />
           </div>
@@ -198,7 +256,7 @@ function UpdateModal({ order, onClose, onSaved }) {
             <button type="submit" disabled={saving || !confirmValid} className="btn-gold flex-1 py-2.5 text-sm disabled:opacity-60 disabled:cursor-not-allowed">
               {saving ? (
                 <span className="flex items-center justify-center gap-2">
-                  <span className="w-3.5 h-3.5 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
+                  <span className="w-3.5 h-3.5 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{' '}
                   Saving…
                 </span>
               ) : 'Update'}
@@ -212,6 +270,12 @@ function UpdateModal({ order, onClose, onSaved }) {
     </div>
   );
 }
+
+UpdateModal.propTypes = {
+  order: orderPropType.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSaved: PropTypes.func.isRequired,
+};
 
 // ─── Order Detail Drawer ────────────────────────────────────────────────────────
 function OrderDetailDrawer({ order, onUpdate }) {
@@ -237,8 +301,8 @@ function OrderDetailDrawer({ order, onUpdate }) {
               <FiPackage size={11} /> Order Items
             </h4>
             <div className="space-y-3">
-              {order.items?.map((item, i) => (
-                <div key={i} className="flex gap-3 items-center">
+              {order.items?.map((item) => (
+                <div key={item._id || item.product || item.name} className="flex gap-3 items-center">
                   <div className="w-12 h-12 rounded-lg bg-dark-700 overflow-hidden flex-shrink-0 border border-white/5">
                     <img
                       src={resolveImageUrl(item.image) || ''}
@@ -367,7 +431,7 @@ function OrderDetailDrawer({ order, onUpdate }) {
                 {order.deliveryId && (
                   <div>
                     <p className="text-dark-500">Tracking No.</p>
-                    <p className="text-white font-mono">MB-{order.deliveryId.replace(/-/g, '').slice(-8).toUpperCase()}</p>
+                    <p className="text-white font-mono">MB-{order.deliveryId.replaceAll('-', '').slice(-8).toUpperCase()}</p>
                   </div>
                 )}
                 {order.dispatchedAt && (
@@ -408,18 +472,18 @@ function OrderDetailDrawer({ order, onUpdate }) {
 
               {showTimeline && (
                 <div className="space-y-0">
-                  {reversed.map((entry, i) => (
-                    <div key={i} className="flex gap-3">
+                  {reversed.map((entry) => (
+                    <div key={entry.timestamp || entry.createdAt || entry.status} className="flex gap-3">
                       <div className="flex flex-col items-center w-4 flex-shrink-0">
                         <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${
-                          i === 0 ? 'bg-gold-500' : 'bg-dark-600'
+                          entry === reversed[0] ? 'bg-gold-500' : 'bg-dark-600'
                         }`} />
-                        {i < reversed.length - 1 && <div className="flex-1 w-px bg-dark-700 my-0.5" />}
+                        {entry !== reversed.at(-1) && <div className="flex-1 w-px bg-dark-700 my-0.5" />}
                       </div>
                       <div className="pb-3 flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-1 flex-wrap">
-                          <p className={`text-xs font-medium capitalize ${i === 0 ? 'text-white' : 'text-dark-400'}`}>
-                            {STATUS_LABELS[entry.status] || entry.status.replace(/_/g, ' ')}
+                          <p className={`text-xs font-medium capitalize ${entry === reversed[0] ? 'text-white' : 'text-dark-400'}`}>
+                            {STATUS_LABELS[entry.status] || entry.status.replaceAll('_', ' ')}
                           </p>
                           <time className="text-dark-600 text-[10px] flex-shrink-0">
                             {formatDateTime(entry.timestamp || entry.createdAt)}
@@ -454,6 +518,11 @@ function OrderDetailDrawer({ order, onUpdate }) {
   );
 }
 
+OrderDetailDrawer.propTypes = {
+  order: orderPropType.isRequired,
+  onUpdate: PropTypes.func.isRequired,
+};
+
 // ─── Order Row ──────────────────────────────────────────────────────────────────
 function OrderRow({ order, onUpdate, expanded, onToggle }) {
 
@@ -461,9 +530,11 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
     <div className={`border-b border-white/5 last:border-0 transition-all duration-150 ${expanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}>
       {/* Main row */}
       <div
-        className="grid items-center gap-3 py-4 px-5 cursor-pointer select-none"
+        className="grid items-center gap-3 py-4 px-5 cursor-pointer select-none w-full text-left hover:bg-white/[0.015]"
         style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
         onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        tabIndex={0}
       >
         {/* Order ID + date */}
         <div className="min-w-0">
@@ -502,7 +573,7 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Order actions">
           {order.orderStatus !== 'delivered' && (
             <button
               onClick={onUpdate}
@@ -529,6 +600,13 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
     </div>
   );
 }
+
+OrderRow.propTypes = {
+  order: orderPropType.isRequired,
+  onUpdate: PropTypes.func.isRequired,
+  expanded: PropTypes.bool,
+  onToggle: PropTypes.func.isRequired,
+};
 
 // ─── Main AdminOrders Page ──────────────────────────────────────────────────────
 export default function AdminOrders() {
@@ -641,8 +719,13 @@ export default function AdminOrders() {
         <div>
           <h1 className="font-display text-2xl text-white">Orders</h1>
           <p className="text-dark-400 text-sm mt-0.5 flex items-center gap-2">
-            {loading ? 'Loading…' : `${total} order${total !== 1 ? 's' : ''} found`}
-            {!loading && <span className="text-dark-600 text-xs flex items-center gap-1"><FiRadio size={10} className="text-green-500" /> Auto-sync 30s</span>}
+            {loading && 'Loading…'}
+            {!loading && `${total} order${total !== 1 ? 's' : ''} found`}
+            {!loading && (
+              <span className="text-dark-600 text-xs flex items-center gap-1">
+                <FiRadio size={10} className="text-green-500" />{' '}Auto-sync 30s
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -751,17 +834,19 @@ export default function AdminOrders() {
         </div>
 
         {/* Rows */}
-        {loading ? (
-          Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="border-b border-white/5 px-4 py-3.5">
+        {loading && (
+          Array.from({ length: 8 }).map((_, idx) => (
+            <div key={`skeleton-${idx}`} className="border-b border-white/5 px-4 py-3.5">
               <div className="skeleton h-8 rounded-lg" />
             </div>
           ))
-        ) : displayed.length === 0 ? (
+        )}
+        {!loading && displayed.length === 0 && (
           <div className="py-20 text-center text-dark-500 text-sm">
             No orders found for this filter.
           </div>
-        ) : displayed.map(order => (
+        )}
+        {!loading && displayed.length > 0 && displayed.map(order => (
           <OrderRow
             key={order._id}
             order={order}

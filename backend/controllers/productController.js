@@ -2,6 +2,7 @@ const Product = require('../models/Product');
 const Review = require('../models/Review');
 const cloudinary = require('../config/cloudinary');
 
+
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
   if (file.path && file.path.startsWith('http')) {
@@ -41,9 +42,9 @@ const getProducts = async (req, res) => {
   }
 
   // Filters
-  if (category) query.category = category;
-  if (material) query.material = material;
-  if (type) query.type = type;
+  if (category) query.category = String(category);
+  if (material) query.material = String(material);
+  if (type) query.type = String(type);
   if (featured === 'true') query.isFeatured = true;
   
   // Jewelry filters
@@ -148,19 +149,9 @@ const createProduct = async (req, res) => {
   res.status(201).json({ success: true, product: populated });
 };
 
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Admin
-const updateProduct = async (req, res) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) {
-    return res.status(404).json({ success: false, message: 'Product not found' });
-  }
-
+// Helper to parse and typecast product updates
+function parseProductUpdates(body) {
   const updates = {};
-
-  // Safely parse and cast each field
-  const body = req.body;
   if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
   if (body.price !== undefined) updates.price = Number(body.price);
@@ -173,7 +164,7 @@ const updateProduct = async (req, res) => {
   if (body.purity !== undefined) updates.purity = body.purity;
   if (body.isFeatured !== undefined) updates.isFeatured = body.isFeatured === 'true' || body.isFeatured === true;
   if (body.isHallmarked !== undefined) updates.isHallmarked = body.isHallmarked === 'true' || body.isHallmarked === true;
-  // Normalize discountedPrice: empty string → null
+  
   if (body.discountedPrice !== undefined) {
     updates.discountedPrice = (body.discountedPrice !== '' && body.discountedPrice !== null)
       ? Number(body.discountedPrice) : null;
@@ -181,13 +172,26 @@ const updateProduct = async (req, res) => {
   if (body.tags !== undefined) {
     updates.tags = typeof body.tags === 'string' ? JSON.parse(body.tags) : body.tags;
   }
+  return updates;
+}
+
+// @desc    Update product
+// @route   PUT /api/products/:id
+// @access  Admin
+const updateProduct = async (req, res) => {
+  const product = await Product.findById(req.params.id);
+  if (!product) {
+    return res.status(404).json({ success: false, message: 'Product not found' });
+  }
+
+  const updates = parseProductUpdates(req.body);
 
   // Handle new image uploads
   if (req.files && req.files.length > 0) {
     const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
 
     // Delete old images from Cloudinary if replacing all
-    if (body.replaceImages === 'true') {
+    if (req.body.replaceImages === 'true') {
       for (const img of product.images) {
         if (img.publicId) {
           try { await cloudinary.uploader.destroy(img.publicId); } catch (_) {}

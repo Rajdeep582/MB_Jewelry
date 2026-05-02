@@ -41,6 +41,7 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 const app = express();
+app.disable('x-powered-by');
 
 // ─── Webhook Route (must be BEFORE body parsers — needs raw body for HMAC) ───
 app.use(

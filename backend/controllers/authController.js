@@ -5,12 +5,13 @@ const {
   generateRefreshToken,
   sendRefreshTokenCookie,
 } = require('../utils/generateToken');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { logAlert } = require('../utils/alerting');
 const { OAuth2Client } = require('google-auth-library');
+
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -212,7 +213,7 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
     if (!email) return res.status(400).json({ success: false, message: 'Provider did not return an email, which is required.' });
     if (!emailVerified) return res.status(400).json({ success: false, message: 'Email not verified by provider.' });
 
-    let user = await User.findOne({ email }).select('+sessions');
+    let user = await User.findOne({ email: String(email) }).select('+sessions');
 
     if (user) {
       if (!user.providers.some(p => p.providerType === providerName)) {
