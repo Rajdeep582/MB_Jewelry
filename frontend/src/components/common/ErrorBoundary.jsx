@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import { FiAlertTriangle } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
+import PropTypes from 'prop-types';
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -44,3 +45,7 @@ export default class ErrorBoundary extends Component {
     return this.props.children;
   }
 }
+
+ErrorBoundary.propTypes = {
+  children: PropTypes.node,
+};

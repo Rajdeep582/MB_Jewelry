@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -64,6 +65,12 @@ function OptionBtn({ active, onClick, children }) {
     </button>
   );
 }
+
+OptionBtn.propTypes = {
+  active: PropTypes.bool.isRequired,
+  onClick: PropTypes.func.isRequired,
+  children: PropTypes.node.isRequired,
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CustomOrder() {
@@ -152,12 +159,12 @@ export default function CustomOrder() {
   const validateAddress = useCallback((addr) => {
     for (const f of REQUIRED_ADDR_FIELDS) {
       if (!addr[f]?.trim()) {
-        toast.error(`Please fill in: ${f.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+        toast.error(`Please fill in: ${f.replaceAll(/([A-Z])/g, ' $1').toLowerCase()}`);
         return false;
       }
     }
     if (!/^\d{6}$/.test(addr.pincode)) { toast.error('PIN code must be 6 digits'); return false; }
-    if (!/^[6-9]\d{9}$/.test(addr.phone.replace(/\s/g, ''))) {
+    if (!/^[6-9]\d{9}$/.test(addr.phone.replaceAll(/\s/g, ''))) {
       toast.error('Please enter a valid 10-digit Indian mobile number'); return false;
     }
     return true;
@@ -273,36 +280,37 @@ export default function CustomOrder() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {form.type === 'Ring' && (
                   <div>
-                    <label className="label-dark">Finger Size <span className="text-dark-500 font-normal">(e.g. 16, US 7)</span></label>
-                    <input value={form.fingerSize} onChange={(e) => setForm((f) => ({ ...f, fingerSize: e.target.value }))} className="input-dark" placeholder="Optional" />
+                    <label className="label-dark" htmlFor="co-fingerSize">Finger Size <span className="text-dark-500 font-normal">(e.g. 16, US 7)</span></label>
+                    <input id="co-fingerSize" value={form.fingerSize} onChange={(e) => setForm((f) => ({ ...f, fingerSize: e.target.value }))} className="input-dark" placeholder="Optional" />
                   </div>
                 )}
                 {['Necklace', 'Pendant'].includes(form.type) && (
                   <div>
-                    <label className="label-dark">Neck Size <span className="text-dark-500 font-normal">(e.g. 45 cm)</span></label>
-                    <input value={form.neckSize} onChange={(e) => setForm((f) => ({ ...f, neckSize: e.target.value }))} className="input-dark" placeholder="Optional" />
+                    <label className="label-dark" htmlFor="co-neckSize">Neck Size <span className="text-dark-500 font-normal">(e.g. 45 cm)</span></label>
+                    <input id="co-neckSize" value={form.neckSize} onChange={(e) => setForm((f) => ({ ...f, neckSize: e.target.value }))} className="input-dark" placeholder="Optional" />
                   </div>
                 )}
                 {['Bracelet', 'Bangle', 'Anklet'].includes(form.type) && (
                   <div>
-                    <label className="label-dark">Wrist / Ankle Size <span className="text-dark-500 font-normal">(cm)</span></label>
-                    <input value={form.wristSize} onChange={(e) => setForm((f) => ({ ...f, wristSize: e.target.value }))} className="input-dark" placeholder="Optional" />
+                    <label className="label-dark" htmlFor="co-wristSize">Wrist / Ankle Size <span className="text-dark-500 font-normal">(cm)</span></label>
+                    <input id="co-wristSize" value={form.wristSize} onChange={(e) => setForm((f) => ({ ...f, wristSize: e.target.value }))} className="input-dark" placeholder="Optional" />
                   </div>
                 )}
                 <div>
-                  <label className="label-dark">Estimated Weight <span className="text-dark-500 font-normal">(e.g. 8–10g)</span></label>
-                  <input value={form.weight} onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))} className="input-dark" placeholder="Optional" />
+                  <label className="label-dark" htmlFor="co-weight">Estimated Weight <span className="text-dark-500 font-normal">(e.g. 8–10g)</span></label>
+                  <input id="co-weight" value={form.weight} onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))} className="input-dark" placeholder="Optional" />
                 </div>
                 <div>
-                  <label className="label-dark">Budget Range <span className="text-dark-500 font-normal">(e.g. ₹15,000 – ₹25,000)</span></label>
-                  <input value={form.budget} onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))} className="input-dark" placeholder="Optional" />
+                  <label className="label-dark" htmlFor="co-budget">Budget Range <span className="text-dark-500 font-normal">(e.g. ₹15,000 – ₹25,000)</span></label>
+                  <input id="co-budget" value={form.budget} onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))} className="input-dark" placeholder="Optional" />
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <label className="label-dark">Design Description <span className="text-red-400">*</span></label>
+                <label className="label-dark" htmlFor="co-description">Design Description <span className="text-red-400">*</span></label>
                 <textarea
+                  id="co-description"
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                   className="input-dark resize-none"
@@ -327,6 +335,14 @@ export default function CustomOrder() {
 
               {/* Drop Zone */}
               <div
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    if (images.length < 4) fileInputRef.current?.click();
+                  }
+                }}
                 onDrop={handleDrop}
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => images.length < 4 && fileInputRef.current?.click()}
@@ -399,8 +415,9 @@ export default function CustomOrder() {
 
               {/* Preferred delivery date */}
               <div>
-                <label className="label-dark">Preferred Delivery Date <span className="text-dark-500 font-normal">(optional)</span></label>
+                <label className="label-dark" htmlFor="co-preferredDate">Preferred Delivery Date <span className="text-dark-500 font-normal">(optional)</span></label>
                 <input
+                  id="co-preferredDate"
                   type="date"
                   value={preferredDate}
                   min={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]}

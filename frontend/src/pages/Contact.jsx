@@ -77,9 +77,9 @@ export default function Contact() {
                    
                   const ActiveIcon = SIcon;
                   return (
-                  <a key={i} href="#" className="w-9 h-9 rounded-full glass-gold flex items-center justify-center text-gold-400 hover:scale-110 transition-transform">
+                  <button type="button" key={i} className="w-9 h-9 rounded-full glass-gold flex items-center justify-center text-gold-400 hover:scale-110 transition-transform">
                     <ActiveIcon size={16} />
-                  </a>
+                  </button>
                 )})}
               </div>
             </div>
@@ -92,24 +92,24 @@ export default function Contact() {
               <form id="contact-form" onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="label-dark">Full Name</label>
-                    <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    <label className="label-dark" htmlFor="contact-name">Full Name</label>
+                    <input id="contact-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                       placeholder="Your name" className="input-dark" required />
                   </div>
                   <div>
-                    <label className="label-dark">Email</label>
-                    <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    <label className="label-dark" htmlFor="contact-email">Email</label>
+                    <input id="contact-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
                       placeholder="you@example.com" className="input-dark" required />
                   </div>
                 </div>
                 <div>
-                  <label className="label-dark">Subject</label>
-                  <input value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                  <label className="label-dark" htmlFor="contact-subject">Subject</label>
+                  <input id="contact-subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
                     placeholder="Order inquiry, custom design, etc." className="input-dark" required />
                 </div>
                 <div>
-                  <label className="label-dark">Message</label>
-                  <textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
+                  <label className="label-dark" htmlFor="contact-message">Message</label>
+                  <textarea id="contact-message" value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                     placeholder="How can we help you?" rows={5} className="input-dark resize-none" required />
                 </div>
                 <button type="submit" disabled={submitting} className="btn-gold py-3 gap-2">

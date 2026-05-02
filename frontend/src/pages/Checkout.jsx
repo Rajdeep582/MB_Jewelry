@@ -91,7 +91,7 @@ export default function Checkout() {
   const validateAddress = useCallback((addr) => {
     for (const field of REQUIRED_ADDR_FIELDS) {
       if (!addr[field]?.trim()) {
-        toast.error(`Please fill in: ${field.replace(/([A-Z])/g, ' $1').toLowerCase()}`);
+        toast.error(`Please fill in: ${field.replaceAll(/([A-Z])/g, ' $1').toLowerCase()}`);
         return false;
       }
     }
@@ -99,7 +99,7 @@ export default function Checkout() {
       toast.error('PIN code must be 6 digits');
       return false;
     }
-    if (!/^[6-9]\d{9}$/.test(addr.phone.replace(/\s/g, ''))) {
+    if (!/^[6-9]\d{9}$/.test(addr.phone.replaceAll(/\s/g, ''))) {
       toast.error('Please enter a valid 10-digit Indian mobile number');
       return false;
     }
@@ -355,7 +355,7 @@ export default function Checkout() {
                 {processing ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                    Processing…
+                    {'Processing…'}
                   </span>
                 ) : (
                   <>

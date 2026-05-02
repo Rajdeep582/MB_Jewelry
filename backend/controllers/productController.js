@@ -194,7 +194,7 @@ const updateProduct = async (req, res) => {
     if (req.body.replaceImages === 'true') {
       for (const img of product.images) {
         if (img.publicId) {
-          try { await cloudinary.uploader.destroy(img.publicId); } catch (_) {}
+          try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
         }
       }
       updates.images = newImages;
@@ -223,7 +223,7 @@ const deleteProduct = async (req, res) => {
   // Delete images from Cloudinary
   for (const img of product.images) {
     if (img.publicId) {
-      try { await cloudinary.uploader.destroy(img.publicId); } catch (_) {}
+      try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
     }
   }
 

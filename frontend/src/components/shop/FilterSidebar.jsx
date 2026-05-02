@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -40,6 +41,11 @@ function FilterSection({ title, children }) {
     </div>
   );
 }
+
+FilterSection.propTypes = {
+  title: PropTypes.string.isRequired,
+  children: PropTypes.node.isRequired,
+};
 
 export default function FilterSidebar() {
   const filters = useSelector(selectProductsFilter);
@@ -173,11 +179,12 @@ export default function FilterSidebar() {
             const highlight = (filters.material === 'Gold' && (purity === '22K' || purity === '24K'));
 
             return (
-              <label 
+              <button 
+                type="button"
                 key={purity} 
                 className="flex items-center gap-2 cursor-pointer w-fit group"
                 onClick={(e) => {
-                  e.preventDefault(); // prevent double fires if wrapping an input
+                  e.preventDefault();
                   // Toggle logic for comma-separated string
                   let newPurities = [...currentPurities];
                   if (isChecked) {
@@ -202,12 +209,13 @@ export default function FilterSidebar() {
                 <span className={`text-sm transition-colors ${isChecked ? 'text-white' : (highlight ? 'text-gold-200' : 'text-dark-400')} group-hover:text-white`}>
                   {purity}
                 </span>
-              </label>
+              </button>
             );
           })}
 
           <div className="pt-2 mt-2 border-t border-white/5">
-            <label 
+            <button 
+              type="button"
               className="flex items-center justify-between cursor-pointer w-full group"
               onClick={(e) => {
                 e.preventDefault();
@@ -228,7 +236,7 @@ export default function FilterSidebar() {
               }`}>
                 <div className={`w-3 h-3 rounded-full bg-white transition-transform ${filters.isHallmarked === 'true' ? 'translate-x-4' : 'translate-x-0'}`} />
               </div>
-            </label>
+            </button>
           </div>
         </div>
       </FilterSection>

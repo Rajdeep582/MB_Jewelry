@@ -1,4 +1,5 @@
 // Skeleton components for loading states
+import PropTypes from 'prop-types';
 export function ProductCardSkeleton() {
   return (
     <div className="card overflow-hidden">
@@ -62,6 +63,10 @@ export function TableRowSkeleton({ cols = 5 }) {
     </tr>
   );
 }
+
+TableRowSkeleton.propTypes = {
+  cols: PropTypes.number,
+};
 
 export function PageLoader() {
   return (

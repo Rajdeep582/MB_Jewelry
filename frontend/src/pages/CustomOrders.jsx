@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import PropTypes from 'prop-types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
@@ -61,6 +62,10 @@ function OrderTimeline({ status }) {
   );
 }
 
+OrderTimeline.propTypes = {
+  status: PropTypes.string.isRequired,
+};
+
 // ─── List Card ────────────────────────────────────────────────────────────────
 function CustomOrderCard({ order }) {
   return (
@@ -72,7 +77,7 @@ function CustomOrderCard({ order }) {
         </div>
         <div className="flex items-center gap-2">
           <span className={getCustomOrderStatusColor(order.status)}>
-            {order.status.replace(/_/g, ' ')}
+            {order.status.replaceAll(/_/g, ' ')}
           </span>
           <FiChevronRight size={14} className="text-dark-500 group-hover:text-gold-400 transition-colors" />
         </div>
@@ -101,6 +106,18 @@ function CustomOrderCard({ order }) {
     </Link>
   );
 }
+
+CustomOrderCard.propTypes = {
+  order: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    createdAt: PropTypes.string.isRequired,
+    status: PropTypes.string.isRequired,
+    type: PropTypes.string.isRequired,
+    material: PropTypes.string.isRequired,
+    purity: PropTypes.string,
+    quoteAmount: PropTypes.number,
+  }).isRequired,
+};
 
 // ─── Detail View ──────────────────────────────────────────────────────────────
 function CustomOrderDetail({ id }) {
@@ -249,7 +266,7 @@ function CustomOrderDetail({ id }) {
             <h2 className="text-white font-medium">Custom #{order._id.slice(-8).toUpperCase()}</h2>
             <p className="text-dark-400 text-sm">{formatDate(order.createdAt)}</p>
           </div>
-          <span className={getCustomOrderStatusColor(order.status)}>{order.status.replace(/_/g, ' ')}</span>
+          <span className={getCustomOrderStatusColor(order.status)}>{order.status.replaceAll(/_/g, ' ')}</span>
         </div>
         {['advance_paid', 'in_production', 'final_payment_pending', 'final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'].includes(order.status) && (
           <OrderTimeline status={order.status} />
@@ -472,6 +489,10 @@ function CustomOrderDetail({ id }) {
     </div>
   );
 }
+
+CustomOrderDetail.propTypes = {
+  id: PropTypes.string.isRequired,
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function CustomOrders() {

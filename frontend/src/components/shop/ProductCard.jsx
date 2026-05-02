@@ -9,6 +9,7 @@ import { formatPrice, discountPercent, resolveImageUrl } from '../../utils/helpe
 import { selectIsAuthenticated, selectUser, setCredentials } from '../../store/authSlice';
 import { userService } from '../../services/services';
 import toast from 'react-hot-toast';
+import PropTypes from 'prop-types';
 
 export default function ProductCard({ product, view = 'grid' }) {
   const dispatch = useDispatch();
@@ -158,3 +159,23 @@ export default function ProductCard({ product, view = 'grid' }) {
     </motion.div>
   );
 }
+
+ProductCard.propTypes = {
+  product: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    name: PropTypes.string.isRequired,
+    price: PropTypes.number.isRequired,
+    discountedPrice: PropTypes.number,
+    images: PropTypes.arrayOf(
+      PropTypes.shape({
+        url: PropTypes.string,
+      })
+    ),
+    material: PropTypes.string,
+    type: PropTypes.string,
+    averageRating: PropTypes.number,
+    numReviews: PropTypes.number,
+    stock: PropTypes.number.isRequired,
+  }).isRequired,
+  view: PropTypes.string,
+};

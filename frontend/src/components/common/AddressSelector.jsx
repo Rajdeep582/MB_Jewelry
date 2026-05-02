@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import PropTypes from 'prop-types';
 
 const ADDRESS_FIELDS = [
   { name: 'fullName',     label: 'Full Name',                  col: 2 },
@@ -31,7 +32,16 @@ export default function AddressSelector({
         {addresses.map((ad) => (
           <div
             key={ad._id}
+            role="button"
+            tabIndex={0}
             onClick={() => { setSelectedAddrId(ad._id); setShowNewAddr(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelectedAddrId(ad._id);
+                setShowNewAddr(false);
+              }
+            }}
             className={`p-4 rounded-xl border cursor-pointer transition-all ${
               selectedAddrId === ad._id && !showNewAddr
                 ? 'border-gold-500 bg-gold-500/5'
@@ -75,8 +85,9 @@ export default function AddressSelector({
           >
             {ADDRESS_FIELDS.map(({ name, label, col }) => (
               <div key={name} className={col === 2 ? 'sm:col-span-2' : ''}>
-                <label className="label-dark">{label}</label>
+                <label htmlFor={`addr-${name}`} className="label-dark">{label}</label>
                 <input
+                  id={`addr-${name}`}
                   type="text"
                   value={newAddr[name]}
                   onChange={(e) => setNewAddr((p) => ({ ...p, [name]: e.target.value }))}
@@ -90,3 +101,26 @@ export default function AddressSelector({
     </>
   );
 }
+
+AddressSelector.propTypes = {
+  addresses: PropTypes.arrayOf(
+    PropTypes.shape({
+      _id: PropTypes.string.isRequired,
+      fullName: PropTypes.string.isRequired,
+      phone: PropTypes.string.isRequired,
+      addressLine1: PropTypes.string.isRequired,
+      addressLine2: PropTypes.string,
+      city: PropTypes.string.isRequired,
+      state: PropTypes.string.isRequired,
+      pincode: PropTypes.string.isRequired,
+      isDefault: PropTypes.bool,
+    })
+  ).isRequired,
+  selectedAddrId: PropTypes.string,
+  setSelectedAddrId: PropTypes.func.isRequired,
+  showNewAddr: PropTypes.bool.isRequired,
+  setShowNewAddr: PropTypes.func.isRequired,
+  newAddr: PropTypes.object.isRequired,
+  setNewAddr: PropTypes.func.isRequired,
+  addrLoading: PropTypes.bool.isRequired,
+};

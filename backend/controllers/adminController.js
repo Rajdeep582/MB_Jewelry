@@ -8,7 +8,7 @@ const bulkUpdatePricing = async (req, res) => {
   const { material, category, operation, amount } = req.body;
 
   const numAmount = Number(amount);
-  if (!amount || isNaN(numAmount)) {
+  if (!amount || Number.isNaN(numAmount)) {
     return res.status(400).json({ success: false, message: 'Invalid amount' });
   }
   if (!['percentage', 'flat'].includes(operation)) {
@@ -88,7 +88,7 @@ const bulkUpdateDiscounts = async (req, res) => {
   }
 
   const numValue = Number(discountValue);
-  if (discountType !== 'remove' && (isNaN(numValue) || numValue <= 0)) {
+  if (discountType !== 'remove' && (Number.isNaN(numValue) || numValue <= 0)) {
     return res.status(400).json({ success: false, message: 'discountValue must be a positive number' });
   }
 

@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated, selectIsAdmin } from '../../store/authSlice';
+import PropTypes from 'prop-types';
 
 export function ProtectedRoute({ children }) {
   const isAuthenticated = useSelector(selectIsAuthenticated);
@@ -25,3 +26,11 @@ export function AdminRoute({ children }) {
   }
   return children;
 }
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node,
+};
+
+AdminRoute.propTypes = {
+  children: PropTypes.node,
+};

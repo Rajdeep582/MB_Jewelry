@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -71,6 +72,10 @@ function PasswordStrength({ password }) {
   );
 }
 
+PasswordStrength.propTypes = {
+  password: PropTypes.string,
+};
+
 // ─── Resend countdown button ──────────────────────────────────────────────────
 function ResendButton({ onResend, loading }) {
   const [seconds, setSeconds] = useState(60);
@@ -109,6 +114,11 @@ function ResendButton({ onResend, loading }) {
     </span>
   );
 }
+
+ResendButton.propTypes = {
+  onResend: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
+};
 
 // ─── Main Auth page ───────────────────────────────────────────────────────────
 function AuthPage({ type }) {
@@ -393,7 +403,7 @@ function AuthPage({ type }) {
                 className="space-y-4"
               >
                 <div>
-                  <label className="label-dark">6-Digit Verification Code</label>
+                  <label className="label-dark" htmlFor="reg-otp">6-Digit Verification Code</label>
                   <p className="text-dark-400 text-sm mb-3">
                     We sent an OTP to <span className="text-gold-500">{form.email}</span>
                   </p>
@@ -403,7 +413,7 @@ function AuthPage({ type }) {
                       id="reg-otp"
                       type="text"
                       value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onChange={(e) => setOtp(e.target.value.replaceAll(/\D/g, '').slice(0, 6))}
                       placeholder="Enter 6-digit code"
                       className="input-dark pl-10 tracking-[0.5em] text-center text-lg"
                       autoComplete="off"
@@ -496,7 +506,7 @@ function AuthPage({ type }) {
                         type="text"
                         inputMode="numeric"
                         value={fpOtp}
-                        onChange={(e) => { setFpOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); setFpOtpError(''); }}
+                        onChange={(e) => { setFpOtp(e.target.value.replaceAll(/\D/g, '').slice(0, 6)); setFpOtpError(''); }}
                         placeholder="• • • • • •"
                         className={`input-dark pl-10 tracking-[0.5em] text-center text-lg ${fpOtpError ? 'border-red-500' : ''}`}
                         autoComplete="one-time-code"

@@ -60,7 +60,7 @@ const updateCategory = async (req, res) => {
   if (req.file) {
     // Delete old image from Cloudinary (no-op for local storage)
     if (category.image?.publicId) {
-      try { await cloudinary.uploader.destroy(category.image.publicId); } catch (_) {}
+      try { await cloudinary.uploader.destroy(category.image.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
     }
     updates.image = buildFileUrl(req.file, 'categories');
   }
@@ -82,7 +82,7 @@ const deleteCategory = async (req, res) => {
   }
 
   if (category.image?.publicId) {
-    try { await cloudinary.uploader.destroy(category.image.publicId); } catch (_) {}
+    try { await cloudinary.uploader.destroy(category.image.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
   }
 
   await category.deleteOne();

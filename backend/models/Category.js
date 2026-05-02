@@ -32,7 +32,7 @@ const categorySchema = new mongoose.Schema(
 // Auto-generate slug from name
 categorySchema.pre('save', function (next) {
   if (this.isModified('name')) {
-    this.slug = this.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    this.slug = this.name.toLowerCase().replaceAll(/\s+/g, '-').replaceAll(/[^a-z0-9-]/g, '');
   }
   next();
 });
