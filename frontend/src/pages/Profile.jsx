@@ -19,7 +19,7 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   
   const [form, setForm] = useState({ 
-    firstName: '', lastName: '', gender: '', username: '', phone: '', alternateEmail: ''
+    firstName: '', lastName: '', gender: '', phone: '', alternateEmail: ''
   });
 
   const [showAddrForm, setShowAddrForm] = useState(false);
@@ -43,7 +43,6 @@ export default function Profile() {
         firstName: fName,
         lastName: lName,
         gender: user.gender || '',
-        username: user.username || '',
         phone: user.phone || '',
         alternateEmail: user.alternateEmail || ''
       });
@@ -58,7 +57,6 @@ export default function Profile() {
       const fullName = `${form.firstName} ${form.lastName}`.trim();
       const payload = {
         name: fullName,
-        username: form.username,
         phone: form.phone,
         alternateEmail: form.alternateEmail,
         gender: form.gender
@@ -136,10 +134,9 @@ export default function Profile() {
     let score = 0;
     if (profile?.name) score += 20;
     if (profile?.email) score += 20;
-    if (profile?.phone) score += 15;
-    if (profile?.username) score += 15;
+    if (profile?.phone) score += 20;
     if (profile?.alternateEmail) score += 10;
-    if (profile?.addresses?.length > 0) score += 20;
+    if (profile?.addresses?.length > 0) score += 30;
     return Math.min(score, 100);
   };
   const completion = calculateCompletion();
@@ -167,7 +164,7 @@ export default function Profile() {
                   </div>
                 </div>
                 <h2 className="text-white font-display text-2xl">{profile?.name || 'User'}</h2>
-                {profile?.username && <p className="text-gold-500 text-sm mb-1">@{profile.username}</p>}
+
                 <p className="text-dark-400 text-sm mb-3">{profile?.email}</p>
                 <span className={`badge ${profile?.role === 'admin' ? 'badge-gold' : 'bg-dark-700 text-dark-300 border border-white/10'}`}>
                   {(profile?.role || 'user').toUpperCase()}
@@ -240,10 +237,7 @@ export default function Profile() {
                   <label className="label-dark">Phone Number</label>
                   <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input-dark text-sm" placeholder="+91 98765 43210" />
                 </div>
-                <div>
-                  <label className="label-dark">Username</label>
-                  <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} className="input-dark text-sm" placeholder="e.g. rajdeep272" />
-                </div>
+
                 <div>
                   <label className="label-dark">Alternate Email</label>
                   <input type="email" value={form.alternateEmail} onChange={(e) => setForm({ ...form, alternateEmail: e.target.value })} className="input-dark text-sm" placeholder="Optional" />

@@ -128,25 +128,7 @@ export default function AdminUsers() {
                     </span>
                   </td>
                   <td className="py-3 text-right flex justify-end gap-2">
-                    <select
-                      value={user.role}
-                      onChange={async (e) => {
-                        const newRole = e.target.value;
-                        if (!confirm(`Change ${user.name}'s role to ${newRole}?`)) return;
-                        try {
-                          await userService.updateUserRole(user._id, { role: newRole });
-                          toast.success('User role updated');
-                          loadUsers();
-                        } catch {
-                          toast.error('Failed to update role');
-                        }
-                      }}
-                      className="text-xs bg-dark-800 border border-white/10 rounded-lg px-2 py-1 text-dark-300 hover:border-gold-500/30 focus:outline-none focus:border-gold-500"
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                      <option value="delivery">Delivery</option>
-                    </select>
+
                     {user.email !== 'admin@mbjewelry.com' && (
                       <button
                         onClick={() => handleToggle(user._id, user.name)}

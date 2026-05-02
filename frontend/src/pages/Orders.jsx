@@ -11,26 +11,20 @@ import { OrderCardSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-const STATUS_STEPS = ['confirmed', 'in_production', 'ready_to_ship', 'shipped', 'delivered'];
+const STATUS_STEPS = ['confirmed', 'ready_to_ship', 'shipped', 'delivered'];
 
 const STATUS_LABELS = {
-  confirmed:        'Confirmed',
-  in_production:    'In Production',
+  confirmed:        'Confirmed & Processing',
   ready_to_ship:    'Ready to Ship',
   shipped:          'Shipped',
   delivered:        'Delivered',
-  returned_refunded:'Returned & Refunded',
-  failed:           'Failed',
 };
 
 const STATUS_DESCRIPTIONS = {
-  confirmed:        'Your order has been placed and confirmed.',
-  in_production:    'Our craftsmen are working on your jewellery.',
+  confirmed:        'Your order has been placed and is being prepared.',
   ready_to_ship:    'Your order is packed and ready for dispatch.',
   shipped:          'Your order is on its way to you.',
-  delivered:        'Your order has been delivered.',
-  returned_refunded:'Your order has been returned and refunded.',
-  failed:           'This order could not be completed.',
+  delivered:        'Your order has been delivered successfully.',
 };
 
 const PAYMENT_METHOD_LABELS = {
@@ -39,13 +33,10 @@ const PAYMENT_METHOD_LABELS = {
 
 const FILTER_OPTIONS = [
   { value: 'all',            label: 'Any Status' },
-  { value: 'confirmed',      label: 'Confirmed' },
-  { value: 'in_production',  label: 'In Production' },
+  { value: 'confirmed',      label: 'Processing' },
   { value: 'ready_to_ship',  label: 'Ready to Ship' },
   { value: 'shipped',        label: 'Shipped' },
   { value: 'delivered',      label: 'Delivered' },
-  { value: 'returned_refunded', label: 'Returned' },
-  { value: 'failed',         label: 'Failed' },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -58,10 +49,9 @@ function formatDateTime(date) {
 }
 
 function getStepIcon(step, i, idx) {
-  if (i < idx) return <FiCheck size={13} className="text-dark-900" />;
+  if (i <= idx) return <FiCheck size={13} className="text-dark-900" />;
   switch (step) {
     case 'confirmed':     return <FiHash size={12} />;
-    case 'in_production': return <FiPackage size={12} />;
     case 'ready_to_ship': return <FiCalendar size={12} />;
     case 'shipped':       return <FiTruck size={12} />;
     case 'delivered':     return <FiCheck size={12} />;
@@ -71,21 +61,11 @@ function getStepIcon(step, i, idx) {
 
 // ─── Progress Stepper ─────────────────────────────────────────────────────────
 function OrderProgressStepper({ order }) {
-  const terminalFailed = ['failed', 'returned_refunded'].includes(order.orderStatus);
+  // Map old statuses like in_production to nearest step
+  let mappedStatus = order.orderStatus;
+  if (mappedStatus === 'in_production') mappedStatus = 'confirmed';
 
-  if (terminalFailed) {
-    return (
-      <div className="flex items-center gap-3 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 mt-4">
-        <FiAlertCircle className="text-red-400 flex-shrink-0" size={18} />
-        <div>
-          <p className="text-white text-sm font-medium">{STATUS_LABELS[order.orderStatus]}</p>
-          <p className="text-dark-400 text-xs">{STATUS_DESCRIPTIONS[order.orderStatus]}</p>
-        </div>
-      </div>
-    );
-  }
-
-  const idx = STATUS_STEPS.indexOf(order.orderStatus);
+  const idx = STATUS_STEPS.indexOf(mappedStatus);
 
   // Build a map of when each status was reached from tracking history
   const stepTimestamps = {};
@@ -93,47 +73,53 @@ function OrderProgressStepper({ order }) {
     if (!stepTimestamps[entry.status]) stepTimestamps[entry.status] = entry.timestamp;
   });
 
+  // With 4 steps each flex-1, dot centers sit at 12.5%, 37.5%, 62.5%, 87.5%
+  const stepCount = STATUS_STEPS.length;
+  const trackStart = `${100 / (stepCount * 2)}%`;   // 12.5%
+  const trackEnd   = trackStart;                     // same from right
+  const trackTotal = 100 - (100 / stepCount);         // 75%
+  const fillPct    = idx < 0 ? 0 : (idx / (stepCount - 1)) * trackTotal;
+
   return (
     <div className="mt-5">
       <div className="relative">
-        {/* Track — spans from center of first dot to center of last dot */}
-        {/* With 5 steps each flex-1 (20% each), dot centers are at 10%, 30%, 50%, 70%, 90% */}
+        {/* Background track */}
         <div
           className="absolute top-4 h-0.5 bg-dark-700 z-0"
-          style={{ left: '10%', right: '10%' }}
+          style={{ left: trackStart, right: trackEnd }}
         />
+        {/* Filled track */}
         <div
           className="absolute top-4 h-0.5 bg-gold-500 z-0 transition-all duration-700"
           style={{
-            left: '10%',
-            width: idx < 0 ? '0%' : `${(idx / (STATUS_STEPS.length - 1)) * 80}%`,
+            left: trackStart,
+            width: `${fillPct}%`,
           }}
         />
 
         <div className="flex justify-between relative z-10">
           {STATUS_STEPS.map((step, i) => {
-            const done    = i < idx;
-            const current = i === idx;
+            const reached = i <= idx;
             const ts      = stepTimestamps[step];
             return (
               <div key={step} className="flex flex-col items-center gap-1.5 flex-1">
-                {/* Node */}
+                {/* Node — solid gold for all reached steps */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-500 flex-shrink-0 ${
-                  done    ? 'bg-gold-500 border-gold-500' :
-                  current ? 'border-gold-500 bg-gold-500/15 ring-2 ring-gold-500/30' :
-                            'border-dark-600 bg-dark-800'
-                } ${done || current ? 'text-gold-500' : 'text-dark-600'}`}>
+                  reached
+                    ? 'bg-gold-500 border-gold-500 text-dark-900'
+                    : 'border-dark-600 bg-dark-800 text-dark-600'
+                }`}>
                   {getStepIcon(step, i, idx)}
                 </div>
                 {/* Label */}
-                <p className={`text-xs text-center leading-tight max-w-[68px] hidden sm:block ${
-                  done || current ? 'text-gold-400' : 'text-dark-600'
+                <p className={`text-xs text-center leading-tight max-w-[80px] hidden sm:block ${
+                  reached ? 'text-gold-400 font-medium' : 'text-dark-600'
                 }`}>
                   {STATUS_LABELS[step]}
                 </p>
                 {/* Timestamp */}
                 {ts && (
-                  <p className="text-dark-600 text-[10px] text-center hidden md:block leading-tight max-w-[80px]">
+                  <p className="text-dark-500 text-[10px] text-center hidden md:block leading-tight max-w-[80px]">
                     {formatDateTime(ts)}
                   </p>
                 )}
@@ -146,7 +132,7 @@ function OrderProgressStepper({ order }) {
       {/* Current status description */}
       <div className="mt-6 flex items-center gap-2 text-sm">
         <FiClock size={14} className="text-gold-400 flex-shrink-0" />
-        <span className="text-dark-300">{STATUS_DESCRIPTIONS[order.orderStatus] || 'Status updating…'}</span>
+        <span className="text-dark-300">{STATUS_DESCRIPTIONS[mappedStatus] || 'Status updating…'}</span>
       </div>
     </div>
   );
@@ -159,15 +145,13 @@ function TimelineEntry({ entry, isFirst, isLast }) {
     <div className="flex gap-4">
       {/* spine */}
       <div className="flex flex-col items-center w-6 flex-shrink-0">
-        <div className={`w-3 h-3 rounded-full mt-0.5 flex-shrink-0 border-2 ${
-          isFirst ? 'bg-gold-500 border-gold-500' : 'bg-dark-700 border-dark-500'
-        }`} />
-        {!isLast && <div className="flex-1 w-px bg-dark-700 my-1" />}
+        <div className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0 bg-gold-500 border-2 border-gold-500" />
+        {!isLast && <div className="flex-1 w-px bg-gold-500/30 my-1" />}
       </div>
       {/* content */}
       <div className="pb-5 flex-1 min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-1">
-          <p className={`text-sm font-medium capitalize ${isFirst ? 'text-white' : 'text-dark-300'}`}>
+          <p className={`text-sm font-medium capitalize ${isFirst ? 'text-white' : 'text-dark-200'}`}>
             {label}
           </p>
           <time className="text-xs text-dark-500 flex-shrink-0 flex items-center gap-1">
@@ -176,7 +160,7 @@ function TimelineEntry({ entry, isFirst, isLast }) {
           </time>
         </div>
         {entry.comment && (
-          <p className="text-dark-500 text-xs mt-0.5 leading-relaxed">{entry.comment}</p>
+          <p className="text-dark-400 text-xs mt-0.5 leading-relaxed">{entry.comment}</p>
         )}
         {entry.updatedBy?.name && (
           <p className="text-dark-600 text-xs mt-0.5 flex items-center gap-1">

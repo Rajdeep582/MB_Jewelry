@@ -688,8 +688,7 @@ const getAllOrders = async (req, res) => {
 //   cancelled  → (terminal)
 //
 const DELIVERY_TRANSITIONS = {
-  confirmed:         ['in_production', 'failed'],
-  in_production:     ['ready_to_ship', 'failed'],
+  confirmed:         ['ready_to_ship', 'failed'],
   ready_to_ship:     ['shipped', 'failed'],
   shipped:           ['delivered', 'failed', 'returned_refunded'],
   delivered:         ['returned_refunded'],

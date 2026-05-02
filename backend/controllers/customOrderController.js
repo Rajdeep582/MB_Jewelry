@@ -567,6 +567,14 @@ const updateCustomOrderStatus = async (req, res) => {
     });
   }
 
+  // ── Guard: cannot cancel after advance payment is received ──
+  if (status === 'cancelled' && order.advancePayment?.status === 'paid') {
+    return res.status(400).json({
+      success: false,
+      message: 'Cannot cancel order after advance payment has been received.',
+    });
+  }
+
   // ── Guard: cannot deliver unless final payment is done ──
   if (status === 'delivered' && order.finalPayment?.status !== 'paid') {
     return res.status(400).json({

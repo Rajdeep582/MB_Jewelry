@@ -14,23 +14,64 @@ const getProfile = async (req, res) => {
 // @route   PUT /api/users/profile
 // @access  Private
 const updateProfile = async (req, res) => {
-  const { name, phone, username, alternateEmail, preferences, gender } = req.body;
-  const updateData = { name, phone };
-  if (username !== undefined) updateData.username = username;
-  if (alternateEmail !== undefined) updateData.alternateEmail = alternateEmail;
-  if (preferences !== undefined) updateData.preferences = preferences;
-  if (gender !== undefined) updateData.gender = gender;
+  const { name, phone, alternateEmail, preferences, gender } = req.body;
 
-  const user = await User.findByIdAndUpdate(
-    req.user._id,
-    updateData,
-    { new: true, runValidators: true }
-  )
-    .select('+sessions')
-    .populate('wishlist');
-    
+  // Fetch the current user so we can compare values and avoid
+  // unnecessary writes to sparse-unique fields.
+  const currentUser = await User.findById(req.user._id);
+  if (!currentUser) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  const updateData = {};
+
+  // Always update name if provided
+  if (name !== undefined && name !== currentUser.name) {
+    updateData.name = name;
+  }
+
+  // Phone – just a normal field
+  if (phone !== undefined && phone !== (currentUser.phone || '')) {
+    updateData.phone = phone;
+  }
+
+  // Gender
+  if (gender !== undefined && gender !== (currentUser.gender || '')) {
+    updateData.gender = gender;
+  }
+
+  // Preferences
+  if (preferences !== undefined) {
+    updateData.preferences = preferences;
+  }
+
+  // Alternate email
+  if (alternateEmail !== undefined) {
+    const newVal = alternateEmail.trim().toLowerCase() || null;
+    const oldVal = currentUser.alternateEmail || null;
+    if (newVal !== oldVal) {
+      updateData.alternateEmail = newVal;
+    }
+  }
+
+  // Only hit the database if something actually changed
+  let user;
+  if (Object.keys(updateData).length === 0) {
+    // Nothing changed — just return current state
+    user = await User.findById(req.user._id).select('+sessions').populate('wishlist');
+  } else {
+    user = await User.findByIdAndUpdate(
+      req.user._id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+      .select('+sessions')
+      .populate('wishlist');
+  }
+
   res.json({ success: true, user });
 };
+
 
 // @desc    Add address
 // @route   POST /api/users/addresses

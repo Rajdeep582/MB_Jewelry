@@ -97,10 +97,6 @@ const schemas = {
     phone: Joi.string().trim().max(15).allow('').messages({
       'string.max': 'Phone cannot exceed 15 characters'
     }),
-    username: Joi.string().trim().max(30).pattern(/^[a-zA-Z0-9_]+$/).allow('', null).messages({
-      'string.max': 'Username cannot exceed 30 characters',
-      'string.pattern.base': 'Username can only contain letters, numbers, and underscores'
-    }),
     alternateEmail: Joi.string().email().lowercase().trim().allow('', null).messages({
       'string.email': 'Valid email required'
     }),
