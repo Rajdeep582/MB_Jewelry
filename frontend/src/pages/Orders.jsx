@@ -9,6 +9,7 @@ import { orderService } from '../services/services';
 import { formatPrice, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl } from '../utils/helpers';
 import { OrderCardSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
+import PropTypes from 'prop-types';
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_STEPS = ['confirmed', 'ready_to_ship', 'shipped', 'delivered'];
@@ -138,9 +139,19 @@ function OrderProgressStepper({ order }) {
   );
 }
 
+OrderProgressStepper.propTypes = {
+  order: PropTypes.shape({
+    orderStatus: PropTypes.string.isRequired,
+    trackingHistory: PropTypes.arrayOf(PropTypes.shape({
+      status: PropTypes.string,
+      timestamp: PropTypes.string,
+    })),
+  }).isRequired,
+};
+
 // ─── Timeline Entry ───────────────────────────────────────────────────────────
 function TimelineEntry({ entry, isFirst, isLast }) {
-  const label = STATUS_LABELS[entry.status] || entry.status.replace(/_/g, ' ');
+  const label = STATUS_LABELS[entry.status] || entry.status.replaceAll(/_/g, ' ');
   return (
     <div className="flex gap-4">
       {/* spine */}
@@ -172,6 +183,20 @@ function TimelineEntry({ entry, isFirst, isLast }) {
     </div>
   );
 }
+
+TimelineEntry.propTypes = {
+  entry: PropTypes.shape({
+    status: PropTypes.string.isRequired,
+    timestamp: PropTypes.string,
+    createdAt: PropTypes.string,
+    comment: PropTypes.string,
+    updatedBy: PropTypes.shape({
+      name: PropTypes.string,
+    }),
+  }).isRequired,
+  isFirst: PropTypes.bool.isRequired,
+  isLast: PropTypes.bool.isRequired,
+};
 
 // ─── Order Detail View ────────────────────────────────────────────────────────
 function OrderDetailView({ id }) {
@@ -260,7 +285,7 @@ function OrderDetailView({ id }) {
             {retrying ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                Checking with Razorpay…
+                {' '}Checking with Razorpay…
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
@@ -450,6 +475,10 @@ function OrderDetailView({ id }) {
   );
 }
 
+OrderDetailView.propTypes = {
+  id: PropTypes.string.isRequired,
+};
+
 // ─── Order List Card ──────────────────────────────────────────────────────────
 function OrderCard({ order }) {
   return (
@@ -505,6 +534,23 @@ function OrderCard({ order }) {
     </Link>
   );
 }
+
+OrderCard.propTypes = {
+  order: PropTypes.shape({
+    _id: PropTypes.string.isRequired,
+    orderId: PropTypes.string,
+    createdAt: PropTypes.string,
+    orderStatus: PropTypes.string.isRequired,
+    totalAmount: PropTypes.number.isRequired,
+    payment: PropTypes.shape({
+      status: PropTypes.string,
+    }),
+    items: PropTypes.arrayOf(PropTypes.shape({
+      name: PropTypes.string,
+      image: PropTypes.string,
+    })).isRequired,
+  }).isRequired,
+};
 
 // ─── Orders List View ─────────────────────────────────────────────────────────
 function OrdersListView() {

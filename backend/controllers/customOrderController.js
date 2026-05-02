@@ -159,16 +159,16 @@ function getCustomOrderPaymentAmounts(order, phase) {
   let errorMsg = null;
 
   if (phase === 'advance') {
-    if (order.status !== 'quoted') {
-      errorMsg = `Cannot pay advance. Order is in "${order.status}" status.`;
-    } else {
+    if (order.status === 'quoted') {
       amountToPay = order.advanceAmount;
+    } else {
+      errorMsg = `Cannot pay advance. Order is in "${order.status}" status.`;
     }
   } else if (phase === 'final') {
-    if (order.status !== 'shipped') {
-      errorMsg = `Cannot pay final balance. Order is in "${order.status}" status.`;
-    } else {
+    if (order.status === 'shipped') {
       amountToPay = order.finalAmount;
+    } else {
+      errorMsg = `Cannot pay final balance. Order is in "${order.status}" status.`;
     }
   }
   return { amountToPay, errorMsg };

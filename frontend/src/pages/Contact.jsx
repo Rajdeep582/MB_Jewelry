@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 import { FiMail, FiPhone, FiMapPin, FiSend, FiInstagram, FiTwitter } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
@@ -77,7 +76,7 @@ export default function Contact() {
                    
                   const ActiveIcon = SIcon;
                   return (
-                  <button type="button" key={i} className="w-9 h-9 rounded-full glass-gold flex items-center justify-center text-gold-400 hover:scale-110 transition-transform">
+                  <button type="button" key={SIcon.displayName || SIcon.name} className="w-9 h-9 rounded-full glass-gold flex items-center justify-center text-gold-400 hover:scale-110 transition-transform">
                     <ActiveIcon size={16} />
                   </button>
                 )})}

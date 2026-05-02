@@ -5,7 +5,7 @@ const cloudinary = require('../config/cloudinary');
 
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
-  if (file.path && file.path.startsWith('http')) {
+  if (file.path?.startsWith('http')) {
     return { url: file.path, publicId: file.filename };
   }
   const backendUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 5000}`;
@@ -15,59 +15,51 @@ const buildImageUrl = (file, folder = 'products') => {
   };
 };
 
-// @desc    Get all products with filters, sort, pagination
-// @route   GET /api/products
-// @access  Public
-const getProducts = async (req, res) => {
-  const {
-    search,
-    category,
-    material,
-    type,
-    purity,
-    isHallmarked,
-    minPrice,
-    maxPrice,
-    sort,
-    page = 1,
-    limit = 12,
-    featured,
-  } = req.query;
-
+// Helper: build query filter object from request query params
+function buildProductQuery(params) {
+  const { search, category, material, type, purity, isHallmarked, minPrice, maxPrice, featured } = params;
   const query = {};
 
-  // Search
-  if (search) {
-    query.$text = { $search: String(search) };
-  }
-
-  // Filters
+  if (search) query.$text = { $search: String(search) };
   if (category) query.category = String(category);
   if (material) query.material = String(material);
   if (type) query.type = String(type);
   if (featured === 'true') query.isFeatured = true;
-  
-  // Jewelry filters
+
   if (purity) {
-    // Allows comma-separated purities (e.g., '22K,18K')
     const purities = String(purity).split(',').map((p) => String(p).trim());
     query.purity = { $in: purities };
   }
   if (isHallmarked === 'true') query.isHallmarked = true;
 
-  // Price range
   if (minPrice || maxPrice) {
     query.price = {};
     if (minPrice) query.price.$gte = Number(minPrice);
     if (maxPrice) query.price.$lte = Number(maxPrice);
   }
 
-  // Sort
-  let sortOption = { createdAt: -1 };
-  if (sort === 'price-asc') sortOption = { price: 1 };
-  else if (sort === 'price-desc') sortOption = { price: -1 };
-  else if (sort === 'popular') sortOption = { sold: -1 };
-  else if (sort === 'rating') sortOption = { averageRating: -1 };
+  return query;
+}
+
+// Helper: resolve sort option from query param
+function buildSortOption(sort) {
+  const sortMap = {
+    'price-asc':  { price: 1 },
+    'price-desc': { price: -1 },
+    'popular':    { sold: -1 },
+    'rating':     { averageRating: -1 },
+  };
+  return sortMap[sort] || { createdAt: -1 };
+}
+
+// @desc    Get all products with filters, sort, pagination
+// @route   GET /api/products
+// @access  Public
+const getProducts = async (req, res) => {
+  const { sort, page = 1, limit = 12 } = req.query;
+
+  const query = buildProductQuery(req.query);
+  const sortOption = buildSortOption(sort);
 
   const pageNum = Math.max(1, Number(page));
   const limitNum = Math.min(50, Math.max(1, Number(limit)));

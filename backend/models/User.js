@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 const addressSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
@@ -34,13 +34,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [
         function () {
-          return this.providers && this.providers.some(p => p.providerType === 'local');
+          return this.providers?.some(p => p.providerType === 'local');
         },
         'Password is required for local accounts',
       ],
       validate: {
         validator: function (v) {
-          if (!this.providers || !this.providers.some(p => p.providerType === 'local')) return true;
+          if (!this.providers?.some(p => p.providerType === 'local')) return true;
           if (!v) return false;
           return /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/.test(v);
         },

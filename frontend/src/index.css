@@ -157,7 +157,7 @@
   .badge-red {
     @apply badge;
     background-color: #4A1414; /* bg-velvet-900 */
-    color: #E53E3E; /* text-velvet-400 */
+    color: #FC8181; /* lighter red for better contrast against dark bg */
     border-color: #742A2A; /* border-velvet-700 */
   }
 

@@ -13,7 +13,7 @@ const xss = require('xss-clean');
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
-const path = require('path');
+const path = require('node:path');
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');

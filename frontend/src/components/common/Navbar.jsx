@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -74,7 +74,7 @@ export default function Navbar() {
             </div>
             <span className="text-xl font-display font-medium text-white">
               M<span className="text-gradient-gold">&</span>B
-              <span className="text-sm text-dark-400 ml-1 font-sans font-normal hidden sm:inline">Jewelry</span>
+              {' '}<span className="text-sm text-dark-400 ml-1 font-sans font-normal hidden sm:inline">Jewelry</span>
             </span>
           </Link>
 
@@ -268,13 +268,11 @@ export default function Navbar() {
                     key={to}
                     to={to}
                     onClick={() => { setMobileOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                    className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${
-                      isActive
-                        ? 'bg-gold-500/10 text-gold-400'
-                        : highlight
-                        ? 'text-gold-400 hover:bg-gold-500/10'
-                        : 'text-dark-300 hover:text-white hover:bg-white/5'
-                    }`}
+                    className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${(() => {
+                      if (isActive) return 'bg-gold-500/10 text-gold-400';
+                      if (highlight) return 'text-gold-400 hover:bg-gold-500/10';
+                      return 'text-dark-300 hover:text-white hover:bg-white/5';
+                    })()}`}
                   >
                     {label}
                     {highlight && <span className="text-gold-400 text-xs">✦</span>}

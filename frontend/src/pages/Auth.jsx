@@ -428,7 +428,7 @@ function AuthPage({ type }) {
                   {verifying ? (
                     <span className="flex items-center justify-center gap-2">
                       <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                      Verifying…
+                      {' '}Verifying…
                     </span>
                   ) : 'Verify Email'}
                 </button>
@@ -472,7 +472,7 @@ function AuthPage({ type }) {
                     {fpLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        Sending Code…
+                        {' '}Sending Code…
                       </span>
                     ) : 'Send Reset Code'}
                   </button>
@@ -531,7 +531,7 @@ function AuthPage({ type }) {
                     {fpLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        Verifying…
+                        {' '}Verifying…
                       </span>
                     ) : 'Verify Code'}
                   </button>
@@ -624,7 +624,7 @@ function AuthPage({ type }) {
                     {resetting ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        Resetting Password…
+                        {' '}Resetting Password…
                       </span>
                     ) : 'Reset Password'}
                   </button>
@@ -759,7 +759,7 @@ function AuthPage({ type }) {
                     {loading ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        {type === 'login' ? 'Signing in…' : 'Creating account…'}
+                        {' '}{type === 'login' ? 'Signing in…' : 'Creating account…'}
                       </span>
                     ) : (
                       type === 'login' ? 'Sign In' : 'Create Account'
@@ -830,6 +830,10 @@ function AuthPage({ type }) {
     </div>
   );
 }
+
+AuthPage.propTypes = {
+  type: PropTypes.oneOf(['login', 'register']).isRequired,
+};
 
 export const Login = () => (
   <GoogleOAuthProvider clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID || ''}>

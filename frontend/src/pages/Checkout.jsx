@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiMapPin, FiCreditCard, FiCheck, FiAlertCircle } from 'react-icons/fi';
+import { FiMapPin, FiCreditCard, FiCheck, FiAlertCircle } from 'react-icons/fi';
 import { selectCartItems, selectCartTotal, clearCart } from '../store/cartSlice';
 import { selectUser } from '../store/authSlice';
 import { orderService, userService } from '../services/services';
-import { formatPrice } from '../utils/helpers';
+import { formatPrice, BLANK_ADDRESS, REQUIRED_ADDR_FIELDS } from '../utils/helpers';
 import toast from 'react-hot-toast';
 import AddressSelector from '../components/common/AddressSelector';
 
@@ -14,7 +13,7 @@ import AddressSelector from '../components/common/AddressSelector';
 let razorpayScriptPromise = null;
 
 function loadRazorpaySdk() {
-  if (window.Razorpay) return Promise.resolve(true);
+  if (globalThis.Razorpay) return Promise.resolve(true);
   if (razorpayScriptPromise) return razorpayScriptPromise;
 
   razorpayScriptPromise = new Promise((resolve) => {
@@ -30,7 +29,7 @@ function loadRazorpaySdk() {
   return razorpayScriptPromise;
 }
 
-import { BLANK_ADDRESS, REQUIRED_ADDR_FIELDS } from '../utils/helpers';
+
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function Checkout() {
@@ -210,7 +209,7 @@ export default function Checkout() {
         },
       };
 
-      const rzp = new window.Razorpay(options);
+      const rzp = new globalThis.Razorpay(options);
 
       // Handle Razorpay-level payment errors (e.g., card declined)
       rzp.on('payment.failed', async (response) => {

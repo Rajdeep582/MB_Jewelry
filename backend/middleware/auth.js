@@ -7,7 +7,7 @@ const User = require('../models/User');
 const protect = async (req, res, next) => {
   let token;
 
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+  if (req.headers.authorization?.startsWith('Bearer ')) {
     token = req.headers.authorization.split(' ')[1];
   }
 
@@ -40,7 +40,7 @@ const protect = async (req, res, next) => {
  * Restrict to admin only
  */
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (req.user?.role === 'admin') {
     return next();
   }
   return res.status(403).json({ success: false, message: 'Admin access required' });

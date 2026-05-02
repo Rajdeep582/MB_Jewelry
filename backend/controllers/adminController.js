@@ -108,7 +108,7 @@ const bulkUpdateDiscounts = async (req, res) => {
 
   // Build single bulkWrite — atomic and efficient
   const bulkOps = products.map((product) => {
-    let newDiscountedPrice = null;
+    let newDiscountedPrice;
 
     if (discountType === 'remove') {
       newDiscountedPrice = null;

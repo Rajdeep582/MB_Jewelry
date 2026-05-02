@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 const orderItemSchema = new mongoose.Schema({
   product: {

@@ -30,19 +30,11 @@ export default function AddressSelector({
       {/* Saved addresses */}
       <div className="space-y-3">
         {addresses.map((ad) => (
-          <div
+          <button
+            type="button"
             key={ad._id}
-            role="button"
-            tabIndex={0}
             onClick={() => { setSelectedAddrId(ad._id); setShowNewAddr(false); }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                setSelectedAddrId(ad._id);
-                setShowNewAddr(false);
-              }
-            }}
-            className={`p-4 rounded-xl border cursor-pointer transition-all ${
+            className={`p-4 rounded-xl border cursor-pointer transition-all w-full text-left ${
               selectedAddrId === ad._id && !showNewAddr
                 ? 'border-gold-500 bg-gold-500/5'
                 : 'border-white/10 hover:border-white/30'
@@ -63,7 +55,7 @@ export default function AddressSelector({
                 {selectedAddrId === ad._id && !showNewAddr && <div className="w-2.5 h-2.5 rounded-full bg-gold-500" />}
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 

@@ -150,7 +150,7 @@ const refreshToken = async (req, res) => {
 
   let decoded;
   try { decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET); } 
-  catch (e) { return res.status(401).json({ success: false, message: 'Invalid token' }); }
+  catch { return res.status(401).json({ success: false, message: 'Invalid token' }); }
 
   const user = await User.findById(decoded.id).select('+sessions');
   user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
@@ -272,7 +272,7 @@ const forgotPassword = async (req, res) => {
   const GENERIC_OK = { success: true, message: 'If email is known, a reset code was sent.' };
   
   const user = await User.findOne({ email }).select('+password +pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts');
-  if (!user || !user.isVerified || !user.isActive) return res.json(GENERIC_OK);
+  if (!user?.isVerified || !user?.isActive) return res.json(GENERIC_OK);
   if (!user.password) {
     return res.status(400).json({ success: false, message: 'Your account is linked exclusively via an OAuth provider. Password reset is not available.' });
   }

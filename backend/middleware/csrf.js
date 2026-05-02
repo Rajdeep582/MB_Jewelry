@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 // Generate and attach a CSRF token to the response cookie
 const attachCsrfCookie = (req, res, next) => {

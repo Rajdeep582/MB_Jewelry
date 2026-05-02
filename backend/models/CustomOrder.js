@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 
 // ─── Reuse the same tracking step shape as Order.js ──────────────────────────
 const trackingStepSchema = new mongoose.Schema({

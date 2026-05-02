@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import PropTypes from 'prop-types';
-import { motion, AnimatePresence } from 'framer-motion';
 import { FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { customOrderService } from '../services/services';
@@ -13,7 +12,7 @@ import toast from 'react-hot-toast';
 // ─── Razorpay loader (same as Checkout.jsx) ───────────────────────────────────
 let razorpayScriptPromise = null;
 function loadRazorpaySdk() {
-  if (window.Razorpay) return Promise.resolve(true);
+  if (globalThis.Razorpay) return Promise.resolve(true);
   if (razorpayScriptPromise) return razorpayScriptPromise;
   razorpayScriptPromise = new Promise((resolve) => {
     const script = document.createElement('script');
@@ -225,7 +224,7 @@ function CustomOrderDetail({ id }) {
         },
       };
 
-      const rzp = new window.Razorpay(options);
+      const rzp = new globalThis.Razorpay(options);
       rzp.on('payment.failed', async (response) => {
         const reason = response.error?.description || 'Payment failed';
         toast.error(`Payment failed: ${reason}`, { duration: 6000 });

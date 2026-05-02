@@ -5,7 +5,7 @@ const cloudinary = require('../config/cloudinary');
 const buildFileUrl = (file, folder = 'categories') => {
   if (!file) return { url: '', publicId: '' };
   // Cloudinary sets file.path to the HTTPS CDN URL
-  if (file.path && file.path.startsWith('http')) {
+  if (file.path?.startsWith('http')) {
     return { url: file.path, publicId: file.filename };
   }
   // Local disk storage: file.path is an absolute OS path — build a proper HTTP URL

@@ -175,7 +175,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {loading
-              ? Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={i} />)
+              ? Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={`feat-skel-${i}`} />)
               : featured.map((product) => (
                   <ProductCard key={product._id} product={product} />
                 ))}
@@ -233,7 +233,7 @@ export default function Home() {
               >
                 <div className="flex mb-3">
                   {Array.from({ length: rating }).map((_, j) => (
-                    <FiStar key={j} size={14} className="fill-gold-400 text-gold-400" />
+                    <FiStar key={`star-${name}-${j}`} size={14} className="fill-gold-400 text-gold-400" />
                   ))}
                 </div>
                 <p className="text-dark-300 text-sm leading-relaxed mb-4">"{text}"</p>

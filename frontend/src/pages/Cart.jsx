@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiTrash2, FiMinus, FiPlus, FiShoppingBag, FiArrowRight } from 'react-icons/fi';
+import { FiTrash2, FiMinus, FiPlus, FiArrowRight } from 'react-icons/fi';
 import jewelryImg from '../assets/necklace.webp';
 import {
   selectCartItems, selectCartTotal,

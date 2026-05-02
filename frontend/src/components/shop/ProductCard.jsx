@@ -16,9 +16,11 @@ export default function ProductCard({ product, view = 'grid' }) {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const user = useSelector(selectUser);
   
-  const isWishlisted = user?.wishlist?.some(item => 
-    (typeof item === 'object' && item !== null ? item._id === product._id : item === product._id)
-  ) || false;
+  const wishlist = user?.wishlist || [];
+  const isWishlisted = wishlist.some(item => {
+    const itemId = typeof item === 'object' && item !== null ? item._id : item;
+    return itemId === product._id;
+  });
 
   const [wishlisted, setWishlisted] = useState(isWishlisted);
   const [imgError, setImgError] = useState(false);

@@ -183,18 +183,17 @@ export default function FilterSidebar() {
                 type="button"
                 key={purity} 
                 className="flex items-center gap-2 cursor-pointer w-fit group"
-                onClick={(e) => {
-                  e.preventDefault();
-                  // Toggle logic for comma-separated string
+                onClick={() => {
                   let newPurities = [...currentPurities];
                   if (isChecked) {
                     newPurities = newPurities.filter(p => p !== purity);
                   } else {
                     newPurities.push(purity);
                   }
+                  const updatedValue = newPurities.join(',');
                   setSearchParams(prev => {
                     const next = new URLSearchParams(prev);
-                    if (newPurities.length > 0) next.set('purity', newPurities.join(','));
+                    if (updatedValue) next.set('purity', updatedValue);
                     else next.delete('purity');
                     next.delete('page');
                     return next;
@@ -206,7 +205,7 @@ export default function FilterSidebar() {
                 }`}>
                   {isChecked && <svg className="w-3 h-3 text-dark-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className={`text-sm transition-colors ${isChecked ? 'text-white' : (highlight ? 'text-gold-200' : 'text-dark-400')} group-hover:text-white`}>
+                <span className={`text-sm transition-colors ${(() => { if (isChecked) return 'text-white'; return highlight ? 'text-gold-200' : 'text-dark-400'; })()} group-hover:text-white`}>
                   {purity}
                 </span>
               </button>
