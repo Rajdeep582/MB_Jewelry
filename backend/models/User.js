@@ -49,7 +49,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
     providers: [{
-      providerType: { type: String, enum: ['local', 'google', 'facebook'], required: true },
+      providerType: { type: String, enum: ['local', 'google'], required: true },
       providerId: { type: String }, // e.g. google sub, facebook id
       _id: false,
     }],

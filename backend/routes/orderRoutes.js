@@ -24,11 +24,11 @@ router.post('/:id/retry-verify', protect, retryVerifyPayment);
 
 // User routes
 router.get('/my-orders', protect, getMyOrders);
-router.get('/stats', protect, adminOnly, getStats);
 
-// Admin routes
+// Admin routes — static paths MUST come before /:id param route
+router.get('/stats',          protect, adminOnly, getStats);
+router.get('/delivery-stats', protect, adminOnly, getDeliveryStats);
 router.get('/',               protect, adminOnly, getAllOrders);
-router.get('/delivery-stats', protect, adminOnly, getDeliveryStats); // single-query stat for delivery tab
 router.get('/:id',            protect, getOrder);
 router.put('/:id/status',     protect, adminOnly, updateOrderStatus);
 

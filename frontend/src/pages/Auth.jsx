@@ -8,13 +8,9 @@ import {
   FiArrowLeft, FiCheckCircle, FiRefreshCw, FiShield,
 } from 'react-icons/fi';
 import {
-  registerUser, loginUser, loginWithGoogle, loginWithFacebook, selectAuthLoading, selectAuthError, clearError,
+  registerUser, loginUser, loginWithGoogle, selectAuthLoading, selectAuthError, clearError,
 } from '../store/authSlice';
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
-import _FacebookLoginModule from 'react-facebook-login/dist/facebook-login-render-props';
-// react-facebook-login ships as CJS; Vite may wrap it under .default — unwrap safely
-const FacebookLogin = _FacebookLoginModule.default || _FacebookLoginModule;
-import { FaFacebookF } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 
@@ -791,35 +787,6 @@ function AuthPage({ type }) {
                       />
                     </div>
                     
-                    <FacebookLogin
-                      appId={import.meta.env.VITE_FACEBOOK_APP_ID || ''}
-                      autoLoad={false}
-                      fields="name,email,picture"
-                      callback={async (response) => {
-                        if (response.accessToken) {
-                          const result = await dispatch(loginWithFacebook(response.accessToken));
-                          if (result.meta.requestStatus === 'fulfilled') {
-                            toast.success(type === 'login' ? 'Welcome back! 💎' : 'Account linked/created!');
-                            navigate(from, { replace: true });
-                          }
-                        } else if (!response.status) {
-                          toast.error('Facebook login failed or was cancelled');
-                        }
-                      }}
-                      render={renderProps => (
-                        <button
-                          onClick={renderProps.onClick}
-                          type="button"
-                          disabled={loading}
-                          className="w-full flex items-center justify-center gap-2 py-[10px] rounded border-none bg-[#1877F2] text-white hover:bg-[#166FE5] transition-colors shadow-sm"
-                        >
-                          <FaFacebookF size={18} />
-                          <span className="font-medium text-sm">
-                            {type === 'login' ? 'Sign in with Facebook' : 'Sign up with Facebook'}
-                          </span>
-                        </button>
-                      )}
-                    />
                   </div>
                 </form>
               </motion.div>

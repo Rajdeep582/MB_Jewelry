@@ -46,12 +46,10 @@ export default function Shop() {
     
     // Parse ALL possible filters from URL perfectly
     const newFilters = {
-      type: searchParams.get('type') || '',
       category: searchParams.get('category') || '',
       material: searchParams.get('material') || '',
       search: searchParams.get('search') || '',
       purity: searchParams.get('purity') || '',
-      isHallmarked: searchParams.get('isHallmarked') || '',
       minPrice: searchParams.get('minPrice') || '',
       maxPrice: searchParams.get('maxPrice') || '',
       sort: searchParams.get('sort') || '',

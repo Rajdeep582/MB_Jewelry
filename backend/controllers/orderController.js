@@ -527,7 +527,7 @@ async function processWebhookFailed(payment) {
   if (pendingOrder.payment.status === 'paid') return;
 
   await Order.findByIdAndUpdate(pendingOrder._id, {
-    orderStatus: 'cancelled',
+    orderStatus: 'failed',
     'payment.status': 'failed',
     'payment.failReason': failReason,
   });
@@ -641,9 +641,9 @@ const getAllOrders = async (req, res) => {
 
   if (status === 'needs_attention') {
     // Only flag orders that genuinely need admin intervention:
-    // Payment failed but order is still actionable (not already resolved as 'failed', 'returned_refunded', or legacy 'cancelled')
+    // Payment failed but order is still actionable (not already resolved as 'failed' or 'returned_refunded')
     query.$or = [
-      { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] } },
+      { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded'] } },
     ];
   } else {
     if (status) query.orderStatus = String(status);
@@ -682,12 +682,11 @@ const getAllOrders = async (req, res) => {
 // ─── Delivery Lifecycle State Machine ────────────────────────────────────────
 //
 // Valid forward transitions only:
-//   processing → confirmed
-//   confirmed  → ready_to_ship | cancelled
-//   ready_to_ship → shipped | cancelled
-//   shipped    → delivered
-//   delivered  → (terminal — no further transitions)
-//   cancelled  → (terminal)
+//   confirmed  → ready_to_ship | failed
+//   ready_to_ship → shipped | failed
+//   shipped    → delivered | failed | returned_refunded
+//   delivered  → returned_refunded (terminal otherwise)
+//   failed     → returned_refunded (terminal otherwise)
 //
 const DELIVERY_TRANSITIONS = {
   confirmed:         ['ready_to_ship', 'failed'],
@@ -808,7 +807,7 @@ const getStats = async (req, res) => {
     // Pending count for "needs attention" badge
     Order.countDocuments({
       'payment.status': 'failed',
-      orderStatus: { $nin: ['failed', 'returned_refunded', 'cancelled'] },
+      orderStatus: { $nin: ['failed', 'returned_refunded'] },
     }),
   ]);
 

@@ -34,6 +34,9 @@ frontend/lint-results.txt
 *.njsproj
 *.sln
 
+# Temp test runners
+backend/run_tests.js
+
 # Uploads
 backend/uploads/products/*
 backend/uploads/custom_orders/*

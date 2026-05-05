@@ -13,7 +13,6 @@ router.post('/register', authLimiter, validateSchema(schemas.register), require(
 router.post('/verify-otp', authLimiter, validateSchema(schemas.verifyOtp), require('../controllers/authController').verifyOTP);
 router.post('/login', loginLimiter, validateSchema(schemas.login), require('../controllers/authController').login);
 router.post('/google', authLimiter, validateSchema(schemas.googleOAuth), require('../controllers/authController').googleLogin);
-router.post('/facebook', authLimiter, validateSchema(schemas.facebookOAuth), require('../controllers/authController').facebookLogin);
 router.post('/logout', require('../middleware/auth').protect, require('../controllers/authController').logout);
 router.post('/refresh', require('../controllers/authController').refreshToken);
 router.get('/me', require('../middleware/auth').protect, require('../controllers/authController').getMe);

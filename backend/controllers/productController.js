@@ -1,7 +1,9 @@
 const Product = require('../models/Product');
+const GlobalPricing = require('../models/GlobalPricing');
 const Review = require('../models/Review');
 const cloudinary = require('../config/cloudinary');
-
+const { calcDynamicPrice, buildGlobalPricingMap, applyLivePrice, resolvePricingEntry } = require('../utils/pricingUtils');
+const logger = require('../utils/logger');
 
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
@@ -17,20 +19,18 @@ const buildImageUrl = (file, folder = 'products') => {
 
 // Helper: build query filter object from request query params
 function buildProductQuery(params) {
-  const { search, category, material, type, purity, isHallmarked, minPrice, maxPrice, featured } = params;
+  const { search, category, material, purity, minPrice, maxPrice, featured } = params;
   const query = {};
 
   if (search) query.$text = { $search: String(search) };
   if (category) query.category = String(category);
   if (material) query.material = String(material);
-  if (type) query.type = String(type);
   if (featured === 'true') query.isFeatured = true;
 
   if (purity) {
     const purities = String(purity).split(',').map((p) => String(p).trim());
     query.purity = { $in: purities };
   }
-  if (isHallmarked === 'true') query.isHallmarked = true;
 
   if (minPrice || maxPrice) {
     query.price = {};
@@ -65,7 +65,7 @@ const getProducts = async (req, res) => {
   const limitNum = Math.min(50, Math.max(1, Number(limit)));
   const skip = (pageNum - 1) * limitNum;
 
-  const [products, total] = await Promise.all([
+  const [products, total, pricingEntries] = await Promise.all([
     Product.find(query)
       .populate('category', 'name slug')
       .sort(sortOption)
@@ -73,11 +73,15 @@ const getProducts = async (req, res) => {
       .limit(limitNum)
       .lean(),
     Product.countDocuments(query),
+    GlobalPricing.find({}).lean(),
   ]);
+
+  const pricingMap = buildGlobalPricingMap(pricingEntries);
+  const enriched = products.map((p) => applyLivePrice(p, pricingMap));
 
   res.json({
     success: true,
-    products,
+    products: enriched,
     pagination: {
       total,
       page: pageNum,
@@ -98,42 +102,97 @@ const getProduct = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  const ratings = await Review.find({ product: product._id })
-    .populate('user', 'name avatar')
-    .sort('-createdAt');
+  const [ratings, pricingEntries] = await Promise.all([
+    Review.find({ product: product._id }).populate('user', 'name avatar').sort('-createdAt'),
+    GlobalPricing.find({}).lean(),
+  ]);
 
-  const productObj = product.toJSON();
+  const pricingMap = buildGlobalPricingMap(pricingEntries);
+  const productObj = applyLivePrice(product.toJSON(), pricingMap);
   productObj.ratings = ratings;
 
   res.json({ success: true, product: productObj });
 };
 
+// Helper: resolve dynamic price from GlobalPricing with gram/kg unit fallback.
+// Accepts optional per-product makingCharges and gst; falls back to global defaults.
+async function resolvePrice(material, purity, unit, weightValue, makingCharges, gst) {
+  const wv = Number(weightValue);
+  if (!wv || wv <= 0) {
+    return { price: null, error: 'Weight value must be a positive number' };
+  }
+
+  const pricingEntries = await GlobalPricing.find({
+    material: String(material),
+    purity: String(purity),
+  }).lean();
+
+  if (pricingEntries.length === 0) {
+    return {
+      price: null,
+      error: `No global pricing set for ${material} / ${purity}. Set it in Pricing & Discounts first.`,
+    };
+  }
+
+  const miniMap = {};
+  for (const entry of pricingEntries) {
+    miniMap[`${entry.material}|${entry.purity}|${entry.unit}`] = entry;
+  }
+  const { pricing, effectiveWeight } = resolvePricingEntry(miniMap, String(material), String(purity), String(unit), wv);
+
+  if (!pricing) {
+    return {
+      price: null,
+      error: `No global pricing set for ${material} / ${purity} / ${unit}. Set it in Pricing & Discounts first.`,
+    };
+  }
+
+  const mc = makingCharges != null ? Number(makingCharges) : pricing.makingCharges;
+  const g = gst != null ? Number(gst) : pricing.gst;
+
+  return { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, g), error: null };
+}
+
 // @desc    Create product
 // @route   POST /api/products
 // @access  Admin
 const createProduct = async (req, res) => {
-  const { name, description, price, discountedPrice, category, material, type,
-    stock, isFeatured, tags, weight, sku, purity, isHallmarked } = req.body;
+  const { name, description, category, material, stock, isFeatured, tags, purity, weightValue, unit, makingCharges, gst } = req.body;
+
+  if (!purity) {
+    return res.status(400).json({ success: false, message: 'Purity is required' });
+  }
 
   const images = req.files && req.files.length > 0
     ? req.files.map((file) => buildImageUrl(file, 'products'))
     : [];
 
-  // Normalize empty string fields
-  const finalDiscountedPrice = discountedPrice && discountedPrice !== '' ? Number(discountedPrice) : null;
+  const finalUnit = unit || 'gram';
+  const mc = makingCharges != null ? Number(makingCharges) : 12;
+  const g = gst != null ? Number(gst) : 3;
+
+  const { price: resolvedPrice, error: priceError } = await resolvePrice(
+    material, purity, finalUnit, weightValue, mc, g
+  );
+
+  if (priceError) {
+    return res.status(400).json({ success: false, message: priceError });
+  }
 
   const product = await Product.create({
     name, description,
-    price: Number(price),
-    discountedPrice: finalDiscountedPrice,
-    category, material, type,
+    price: resolvedPrice,
+    discountedPrice: null,
+    category, material,
     stock: Number(stock),
     isFeatured: isFeatured === 'true' || isFeatured === true,
     tags: tags ? JSON.parse(tags) : [],
-    weight: weight || '',
-    sku: sku || undefined,
-    purity: purity || 'None',
-    isHallmarked: isHallmarked === 'true' || isHallmarked === true,
+    purity: String(purity),
+    pricingType: 'dynamic',
+    weightValue: Number(weightValue),
+    unit: finalUnit,
+    makingCharges: mc,
+    gst: g,
     images,
   });
 
@@ -146,21 +205,15 @@ function parseProductUpdates(body) {
   const updates = {};
   if (body.name !== undefined) updates.name = body.name;
   if (body.description !== undefined) updates.description = body.description;
-  if (body.price !== undefined) updates.price = Number(body.price);
   if (body.stock !== undefined) updates.stock = Number(body.stock);
   if (body.category !== undefined) updates.category = body.category;
   if (body.material !== undefined) updates.material = body.material;
-  if (body.type !== undefined) updates.type = body.type;
-  if (body.weight !== undefined) updates.weight = body.weight;
-  if (body.sku !== undefined) updates.sku = body.sku || undefined;
   if (body.purity !== undefined) updates.purity = body.purity;
   if (body.isFeatured !== undefined) updates.isFeatured = body.isFeatured === 'true' || body.isFeatured === true;
-  if (body.isHallmarked !== undefined) updates.isHallmarked = body.isHallmarked === 'true' || body.isHallmarked === true;
-  
-  if (body.discountedPrice !== undefined) {
-    updates.discountedPrice = (body.discountedPrice !== '' && body.discountedPrice !== null)
-      ? Number(body.discountedPrice) : null;
-  }
+  if (body.weightValue !== undefined) updates.weightValue = body.weightValue ? Number(body.weightValue) : null;
+  if (body.unit !== undefined) updates.unit = body.unit;
+  if (body.makingCharges !== undefined) updates.makingCharges = Number(body.makingCharges);
+  if (body.gst !== undefined) updates.gst = Number(body.gst);
   if (body.tags !== undefined) {
     updates.tags = typeof body.tags === 'string' ? JSON.parse(body.tags) : body.tags;
   }
@@ -178,15 +231,39 @@ const updateProduct = async (req, res) => {
 
   const updates = parseProductUpdates(req.body);
 
+  // Recalculate price whenever any pricing-critical field changes
+  const pricingChanged = updates.weightValue !== undefined ||
+    updates.material !== undefined ||
+    updates.purity !== undefined ||
+    updates.unit !== undefined;
+
+  if (pricingChanged) {
+    const wv = updates.weightValue ?? product.weightValue;
+    if (wv > 0) {
+      const mat = updates.material ?? product.material;
+      const pur = updates.purity ?? product.purity;
+      const u = updates.unit ?? product.unit;
+      const mc = updates.makingCharges ?? product.makingCharges ?? 12;
+      const g = updates.gst ?? product.gst ?? 3;
+
+      const { price: resolvedPrice, error: priceError } = await resolvePrice(mat, pur, u, wv, mc, g);
+      if (priceError) {
+        return res.status(400).json({ success: false, message: priceError });
+      }
+      updates.price = resolvedPrice;
+      updates.pricingType = 'dynamic';
+      updates.discountedPrice = null;
+    }
+  }
+
   // Handle new image uploads
   if (req.files && req.files.length > 0) {
     const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
 
-    // Delete old images from Cloudinary if replacing all
     if (req.body.replaceImages === 'true') {
       for (const img of product.images) {
         if (img.publicId) {
-          try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
+          try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
         }
       }
       updates.images = newImages;
@@ -212,10 +289,9 @@ const deleteProduct = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  // Delete images from Cloudinary
   for (const img of product.images) {
     if (img.publicId) {
-      try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { console.error('Cloudinary delete failed:', err.message); }
+      try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
     }
   }
 
@@ -241,7 +317,6 @@ const addReview = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
-  // Check for verified purchase (has a delivered order with this product)
   const Order = require('../models/Order');
   const verifiedOrder = await Order.findOne({
     user: req.user._id,
@@ -257,7 +332,6 @@ const addReview = async (req, res) => {
     { upsert: true, new: true, setDefaultsOnInsert: true }
   );
 
-  // Recompute aggregate rating
   const allReviews = await Review.find({ product: product._id });
   product.numReviews = allReviews.length;
   product.averageRating =

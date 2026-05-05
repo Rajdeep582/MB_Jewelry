@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import { FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare } from 'react-icons/fi';
 import { useSelector } from 'react-redux';

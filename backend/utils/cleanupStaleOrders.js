@@ -4,7 +4,7 @@ const logger = require('./logger');
 
 /**
  * Mark orders stuck in payment.status=pending for longer than `maxAgeMinutes`
- * as cancelled/failed. This handles abandoned checkouts where the user never
+ * as failed. This handles abandoned checkouts where the user never
  * opened the Razorpay modal or closed the browser before the SDK loaded.
  *
  * Safe to run repeatedly — guards against overwriting confirmed orders.
@@ -15,10 +15,10 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
   const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
 
   try {
-    // Find stale pending orders (not paid, not already cancelled, old enough)
+    // Find stale pending orders (not paid, not already failed, old enough)
     const staleOrders = await Order.find({
       'payment.status': 'pending',
-      orderStatus: { $ne: 'cancelled' },
+      orderStatus: { $ne: 'failed' },
       createdAt: { $lt: cutoff },
     }).select('_id payment.razorpayOrderId').lean();
 
@@ -30,7 +30,7 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
     const orderResult = await Order.updateMany(
       { _id: { $in: staleIds } },
       {
-        orderStatus: 'cancelled',
+        orderStatus: 'failed',
         'payment.status': 'failed',
         'payment.failReason': `Payment session expired after ${maxAgeMinutes} minutes`,
       }
@@ -50,7 +50,7 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
     );
 
     logger.info(
-      `Stale order cleanup: cancelled ${orderResult.modifiedCount} orders, ` +
+      `Stale order cleanup: failed ${orderResult.modifiedCount} orders, ` +
       `updated ${txResult.modifiedCount} transactions`
     );
   } catch (err) {

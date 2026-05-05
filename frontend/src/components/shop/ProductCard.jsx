@@ -29,7 +29,7 @@ export default function ProductCard({ product, view = 'grid' }) {
     setWishlisted(isWishlisted);
   }, [isWishlisted]);
 
-  const { _id, name, price, discountedPrice, images, material, type, averageRating, numReviews, stock } = product;
+  const { _id, name, price, discountedPrice, images, material, averageRating, numReviews, stock } = product;
 
   const mainImage = images?.[0]?.url ? resolveImageUrl(images[0].url) : null;
   const hoverImage = images?.[1]?.url ? resolveImageUrl(images[1].url) : null;
@@ -120,7 +120,7 @@ export default function ProductCard({ product, view = 'grid' }) {
 
         {/* Info */}
         <div className={`flex flex-col flex-1 ${isList ? 'py-1 sm:py-3 pr-2 sm:pr-4 h-32 sm:h-48' : 'p-4'}`}>
-          <p className="text-dark-400 text-[10px] sm:text-xs mb-1 uppercase tracking-wider">{material} · {type}</p>
+          <p className="text-dark-400 text-[10px] sm:text-xs mb-1 uppercase tracking-wider">{material}</p>
           <h3 className={`text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors ${isList ? 'text-sm sm:text-lg mb-1 sm:mb-2' : 'text-sm mb-1'}`}>
             {name}
           </h3>
@@ -174,7 +174,6 @@ ProductCard.propTypes = {
       })
     ),
     material: PropTypes.string,
-    type: PropTypes.string,
     averageRating: PropTypes.number,
     numReviews: PropTypes.number,
     stock: PropTypes.number.isRequired,

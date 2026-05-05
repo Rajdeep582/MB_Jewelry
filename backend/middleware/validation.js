@@ -75,12 +75,6 @@ const schemas = {
     })
   }),
 
-  facebookOAuth: Joi.object({
-    accessToken: Joi.string().required().messages({
-      'string.empty': 'Facebook access token is required'
-    })
-  }),
-
   verifyOtp: Joi.object({
     email: Joi.string().email().lowercase().trim().required().messages({
       'string.email': 'Valid email required'

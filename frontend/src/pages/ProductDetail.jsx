@@ -56,7 +56,7 @@ export default function ProductDetail() {
     );
   }
 
-  const { name, description, price, discountedPrice, images, material, type, stock, averageRating, numReviews, ratings } = product;
+  const { name, description, price, discountedPrice, images, material, stock, averageRating, numReviews, ratings } = product;
 
   const handleAddToCart = () => {
     if (stock === 0) return;
@@ -157,7 +157,6 @@ export default function ProductDetail() {
             <div>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <span className="badge badge-gold">{material}</span>
-                <span className="badge bg-dark-700 text-dark-300 border border-white/10">{type}</span>
                 {stock === 0 && <span className="badge badge-red">Out of Stock</span>}
                 {stock > 0 && stock <= 5 && <span className="badge badge-gold">Only {stock} left!</span>}
               </div>

@@ -8,8 +8,8 @@ import { selectProductsFilter } from '../../store/productSlice';
 import { categoryService } from '../../services/services';
 import { debounce } from '../../utils/helpers';
 
-const MATERIALS = ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'];
-const TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Brooch', 'Set'];
+const MATERIALS = ['Gold', 'Silver', 'Diamond'];
+const PURITIES = ['22K', '18K', '14K', 'Normal', 'Hallmarked'];
 
 function FilterSection({ title, children }) {
   const [open, setOpen] = useState(true);
@@ -169,19 +169,16 @@ export default function FilterSidebar() {
         ))}
       </FilterSection>
 
-      {/* Purity & Hallmark */}
-      <FilterSection title="Purity & Assurance">
+      {/* Purity */}
+      <FilterSection title="Purity">
         <div className="space-y-2">
-          {['24K', '22K'].map((purity) => {
+          {PURITIES.map((purity) => {
             const currentPurities = filters.purity ? filters.purity.split(',') : [];
             const isChecked = currentPurities.includes(purity);
-            // Highlight commonly searched purities if the material matches
-            const highlight = (filters.material === 'Gold' && (purity === '22K' || purity === '24K'));
-
             return (
-              <button 
+              <button
                 type="button"
-                key={purity} 
+                key={purity}
                 className="flex items-center gap-2 cursor-pointer w-fit group"
                 onClick={() => {
                   let newPurities = [...currentPurities];
@@ -205,57 +202,12 @@ export default function FilterSidebar() {
                 }`}>
                   {isChecked && <svg className="w-3 h-3 text-dark-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
                 </div>
-                <span className={`text-sm transition-colors ${(() => { if (isChecked) return 'text-white'; return highlight ? 'text-gold-200' : 'text-dark-400'; })()} group-hover:text-white`}>
+                <span className={`text-sm transition-colors ${isChecked ? 'text-white' : 'text-dark-400'} group-hover:text-white`}>
                   {purity}
                 </span>
               </button>
             );
           })}
-
-          <div className="pt-2 mt-2 border-t border-white/5">
-            <button 
-              type="button"
-              className="flex items-center justify-between cursor-pointer w-full group"
-              onClick={(e) => {
-                e.preventDefault();
-                setSearchParams(prev => {
-                  const next = new URLSearchParams(prev);
-                  if (filters.isHallmarked === 'true') next.delete('isHallmarked');
-                  else next.set('isHallmarked', 'true');
-                  next.delete('page');
-                  return next;
-                });
-              }}
-            >
-              <span className={`text-sm transition-colors ${filters.isHallmarked === 'true' ? 'text-white font-medium' : 'text-dark-400'} group-hover:text-white`}>
-                BIS Hallmarked
-              </span>
-              <div className={`w-8 h-4 rounded-full flex items-center px-0.5 transition-colors ${
-                filters.isHallmarked === 'true' ? 'bg-gold-500' : 'bg-dark-600'
-              }`}>
-                <div className={`w-3 h-3 rounded-full bg-white transition-transform ${filters.isHallmarked === 'true' ? 'translate-x-4' : 'translate-x-0'}`} />
-              </div>
-            </button>
-          </div>
-        </div>
-      </FilterSection>
-
-      {/* Type */}
-      <FilterSection title="Type">
-        <div className="flex flex-wrap gap-1.5">
-          {TYPES.map((t) => (
-            <button
-              key={t}
-              onClick={() => handleChange('type', t)}
-              className={`px-3 py-1 rounded-full text-xs transition-all border ${
-                filters.type === t
-                  ? 'bg-gold-500/15 border-gold-500/50 text-gold-400'
-                  : 'border-white/10 text-dark-400 hover:border-white/30 hover:text-white'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
         </div>
       </FilterSection>
 

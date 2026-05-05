@@ -48,6 +48,9 @@ export const categoryService = {
 export const adminService = {
   bulkUpdatePricing: (data) => api.post('/admin/bulk-pricing', data),
   bulkUpdateDiscounts: (data) => api.post('/admin/bulk-discounts', data),
+  getGlobalPricing: () => api.get('/admin/global-pricing'),
+  setGlobalPricing: (data) => api.post('/admin/global-pricing', data),
+  resyncDynamicPrices: () => api.post('/admin/resync-dynamic-prices'),
 };
 
 export const customOrderService = {

@@ -1,46 +1,62 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiEdit3, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiAlertCircle } from 'react-icons/fi';
-import { productService, categoryService } from '../../services/services';
+import { FiPlus, FiEdit3, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiAlertCircle, FiChevronDown } from 'react-icons/fi';
+import { productService, categoryService, adminService } from '../../services/services';
 import { formatPrice, resolveImageUrl } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 
-const MATERIALS = ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'];
-const TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Brooch', 'Set'];
+const MATERIALS = ['Gold', 'Silver', 'Diamond'];
+
+// Purity options per material (all dynamic-pricing compatible)
+const PURITY_OPTIONS = {
+  Gold: ['22K', '18K'],
+  Silver: ['Normal', 'Hallmarked'],
+  Diamond: ['22K', '18K', '14K'],
+};
+
+function DetailItem({ label, value, mono, gold, highlight }) {
+  return (
+    <div>
+      <p className="text-dark-500 uppercase tracking-wide text-[10px]">{label}</p>
+      <p className={`mt-0.5 text-xs font-medium truncate ${
+        gold ? 'text-gold-400' : highlight ? 'text-blue-400' : mono ? 'text-dark-300 font-mono' : 'text-dark-200'
+      }`}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+const formatDate = (dateStr) =>
+  dateStr ? new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
 function ProductForm({ product, categories, onClose, onSaved }) {
+  const validMaterials = ['Gold', 'Silver', 'Diamond'];
+  const initialMaterial = validMaterials.includes(product?.material) ? product.material : 'Gold';
+  const purityOpts = PURITY_OPTIONS[initialMaterial] || [];
+  const initialPurity = purityOpts.includes(product?.purity) ? product.purity : purityOpts[0] || '';
+  const initialUnit = product?.unit === 'kg' ? 'kg' : 'gram';
+
   const [form, setForm] = useState({
     name: product?.name || '',
     description: product?.description || '',
-    price: product?.price || '',
-    material: product?.material || 'Gold',
-    type: product?.type || 'Ring',
+    material: initialMaterial,
     category: product?.category?._id || '',
     stock: product?.stock ?? 0,
     isFeatured: product?.isFeatured || false,
-    weight: product?.weight || '',
-    sku: product?.sku || '',
-    purity: product?.purity || 'None',
-    isHallmarked: product?.isHallmarked || false,
+    purity: initialPurity,
+    weightValue: product?.weightValue || '',
+    unit: initialUnit,
+    makingCharges: product?.makingCharges ?? 12,
+    gst: product?.gst ?? 3,
   });
 
-  // Track discount as %, derive discountedPrice
-  const initDiscountPct = product?.discountedPrice && product?.price
-    ? Math.round((1 - (product.discountedPrice / product.price)) * 100)
-    : 0;
-  const [discountPercent, setDiscountPercent] = useState(initDiscountPct);
-  const [discountedPriceVal, setDiscountedPriceVal] = useState(product?.discountedPrice || '');
-
-  // New files user selected
   const [files, setFiles] = useState([]);
-  // Preview URLs for newly selected files
   const [filePreviews, setFilePreviews] = useState([]);
-  // Should replace existing images when saving
   const [replaceImages, setReplaceImages] = useState(false);
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Cleanup object URLs on unmount
   useEffect(() => {
     return () => filePreviews.forEach((u) => URL.revokeObjectURL(u));
   }, [filePreviews]);
@@ -48,7 +64,6 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   const handleFileChange = (e) => {
     const selected = Array.from(e.target.files);
     setFiles(selected);
-    // Build object URL previews
     const previews = selected.map((f) => URL.createObjectURL(f));
     setFilePreviews((prev) => {
       prev.forEach((u) => URL.revokeObjectURL(u));
@@ -65,38 +80,33 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handlePriceChange = (e) => {
-    const newPrice = Number(e.target.value);
-    const newDiscVal = discountPercent > 0 ? Math.round(newPrice - newPrice * (discountPercent / 100)) : '';
-    setForm({ ...form, price: e.target.value });
-    setDiscountedPriceVal(newDiscVal);
-  };
-
-  const handleDiscountPctChange = (e) => {
-    const pct = Math.min(99, Math.max(0, Number(e.target.value)));
-    setDiscountPercent(pct);
-    setDiscountedPriceVal(pct > 0 ? Math.round(Number(form.price) - Number(form.price) * (pct / 100)) : '');
+  const handleMaterialChange = (mat) => {
+    const opts = PURITY_OPTIONS[mat] || [];
+    setForm({ ...form, material: mat, purity: opts[0] || '' });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.category) { toast.error('Please select a category'); return; }
+    if (!form.purity) { toast.error('Please select a purity'); return; }
+    if (!form.weightValue || Number(form.weightValue) <= 0) {
+      toast.error('Enter a valid weight value');
+      return;
+    }
     setSaving(true);
 
     const fd = new FormData();
     fd.append('name', form.name);
     fd.append('description', form.description);
-    fd.append('price', form.price);
-    fd.append('discountedPrice', discountedPriceVal !== '' ? discountedPriceVal : '');
+    fd.append('weightValue', form.weightValue);
+    fd.append('unit', form.unit);
     fd.append('category', form.category);
     fd.append('material', form.material);
-    fd.append('type', form.type);
+    fd.append('purity', form.purity);
     fd.append('stock', form.stock);
     fd.append('isFeatured', form.isFeatured);
-    fd.append('weight', form.weight);
-    fd.append('sku', form.sku);
-    fd.append('purity', form.purity);
-    fd.append('isHallmarked', form.isHallmarked);
+    fd.append('makingCharges', form.makingCharges);
+    fd.append('gst', form.gst);
     fd.append('tags', JSON.stringify([]));
 
     files.forEach((f) => fd.append('images', f));
@@ -120,6 +130,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   };
 
   const existingImages = product?.images || [];
+  const currentPurities = PURITY_OPTIONS[form.material] || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -145,37 +156,43 @@ function ProductForm({ product, categories, onClose, onSaved }) {
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="input-dark resize-none" required />
           </div>
 
-          {/* Price / Discount / Stock */}
+          {/* Weight / Unit / Stock */}
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="label-dark">Price (₹) *</label>
-              <input type="number" min="0" value={form.price} onChange={handlePriceChange} className="input-dark" required />
+              <label className="label-dark">Weight Value *</label>
+              <input
+                type="number"
+                min="0.001"
+                step="0.001"
+                value={form.weightValue}
+                onChange={(e) => setForm({ ...form, weightValue: e.target.value })}
+                onWheel={(e) => e.target.blur()}
+                placeholder="e.g. 5.5"
+                className="input-dark"
+                required
+              />
             </div>
             <div>
-              <label className="label-dark">Discount (%)</label>
-              <input type="number" min="0" max="99" placeholder="0" value={discountPercent || ''} onChange={handleDiscountPctChange} className="input-dark" />
-              {discountedPriceVal !== '' && (
-                <p className="text-xs text-gold-500 mt-1">Final: ₹{discountedPriceVal}</p>
-              )}
-            </div>
-            <div>
-              <label className="label-dark">Stock *</label>
-              <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="input-dark" required />
-            </div>
-          </div>
-
-          {/* Material / Type / Category */}
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="label-dark">Material *</label>
-              <select value={form.material} onChange={(e) => setForm({ ...form, material: e.target.value, purity: 'None' })} className="input-dark">
-                {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
+              <label className="label-dark">Unit</label>
+              <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="input-dark">
+                <option value="gram">Per Gram</option>
+                <option value="kg">Per KG</option>
               </select>
             </div>
             <div>
-              <label className="label-dark">Type *</label>
-              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="input-dark">
-                {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              <label className="label-dark">Stock *</label>
+              <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} onWheel={(e) => e.target.blur()} className="input-dark" required />
+            </div>
+          </div>
+
+          <p className="text-xs text-dark-500 -mt-2">Price is auto-calculated from weight × live rate (set in Pricing &amp; Discounts)</p>
+
+          {/* Material / Category */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label-dark">Material *</label>
+              <select value={form.material} onChange={(e) => handleMaterialChange(e.target.value)} className="input-dark">
+                {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div>
@@ -187,52 +204,61 @@ function ProductForm({ product, categories, onClose, onSaved }) {
             </div>
           </div>
 
-          {/* Weight / SKU */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Metal Specifications — Purity + Charges */}
+          <div className="bg-dark-900 border border-gold-500/20 p-3 rounded-lg space-y-3">
+            <p className="text-xs text-gold-500 uppercase tracking-wider">Metal Specifications</p>
             <div>
-              <label className="label-dark">Weight (e.g. 12.5g)</label>
-              <input value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} placeholder="e.g. 5.5g" className="input-dark" />
+              <label className="label-dark">Purity *</label>
+              <select
+                value={form.purity}
+                onChange={(e) => setForm({ ...form, purity: e.target.value })}
+                className="input-dark"
+                required
+              >
+                {currentPurities.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
             </div>
-            <div>
-              <label className="label-dark">SKU (optional, unique)</label>
-              <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. GLD-RNG-001" className="input-dark" />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label-dark">Making Charges (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={form.makingCharges}
+                  onChange={(e) => setForm({ ...form, makingCharges: e.target.value })}
+                  onWheel={(e) => e.target.blur()}
+                  className="input-dark"
+                />
+              </div>
+              <div>
+                <label className="label-dark">GST (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  value={form.gst}
+                  onChange={(e) => setForm({ ...form, gst: e.target.value })}
+                  onWheel={(e) => e.target.blur()}
+                  className="input-dark"
+                />
+              </div>
             </div>
+            <p className="text-xs text-dark-600">Defaults: 12% making charges, 3% GST. Override per product if needed.</p>
           </div>
 
-          {/* Featured checkbox */}
+          {/* Featured */}
           <div className="flex items-center gap-2">
             <input type="checkbox" id="featured" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} className="accent-gold-500" />
             <label htmlFor="featured" className="text-sm text-dark-400 cursor-pointer">Mark as Featured</label>
           </div>
 
-          {/* Metal specs (Gold / Silver only) */}
-          {(form.material === 'Gold' || form.material === 'Silver') && (
-            <div className="bg-dark-900 border border-gold-500/20 p-3 rounded-lg space-y-3">
-              <p className="text-xs text-gold-500 uppercase tracking-wider">Metal Specifications</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label-dark">Purity</label>
-                  <select value={form.purity} onChange={(e) => setForm({ ...form, purity: e.target.value })} className="input-dark">
-                    <option value="None">None</option>
-                    <option value="22K">22K</option>
-                    <option value="24K">24K</option>
-                  </select>
-                </div>
-                <div className="flex items-end pb-2">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" id="hallmarked" checked={form.isHallmarked} onChange={(e) => setForm({ ...form, isHallmarked: e.target.checked })} className="accent-gold-500" />
-                    <label htmlFor="hallmarked" className="text-sm text-dark-400 cursor-pointer">Hallmark Certified</label>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Image section */}
+          {/* Images */}
           <div className="space-y-2">
             <label className="label-dark">Images</label>
 
-            {/* Existing images (edit mode) */}
             {product && existingImages.length > 0 && filePreviews.length === 0 && (
               <div>
                 <p className="text-xs text-dark-500 mb-1.5 flex items-center gap-1"><FiImage size={11}/> Current images ({existingImages.length})</p>
@@ -248,7 +274,6 @@ function ProductForm({ product, categories, onClose, onSaved }) {
               </div>
             )}
 
-            {/* New file previews */}
             {filePreviews.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -265,7 +290,6 @@ function ProductForm({ product, categories, onClose, onSaved }) {
               </div>
             )}
 
-            {/* Replace toggle (only when editing and files selected) */}
             {product && filePreviews.length > 0 && (
               <label className="flex items-center gap-2 text-xs text-dark-400 cursor-pointer">
                 <input type="checkbox" className="accent-gold-500" checked={replaceImages} onChange={(e) => setReplaceImages(e.target.checked)} />
@@ -305,6 +329,24 @@ export default function AdminProducts() {
   const [showForm, setShowForm] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0 });
+  const [expandedId, setExpandedId] = useState(null);
+  const [globalPricingData, setGlobalPricingData] = useState([]);
+
+  const toggleExpand = (id) => setExpandedId((prev) => (prev === id ? null : id));
+
+  // Tries exact unit match first, then falls back to the opposite unit (gram↔kg)
+  const getGlobalRate = (material, purity, unit) => {
+    const exact = globalPricingData.find(
+      (g) => g.material === material && g.purity === purity && g.unit === unit
+    );
+    if (exact) return { entry: exact, effectiveUnit: unit };
+    const otherUnit = unit === 'gram' ? 'kg' : 'gram';
+    const other = globalPricingData.find(
+      (g) => g.material === material && g.purity === purity && g.unit === otherUnit
+    );
+    if (other) return { entry: other, effectiveUnit: otherUnit };
+    return { entry: null, effectiveUnit: unit };
+  };
 
   useEffect(() => { document.title = 'Products — Admin'; }, []);
 
@@ -312,13 +354,15 @@ export default function AdminProducts() {
     setLoading(true);
     setError('');
     try {
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, pricingRes] = await Promise.all([
         productService.getProducts({ search: search.trim() || undefined, page: currentPage, limit: 20 }),
         categoryService.getCategories(),
+        adminService.getGlobalPricing(),
       ]);
       setProducts(prodRes.data.products);
       setPagination(prodRes.data.pagination);
       setCategories(catRes.data.categories);
+      setGlobalPricingData(pricingRes.data.pricing);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to load products');
       toast.error('Failed to load data');
@@ -327,14 +371,12 @@ export default function AdminProducts() {
     }
   }, [search, page]);
 
-  // When search changes, reset to page 1
   useEffect(() => {
     setPage(1);
     loadData(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // When page changes (but NOT on search change — handled above)
   useEffect(() => {
     loadData(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -416,49 +458,131 @@ export default function AdminProducts() {
                   </td>
                 </tr>
               ) : products.map((p) => (
-                <tr key={p._id} className="hover:bg-white/2 transition-colors">
-                  <td className="py-3 pr-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-dark-700 flex-shrink-0 flex items-center justify-center">
-                        {p.images?.[0]?.url ? (
-                          <img
-                            src={resolveImageUrl(p.images[0].url)} alt=""
-                            className="w-full h-full object-cover"
-                            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                          />
-                        ) : null}
-                        <span className="text-dark-600 text-xs hidden items-center justify-center w-full h-full"><FiImage /></span>
+                <Fragment key={p._id}>
+                  {/* Main row */}
+                  <tr
+                    onClick={() => toggleExpand(p._id)}
+                    className="hover:bg-white/2 transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg overflow-hidden bg-dark-700 flex-shrink-0 flex items-center justify-center">
+                          {p.images?.[0]?.url ? (
+                            <img
+                              src={resolveImageUrl(p.images[0].url)} alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
+                            />
+                          ) : null}
+                          <span className="text-dark-600 text-xs hidden items-center justify-center w-full h-full"><FiImage /></span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-white text-sm font-medium max-w-[150px] truncate">{p.name}</p>
+                            <FiChevronDown
+                              size={12}
+                              className={`text-dark-500 flex-shrink-0 transition-transform duration-200 ${expandedId === p._id ? 'rotate-180' : ''}`}
+                            />
+                          </div>
+                          <p className="text-dark-500 text-xs">{p.material} · {p.purity || '—'}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-white text-sm font-medium max-w-[160px] truncate">{p.name}</p>
-                        <p className="text-dark-500 text-xs">{p.material} · {p.type}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-3 pr-4 text-dark-400 text-xs">{p.category?.name || '—'}</td>
-                  <td className="py-3 pr-4">
-                    <p className="text-gold-500 text-sm">{formatPrice(p.discountedPrice || p.price)}</p>
-                    {p.discountedPrice && <p className="text-dark-500 text-xs line-through">{formatPrice(p.price)}</p>}
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span className={`badge ${p.stock === 0 ? 'badge-red' : p.stock <= 5 ? 'badge-gold' : 'badge-green'}`}>
-                      {p.stock}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <span className={`badge ${p.isFeatured ? 'badge-gold' : 'bg-dark-700 text-dark-500 border border-white/10'}`}>
-                      {p.isFeatured ? 'Yes' : 'No'}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right">
-                    <button onClick={() => openEdit(p)} className="p-2 text-dark-400 hover:text-gold-400 transition-colors" title="Edit">
-                      <FiEdit3 size={14} />
-                    </button>
-                    <button onClick={() => handleDelete(p._id, p.name)} className="p-2 text-dark-400 hover:text-red-400 transition-colors" title="Delete">
-                      <FiTrash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
+                    </td>
+                    <td className="py-3 pr-4 text-dark-400 text-xs">{p.category?.name || '—'}</td>
+                    <td className="py-3 pr-4">
+                      <p className="text-gold-500 text-sm">{formatPrice(p.discountedPrice || p.price)}</p>
+                      {p.discountedPrice && <p className="text-dark-500 text-xs line-through">{formatPrice(p.price)}</p>}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`badge ${p.stock === 0 ? 'badge-red' : p.stock <= 5 ? 'badge-gold' : 'badge-green'}`}>
+                        {p.stock}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`badge ${p.isFeatured ? 'badge-gold' : 'bg-dark-700 text-dark-500 border border-white/10'}`}>
+                        {p.isFeatured ? 'Yes' : 'No'}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right">
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(p); }} className="p-2 text-dark-400 hover:text-gold-400 transition-colors" title="Edit">
+                        <FiEdit3 size={14} />
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(p._id, p.name); }} className="p-2 text-dark-400 hover:text-red-400 transition-colors" title="Delete">
+                        <FiTrash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+
+                  {/* Expanded details row */}
+                  <AnimatePresence>
+                    {expandedId === p._id && (
+                      <motion.tr
+                        key="details"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15 }}
+                      >
+                        <td colSpan={6} className="pt-0 pb-3 px-0">
+                          <div className="mx-1 bg-dark-900/80 border border-white/8 rounded-xl p-4">
+
+                            {/* Identification */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 mb-3">
+                              <DetailItem label="Product ID" value={p.productId || '—'} mono />
+                              <DetailItem label="Category" value={p.category?.name || '—'} />
+                              <DetailItem label="Created" value={formatDate(p.createdAt)} />
+                            </div>
+
+                            <div className="border-t border-white/8 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 mb-3">
+                              <DetailItem label="Material" value={p.material} />
+                              <DetailItem label="Purity" value={p.purity || '—'} />
+                              <DetailItem
+                                label="Weight"
+                                value={p.weightValue ? `${p.weightValue} ${p.unit || 'g'}` : '—'}
+                              />
+                              <DetailItem label="Stock" value={p.stock} />
+                              <DetailItem label="Sold" value={p.sold ?? 0} />
+                              <DetailItem label="Rating" value={p.numReviews > 0 ? `${p.averageRating} ★ (${p.numReviews})` : 'No reviews'} />
+                            </div>
+
+                            {/* Pricing */}
+                            <div className="border-t border-white/8 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3">
+                              {(() => {
+                                const { entry: rate, effectiveUnit } = getGlobalRate(p.material, p.purity, p.unit || 'gram');
+                                // Product-level values take priority; fall back to global rate defaults
+                                const mc = p.makingCharges != null ? p.makingCharges : rate?.makingCharges;
+                                const gst = p.gst != null ? p.gst : rate?.gst;
+                                return (
+                                  <>
+                                    <DetailItem label="Making Charges" value={mc != null ? `${mc}%` : '—'} />
+                                    <DetailItem label="GST" value={gst != null ? `${gst}%` : '—'} />
+                                    <DetailItem label="Live Rate" value={rate ? `₹${Number(rate.livePrice).toLocaleString('en-IN')} / ${effectiveUnit}` : '—'} />
+                                    <DetailItem label="Current Price" value={formatPrice(p.discountedPrice || p.price)} gold />
+                                  </>
+                                );
+                              })()}
+                              {p.discountedPrice && (
+                                <DetailItem label="Base Price" value={formatPrice(p.price)} />
+                              )}
+                            </div>
+
+                            {/* Tags */}
+                            {p.tags?.length > 0 && (
+                              <div className="border-t border-white/8 pt-3 mt-3">
+                                <p className="text-dark-500 uppercase tracking-wide text-[10px] mb-2">Tags</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {p.tags.map((tag) => (
+                                    <span key={tag} className="text-xs bg-dark-800 text-dark-400 border border-white/10 rounded px-2 py-0.5">{tag}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </motion.tr>
+                    )}
+                  </AnimatePresence>
+                </Fragment>
               ))}
             </tbody>
           </table>

@@ -258,13 +258,6 @@ const googleLogin = (req, res) => handleOAuthLogin(req, res, 'google', async () 
   return { email: p.email, name: p.name, avatar: p.picture, providerId: p.sub, emailVerified: p.email_verified };
 });
 
-const facebookLogin = (req, res) => handleOAuthLogin(req, res, 'facebook', async () => {
-  const r = await fetch(`https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${req.body.accessToken}`);
-  const data = await r.json();
-  if (data.error) throw new Error(data.error.message);
-  return { email: data.email, name: data.name, avatar: data?.picture?.data?.url, providerId: data.id, emailVerified: true }; // FB emails act as verified if returned
-});
-
 // ─── Forgot Password / OTP Flows ───────────────────────────────────────────────
 
 const forgotPassword = async (req, res) => {
@@ -392,6 +385,6 @@ const revokeAllSessions = async (req, res) => {
 module.exports = {
   register, verifyOTP, login, logout, refreshToken, getMe,
   forgotPassword, verifyResetOtp, resetPassword,
-  googleLogin, facebookLogin,
+  googleLogin,
   getActiveSessions, revokeSession, revokeAllSessions
 };

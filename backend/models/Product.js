@@ -31,12 +31,7 @@ const productSchema = new mongoose.Schema(
     material: {
       type: String,
       required: [true, 'Material is required'],
-      enum: ['Gold', 'Silver', 'Platinum', 'Rose Gold', 'Diamond', 'Gemstone', 'Mixed'],
-    },
-    type: {
-      type: String,
-      required: [true, 'Type is required'],
-      enum: ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Brooch', 'Set'],
+      enum: ['Gold', 'Silver', 'Diamond'],
     },
     images: [
       {
@@ -56,36 +51,54 @@ const productSchema = new mongoose.Schema(
 
     averageRating: { type: Number, default: 0, min: 0, max: 5 },
     numReviews: { type: Number, default: 0 },
-    weight: { type: String, default: '' }, // e.g. "12.5g"
-    sku: { type: String, unique: true, sparse: true },
-    
-    // Jewelry Production Business standards
-    purity: { 
-      type: String, 
-      enum: ['24K', '22K', 'None'],
-      default: 'None' 
-    },
-    isHallmarked: { 
-      type: Boolean, 
-      default: false 
-    },
+
     productId: { type: String, unique: true, sparse: true },
+
+    // Purity — required for dynamic pricing; old products may not have this
+    purity: {
+      type: String,
+      enum: ['22K', '18K', '14K', 'Normal', 'Hallmarked'],
+    },
+
+    // Dynamic pricing — all new products always use dynamic pricing
+    pricingType: {
+      type: String,
+      enum: ['static', 'dynamic'],
+      default: 'dynamic',
+    },
+    weightValue: {
+      type: Number,
+      min: [0, 'Weight value cannot be negative'],
+    },
+    unit: {
+      type: String,
+      enum: ['gram', 'kg'],
+      default: 'gram',
+    },
+
+    // Per-product making charges and GST — override global defaults
+    makingCharges: {
+      type: Number,
+      default: 12,
+      min: [0, 'Making charges cannot be negative'],
+    },
+    gst: {
+      type: Number,
+      default: 3,
+      min: [0, 'GST cannot be negative'],
+    },
   },
   { timestamps: true }
 );
 
-// Indexes for performance
 productSchema.index({ category: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ material: 1 });
-productSchema.index({ type: 1 });
 productSchema.index({ purity: 1 });
-productSchema.index({ isHallmarked: 1 });
 productSchema.index({ isFeatured: 1 });
 
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 
-// Auto-generate productId
 productSchema.pre('save', function (next) {
   if (!this.productId) {
     this.productId = `PRD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -94,5 +107,3 @@ productSchema.pre('save', function (next) {
 });
 
 module.exports = mongoose.model('Product', productSchema);
-
-
