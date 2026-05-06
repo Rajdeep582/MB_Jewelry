@@ -343,4 +343,25 @@ const addReview = async (req, res) => {
   await Review.findOneAndUpdate(
     { product: product._id, user: req.user._id },
     { rating: Number(rating), comment: comment.trim(), title: title?.trim() || '', isVerifiedPurchase },
-    { upsert: true, new:
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  const allReviews = await Review.find({ product: product._id });
+  product.numReviews = allReviews.length;
+  product.averageRating =
+    allReviews.length > 0
+      ? Math.round((allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length) * 10) / 10
+      : 0;
+
+  await product.save();
+
+  res.json({
+    success: true,
+    message: 'Review submitted',
+    averageRating: product.averageRating,
+    numReviews: product.numReviews,
+    isVerifiedPurchase,
+  });
+};
+
+module.exports = { getProducts, getProduct, createProduct, updateProduct, deleteProduct, addReview };

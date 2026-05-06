@@ -178,4 +178,23 @@ const updateUserRole = async (req, res) => {
 // @access  Private
 const toggleWishlist = async (req, res) => {
   const productId = req.params.productId;
-  if (!mongoose.isValidObjectId(productId))
+  if (!mongoose.isValidObjectId(productId)) {
+    return res.status(400).json({ success: false, message: 'Invalid product ID' });
+  }
+  const user = await User.findById(req.user._id);
+  
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  const index = user.wishlist.findIndex(id => id.toString() === productId);
+  if (index === -1) {
+    user.wishlist.push(productId);
+  } else {
+    user.wishlist.splice(index, 1);
+  }
+  
+  await user.save();
+  const populatedUser = await User.findById(req.user._id).select('+sessions').populate('wishlist');
+  res.json({ success: true, user: populatedUser });
+};
+
+module.exports = { getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole, toggleWishlist };

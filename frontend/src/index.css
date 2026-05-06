@@ -231,4 +231,43 @@
   }
 
   .price-original {
-    @apply text-dark-4
+    @apply text-dark-400 line-through text-sm;
+  }
+
+  /* Overlay gradient for hero */
+  .hero-overlay {
+    background: linear-gradient(
+      to bottom,
+      rgba(13, 13, 13, 0.4) 0%,
+      rgba(13, 13, 13, 0.2) 40%,
+      rgba(13, 13, 13, 0.8) 100%
+    );
+  }
+
+  /* Star rating */
+  .star-filled { @apply text-gold-400; }
+  .star-empty  { @apply text-dark-600; }
+}
+
+/* ─── Utilities ─────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+}

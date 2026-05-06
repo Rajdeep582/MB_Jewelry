@@ -237,4 +237,20 @@ export default function AdminDashboard() {
                 <Link key={item.to} to={item.to}
                   className="flex items-center gap-3 p-2 rounded-xl bg-dark-800 hover:bg-dark-700 border border-white/5 hover:border-white/10 transition-all group"
                 >
-                  <div className="w-8 h-8 rounded
+                  <div className="w-8 h-8 rounded-lg glass-gold flex items-center justify-center">
+                    <SIcon size={14} className="text-gold-500" />
+                  </div>
+                  <span className="text-dark-300 group-hover:text-white text-sm transition-colors">{item.label}</span>
+                  <FiArrowRight size={14} className="ml-auto text-dark-600 group-hover:text-gold-400 transition-colors" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Live Calendar */}
+        <LiveCalendar />
+      </div>
+    </div>
+  );
+}

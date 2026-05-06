@@ -87,4 +87,9 @@ orderSchema.index({ createdAt: -1 });
 // Auto-generate orderId
 orderSchema.pre('save', function (next) {
   if (!this.orderId) {
-    this.orderId = `ORD-${crypto.randomBytes(4).toStrin
+    this.orderId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+  }
+  next();
+});
+
+module.exports = mongoose.model('Order', orderSchema);

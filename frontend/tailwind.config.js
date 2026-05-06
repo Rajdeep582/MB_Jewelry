@@ -110,4 +110,10 @@ export default {
         '2xl': '16px',
         '3xl': '24px',
       },
-      screens
+      screens: {
+        'xs': '475px',
+      },
+    },
+  },
+  plugins: [],
+}

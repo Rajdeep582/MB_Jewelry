@@ -69,4 +69,12 @@ const deleteCategory = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Category not found' });
   }
 
-  if (category.image?.
+  if (category.image?.publicId) {
+    try { await cloudinary.uploader.destroy(category.image.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
+  }
+
+  await category.deleteOne();
+  res.json({ success: true, message: 'Category deleted' });
+};
+
+module.exports = { getCategories, getCategory, createCategory, updateCategory, deleteCategory };
