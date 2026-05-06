@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 export default function NotFound() {
-  useEffect(() => { document.title = '404 — Page Not Found | M&B Jewelry'; }, []);
+  useEffect(() => { document.title = '404 — Page Not Found | M.B. JEWELLERS'; }, []);
 
   return (
     <div className="min-h-screen bg-dark-900 flex items-center justify-center overflow-hidden relative">

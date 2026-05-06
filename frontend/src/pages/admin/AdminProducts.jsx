@@ -397,11 +397,11 @@ export default function AdminProducts() {
   const openEdit = (p) => { setEditProduct(p); setShowForm(true); };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl text-white">Products</h1>
+          <h1 className="font-display text-xl text-white">Products</h1>
           <p className="text-dark-400 text-sm">{pagination.total} total products</p>
         </div>
         <button onClick={openCreate} className="btn-gold text-sm gap-2">

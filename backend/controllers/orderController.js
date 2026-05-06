@@ -473,7 +473,7 @@ const failPayment = async (req, res) => {
     );
 
     await Transaction.findOneAndUpdate(
-      { order: String(pendingOrderId), status: 'pending' },
+      { order: pendingOrderId, status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );
@@ -890,3 +890,4 @@ module.exports = {
   getStats,
   getDeliveryStats,
 };
+        

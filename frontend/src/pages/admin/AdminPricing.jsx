@@ -164,15 +164,15 @@ export default function AdminPricing() {
   })();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div>
-        <h1 className="font-display text-2xl text-white">Pricing &amp; Discounts</h1>
+        <h1 className="font-display text-xl text-white">Pricing &amp; Discounts</h1>
         <p className="text-dark-400 text-sm">Bulk update base prices and storewide discounts</p>
       </div>
 
       {/* === GLOBAL JEWELRY SETTINGS === */}
-      <div className="card p-5">
-        <div className="flex items-center gap-3 mb-5">
+      <div className="card p-4">
+        <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-xl bg-gold-500/10 text-gold-400 flex items-center justify-center border border-gold-500/20">
             <FiTrendingUp size={20} />
           </div>
@@ -343,11 +343,11 @@ export default function AdminPricing() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
         {/* === PRICING MODULE === */}
-        <div className="card p-5">
-          <div className="flex items-center gap-3 mb-5">
+        <div className="card p-4">
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center border border-blue-500/20">
               <FiDollarSign size={20} />
             </div>
@@ -392,8 +392,8 @@ export default function AdminPricing() {
         </div>
 
         {/* === DISCOUNT MODULE === */}
-        <div className="card p-5">
-          <div className="flex items-center gap-3 mb-5">
+        <div className="card p-4">
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-400 flex items-center justify-center border border-purple-500/20">
               <FiPercent size={20} />
             </div>

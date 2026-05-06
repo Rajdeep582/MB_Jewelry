@@ -6,7 +6,7 @@ export default function Contact() {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => { document.title = 'Contact Us — M&B Jewelry'; }, []);
+  useEffect(() => { document.title = 'Contact Us — M.B. JEWELLERS'; }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

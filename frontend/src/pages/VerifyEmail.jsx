@@ -11,7 +11,7 @@ export default function VerifyEmail() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    document.title = 'Verify Email — M&B Jewelry';
+    document.title = 'Verify Email — M.B. JEWELLERS';
     
     const verifyToken = async () => {
       try {

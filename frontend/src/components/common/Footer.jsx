@@ -145,7 +145,7 @@ export default function Footer() {
       <div className="border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
           <p className="text-dark-500 text-xs">
-            © {new Date().getFullYear()} M&B Jewelry. All rights reserved.
+            © {new Date().getFullYear()} M.B. JEWELLERS. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
             <span className="text-dark-500 text-xs">Secure payments by</span>

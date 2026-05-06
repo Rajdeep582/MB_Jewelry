@@ -36,10 +36,10 @@ export default function AdminLayout() {
       <div className="p-5 border-b border-white/10">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gold-gradient flex items-center justify-center">
-            <span className="text-dark-900 font-bold text-sm">M</span>
+            <span className="text-dark-900 font-bold text-[10px] tracking-tight">MB</span>
           </div>
           <div>
-            <p className="text-white font-display text-sm">M&B Jewelry</p>
+            <p className="text-white font-display text-sm tracking-wide">M.B. JEWELLERS</p>
             <p className="text-gold-500 text-xs">Admin Panel</p>
           </div>
         </Link>
@@ -85,7 +85,7 @@ export default function AdminLayout() {
   );
 
   return (
-    <div className="min-h-screen flex bg-dark-950">
+    <div className="admin-panel min-h-screen flex bg-dark-950">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col glass border-r border-white/10 sticky top-0 h-screen">
         {renderSidebar({})}
@@ -119,8 +119,4 @@ export default function AdminLayout() {
         {/* Page Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
           <Outlet />
-        </main>
-      </div>
-    </div>
-  );
-}
+   

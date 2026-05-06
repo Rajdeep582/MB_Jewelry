@@ -56,7 +56,7 @@ export default function Checkout() {
 
   // ─── Load addresses ───────────────────────────────────────────────────────
   useEffect(() => {
-    document.title = 'Checkout — M&B Jewelry';
+    document.title = 'Checkout — M.B. JEWELLERS';
 
     // Guard: redirect if cart is empty
     if (items.length === 0) {
@@ -159,7 +159,7 @@ export default function Checkout() {
         key:         data.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount:      data.amount,
         currency:    data.currency,
-        name:        'M&B Jewelry',
+        name:        'M.B. JEWELLERS',
         description: 'Luxury Jewelry Purchase',
         order_id:    data.razorpayOrderId,
         prefill: {

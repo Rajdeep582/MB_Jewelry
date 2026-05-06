@@ -96,6 +96,8 @@ productSchema.index({ price: 1 });
 productSchema.index({ material: 1 });
 productSchema.index({ purity: 1 });
 productSchema.index({ isFeatured: 1 });
+productSchema.index({ pricingType: 1 });                  // bulk pricing update queries
+productSchema.index({ material: 1, purity: 1, unit: 1 }); // pricing resolution lookups
 
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 

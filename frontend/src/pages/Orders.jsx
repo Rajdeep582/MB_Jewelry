@@ -559,7 +559,7 @@ function OrdersListView() {
   const [filter,    setFilter]    = useState('all');
 
   useEffect(() => {
-    document.title = 'My Orders — M&B Jewelry';
+    document.title = 'My Orders — M.B. JEWELLERS';
     orderService.getMyOrders()
       .then(res => setAllOrders(res.data.orders || []))
       .catch(() => toast.error('Failed to load orders.'))

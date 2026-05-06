@@ -712,12 +712,12 @@ export default function AdminOrders() {
     });
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl text-white">Orders</h1>
+          <h1 className="font-display text-xl text-white">Orders</h1>
           <p className="text-dark-400 text-sm mt-0.5 flex items-center gap-2">
             {loading && 'Loading…'}
             {!loading && `${total} order${total !== 1 ? 's' : ''} found`}

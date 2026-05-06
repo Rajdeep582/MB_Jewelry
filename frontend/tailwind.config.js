@@ -49,9 +49,10 @@ export default {
         },
       },
       fontFamily: {
-        sans:  ['Inter', 'system-ui', 'sans-serif'],
-        serif: ['Playfair Display', 'Georgia', 'serif'],
+        sans:    ['Inter', 'system-ui', 'sans-serif'],
+        serif:   ['Playfair Display', 'Georgia', 'serif'],
         display: ['Cormorant Garamond', 'Georgia', 'serif'],
+        jakarta: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
         'gold-gradient': 'linear-gradient(135deg, #D4AF37 0%, #F2C94C 50%, #C5973B 100%)',
@@ -109,10 +110,4 @@ export default {
         '2xl': '16px',
         '3xl': '24px',
       },
-      screens: {
-        'xs': '475px',
-      },
-    },
-  },
-  plugins: [],
-}
+      screens

@@ -101,7 +101,7 @@ export default function CustomOrder() {
   const [preferredDate,  setPreferredDate]  = useState('');
 
   useEffect(() => {
-    document.title = 'Custom Jewelry — M&B Jewelry';
+    document.title = 'Custom Jewelry — M.B. JEWELLERS';
   }, []);
 
   // Load saved addresses when reaching step 2

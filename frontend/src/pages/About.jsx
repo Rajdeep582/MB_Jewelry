@@ -14,11 +14,11 @@ const values = [
   { icon: FiAward, title: 'Craftsmanship', desc: 'Every piece is hand-finished by master artisans with decades of goldsmithing experience.' },
   { icon: FiHeart, title: 'Love For Detail', desc: 'We obsess over every facet, every curve, every shine — because perfection is in the details.' },
   { icon: FiGlobe, title: 'Ethical Sourcing', desc: 'All our diamonds and gemstones are ethically sourced with full traceability.' },
-  { icon: FiUsers, title: 'Family Heritage', desc: 'Founded by a family of jewelers, M&B carries forward three generations of artisanal tradition.' },
+  { icon: FiUsers, title: 'Family Heritage', desc: 'Founded by a family of jewelers, M.B. JEWELLERS carries forward three generations of artisanal tradition.' },
 ];
 
 export default function About() {
-  useEffect(() => { document.title = 'About Us — M&B Jewelry'; }, []);
+  useEffect(() => { document.title = 'About Us — M.B. JEWELLERS'; }, []);
 
   return (
     <div className="min-h-screen pt-20">
@@ -37,7 +37,7 @@ export default function About() {
         >
           <p className="section-subtitle mb-3">Our Heritage</p>
           <h1 className="font-display text-4xl md:text-6xl text-white font-light">
-            The M&B <span className="text-gradient-gold italic">Story</span>
+            The M.B. JEWELLERS <span className="text-gradient-gold italic">Story</span>
           </h1>
         </motion.div>
       </section>
@@ -66,7 +66,7 @@ export default function About() {
           </div>
           <div className="prose prose-invert max-w-none space-y-4 text-dark-300 text-sm md:text-base leading-relaxed">
             <p>
-              M&B Jewelry was born from a passion for creating pieces that transcend time. Founded by the 
+              M.B. JEWELLERS was born from a passion for creating pieces that transcend time. Founded by the 
               Mehta and Bose families — two lineages of master jewelers from Rajasthan and Bengal — 
               we combined our heritages to create something truly unique.
             </p>
@@ -76,7 +76,7 @@ export default function About() {
               in Mumbai employs over 50 skilled craftspeople who bring our designs to life.
             </p>
             <p>
-              Today, M&B serves customers across India and internationally, offering a seamless blend 
+              Today, M.B. JEWELLERS serves customers across India and internationally, offering a seamless blend 
               of traditional craftsmanship and contemporary design. Each purchase comes with a 
               certificate of authenticity and a lifetime warranty on craftsmanship.
             </p>

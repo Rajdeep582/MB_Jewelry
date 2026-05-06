@@ -29,7 +29,7 @@ export default function Profile() {
   });
 
   useEffect(() => {
-    document.title = 'My Profile — M&B Jewelry';
+    document.title = 'My Profile — M.B. JEWELLERS';
     userService.getProfile()
       .then((profRes) => {
         const user = profRes.data.user;

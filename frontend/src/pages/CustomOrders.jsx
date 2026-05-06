@@ -178,7 +178,7 @@ function CustomOrderDetail({ id }) {
         key:         data.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
         amount:      data.amount,
         currency:    data.currency,
-        name:        'M&B Jewelry',
+        name:        'M.B. JEWELLERS',
         description: `Custom ${order.type} — ${phase === 'advance' ? '70% Advance' : '30% Balance'}`,
         order_id:    data.razorpayOrderId,
         prefill: {
@@ -501,7 +501,7 @@ export default function CustomOrders() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    document.title = 'Custom Orders — M&B Jewelry';
+    document.title = 'Custom Orders — M.B. JEWELLERS';
     if (!id) {
       customOrderService.getMyOrders()
         .then((res) => setOrders(res.data.orders))

@@ -23,7 +23,7 @@ export default function Cart() {
   const tax = Math.round(total * 0.03);
   const grandTotal = total + shipping + tax;
 
-  useEffect(() => { document.title = 'Cart — M&B Jewelry'; }, []);
+  useEffect(() => { document.title = 'Cart — M.B. JEWELLERS'; }, []);
 
   if (items.length === 0) {
     return (

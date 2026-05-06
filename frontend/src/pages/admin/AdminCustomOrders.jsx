@@ -507,17 +507,17 @@ export default function AdminCustomOrders() {
   }, [filter, page]); // re-bind interval if filter/page changes so it uses current state
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display text-2xl text-white">Custom Orders</h1>
+          <h1 className="font-display text-xl text-white">Custom Orders</h1>
           <p className="text-dark-400 text-sm flex items-center gap-2">{total} requests total <span className="text-dark-600 text-xs flex items-center gap-1"><FiRadio size={10} className="text-green-500" /> Auto-sync 30s</span></p>
         </div>
       </div>
 
       <div className="card p-4">
         {/* Filter Tabs */}
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex flex-wrap gap-2 mb-3">
           {FILTER_OPTIONS.map(({ value, label }) => (
             <button
               key={value || 'all'}

@@ -438,7 +438,7 @@ const failCustomPayment = async (req, res) => {
       { session: failSession }
     );
     await Transaction.findOneAndUpdate(
-      { order: String(customOrderId), status: 'pending' },
+      { order: customOrderId, status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );
@@ -674,3 +674,4 @@ module.exports = {
   updateCustomOrderStatus,
   getCustomOrderStats,
 };
+        

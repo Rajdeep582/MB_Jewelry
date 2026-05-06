@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const mongoose = require('mongoose');
 
 // @desc    Get user profile
 // @route   GET /api/users/profile
@@ -111,10 +112,17 @@ const updateAddress = async (req, res) => {
 // @route   DELETE /api/users/addresses/:addressId
 // @access  Private
 const deleteAddress = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.addressId)) {
+    return res.status(400).json({ success: false, message: 'Invalid address ID' });
+  }
   const user = await User.findById(req.user._id);
+  const before = user.addresses.length;
   user.addresses = user.addresses.filter(
     (a) => a._id.toString() !== req.params.addressId
   );
+  if (user.addresses.length === before) {
+    return res.status(404).json({ success: false, message: 'Address not found' });
+  }
   await user.save();
   res.json({ success: true, addresses: user.addresses });
 };
@@ -135,6 +143,9 @@ const getAllUsers = async (req, res) => {
 // @route   PUT /api/users/:id/toggle-active
 // @access  Admin
 const toggleUserActive = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
   user.isActive = !user.isActive;
@@ -146,11 +157,14 @@ const toggleUserActive = async (req, res) => {
 // @route   PUT /api/users/:id/role
 // @access  Admin
 const updateUserRole = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
   const { role } = req.body;
   if (!['user', 'admin', 'delivery'].includes(role)) {
     return res.status(400).json({ success: false, message: 'Invalid role provided' });
   }
-  
+
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
   
@@ -164,20 +178,4 @@ const updateUserRole = async (req, res) => {
 // @access  Private
 const toggleWishlist = async (req, res) => {
   const productId = req.params.productId;
-  const user = await User.findById(req.user._id);
-  
-  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-  const index = user.wishlist.findIndex(id => id.toString() === productId);
-  if (index === -1) {
-    user.wishlist.push(productId);
-  } else {
-    user.wishlist.splice(index, 1);
-  }
-  
-  await user.save();
-  const populatedUser = await User.findById(req.user._id).select('+sessions').populate('wishlist');
-  res.json({ success: true, user: populatedUser });
-};
-
-module.exports = { getProfile, updateProfile, addAddress, updateAddress, deleteAddress, getAllUsers, toggleUserActive, updateUserRole, toggleWishlist };
+  if (!mongoose.isValidObjectId(productId))

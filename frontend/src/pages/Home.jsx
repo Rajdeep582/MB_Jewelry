@@ -40,7 +40,7 @@ export default function Home() {
   const loading = featured.length === 0;
 
   useEffect(() => {
-    document.title = 'M&B Jewelry — Luxury Fine Jewelry';
+    document.title = 'M.B. JEWELLERS — Luxury Fine Jewelry';
     dispatch(fetchFeaturedProducts());
   }, [dispatch]);
 
@@ -200,7 +200,7 @@ export default function Home() {
                   15 Years of Crafting <span className="text-gradient-gold">Masterpieces</span>
                 </h2>
                 <p className="text-dark-300 leading-relaxed mb-6">
-                  From our family workshop to the finest boutiques, every M&B piece is hand-crafted 
+                  From our family workshop to the finest boutiques, every M.B. JEWELLERS piece is hand-crafted 
                   with generations of goldsmithing expertise and an uncompromising eye for detail.
                 </p>
                 <Link to="/about" className="btn-gold text-sm">

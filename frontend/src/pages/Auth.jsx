@@ -157,7 +157,7 @@ function AuthPage({ type }) {
       'forgot-otp':     'Enter Reset Code',
       'reset-password': 'Set New Password',
     };
-    document.title = `${titles[step] || 'Auth'} — M&B Jewelry`;
+    document.title = `${titles[step] || 'Auth'} — M.B. JEWELLERS`;
   }, [type, step, dispatch]);
 
   // ── Registration form validation ────────────────────────────────────────────

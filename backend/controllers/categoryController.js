@@ -1,6 +1,9 @@
 const Category = require('../models/Category');
 const cloudinary = require('../config/cloudinary');
 const logger = require('../utils/logger');
+const mongoose = require('mongoose');
+
+const invalidId = (res) => res.status(400).json({ success: false, message: 'Invalid category ID' });
 
 // Helper: build public-facing URL from an uploaded file (works for both Cloudinary and local disk)
 const buildFileUrl = (file, folder = 'categories') => {
@@ -21,6 +24,7 @@ const getCategories = async (req, res) => {
 };
 
 const getCategory = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);
   if (!category) {
     return res.status(404).json({ success: false, message: 'Category not found' });
@@ -36,6 +40,7 @@ const createCategory = async (req, res) => {
 };
 
 const updateCategory = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);
   if (!category) {
     return res.status(404).json({ success: false, message: 'Category not found' });
@@ -58,17 +63,10 @@ const updateCategory = async (req, res) => {
 };
 
 const deleteCategory = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);
   if (!category) {
     return res.status(404).json({ success: false, message: 'Category not found' });
   }
 
-  if (category.image?.publicId) {
-    try { await cloudinary.uploader.destroy(category.image.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
-  }
-
-  await category.deleteOne();
-  res.json({ success: true, message: 'Category deleted' });
-};
-
-module.exports = { getCategories, getCategory, createCategory, updateCategory, deleteCategory };
+  if (category.image?.

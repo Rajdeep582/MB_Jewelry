@@ -51,10 +51,10 @@ export default function AdminUsers() {
 
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl text-white">Users</h1>
+          <h1 className="font-display text-xl text-white">Users</h1>
           <p className="text-dark-400 text-sm">{total} registered users</p>
         </div>
       </div>

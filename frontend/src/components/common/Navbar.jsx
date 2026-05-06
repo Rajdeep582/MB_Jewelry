@@ -70,11 +70,10 @@ export default function Navbar() {
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center shadow-gold group-hover:shadow-gold-lg transition-shadow duration-300">
-              <span className="text-dark-900 font-bold text-sm font-serif">M</span>
+              <span className="text-dark-900 font-bold text-[10px] font-serif tracking-tight">MB</span>
             </div>
-            <span className="text-xl font-display font-medium text-white">
-              M<span className="text-gradient-gold">&</span>B
-              {' '}<span className="text-sm text-dark-400 ml-1 font-sans font-normal hidden sm:inline">Jewelry</span>
+            <span className="font-display font-medium text-white tracking-wide">
+              M.B.<span className="text-gradient-gold"> JEWELLERS</span>
             </span>
           </Link>
 

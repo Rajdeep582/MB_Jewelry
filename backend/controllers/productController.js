@@ -4,6 +4,9 @@ const Review = require('../models/Review');
 const cloudinary = require('../config/cloudinary');
 const { calcDynamicPrice, buildGlobalPricingMap, applyLivePrice, resolvePricingEntry } = require('../utils/pricingUtils');
 const logger = require('../utils/logger');
+const mongoose = require('mongoose');
+
+const invalidProductId = (res) => res.status(400).json({ success: false, message: 'Invalid product ID' });
 
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
@@ -95,6 +98,7 @@ const getProducts = async (req, res) => {
 // @route   GET /api/products/:id
 // @access  Public
 const getProduct = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id)
     .populate('category', 'name slug');
 
@@ -224,6 +228,7 @@ function parseProductUpdates(body) {
 // @route   PUT /api/products/:id
 // @access  Admin
 const updateProduct = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: 'Product not found' });
@@ -284,6 +289,7 @@ const updateProduct = async (req, res) => {
 // @route   DELETE /api/products/:id
 // @access  Admin
 const deleteProduct = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id);
   if (!product) {
     return res.status(404).json({ success: false, message: 'Product not found' });
@@ -303,6 +309,7 @@ const deleteProduct = async (req, res) => {
 // @route   POST /api/products/:id/review
 // @access  Private
 const addReview = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const { rating, comment, title } = req.body;
 
   if (!rating || rating < 1 || rating > 5) {
@@ -326,28 +333,14 @@ const addReview = async (req, res) => {
   });
   const isVerifiedPurchase = !!verifiedOrder;
 
+  if (!isVerifiedPurchase) {
+    return res.status(403).json({
+      success: false,
+      message: 'Only verified purchasers can leave a review',
+    });
+  }
+
   await Review.findOneAndUpdate(
     { product: product._id, user: req.user._id },
     { rating: Number(rating), comment: comment.trim(), title: title?.trim() || '', isVerifiedPurchase },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
-
-  const allReviews = await Review.find({ product: product._id });
-  product.numReviews = allReviews.length;
-  product.averageRating =
-    allReviews.length > 0
-      ? Math.round((allReviews.reduce((sum, r) => sum + r.rating, 0) / allReviews.length) * 10) / 10
-      : 0;
-
-  await product.save();
-
-  res.json({
-    success: true,
-    message: 'Review submitted',
-    averageRating: product.averageRating,
-    numReviews: product.numReviews,
-    isVerifiedPurchase,
-  });
-};
-
-module.exports = { getProducts, getProduct, createProduct, updateProduct, deleteProduct, addReview };
+    { upsert: true, new:

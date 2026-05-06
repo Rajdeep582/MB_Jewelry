@@ -79,6 +79,7 @@ const orderSchema = new mongoose.Schema(
 // Indexes
 orderSchema.index({ user: 1 });
 orderSchema.index({ 'payment.status': 1 });
+orderSchema.index({ 'payment.razorpayOrderId': 1 }); // webhook lookup — prevents full collection scan
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ createdAt: -1 });
 
@@ -86,9 +87,4 @@ orderSchema.index({ createdAt: -1 });
 // Auto-generate orderId
 orderSchema.pre('save', function (next) {
   if (!this.orderId) {
-    this.orderId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-  }
-  next();
-});
-
-module.exports = mongoose.model('Order', orderSchema);
+    this.orderId = `ORD-${crypto.randomBytes(4).toStrin
