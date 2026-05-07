@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FiX, FiChevronDown, FiImage, FiRadio, FiDownload } from 'react-icons/fi';
-import { customOrderService } from '../../services/services';
+import { customOrderService, adminService } from '../../services/services';
 import { formatPrice, formatDate, getCustomOrderStatusColor } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -464,6 +464,9 @@ export default function AdminCustomOrders() {
   const [quoteModal,  setQuoteModal]  = useState(null);
   const [statusModal, setStatusModal] = useState(null);
   const [imgModal,    setImgModal]    = useState(null);
+  const [dpConfirmModal, setDpConfirmModal] = useState(null);
+  const [dpInput, setDpInput]   = useState('');
+  const [dpBusy,  setDpBusy]    = useState(false);
 
   useEffect(() => { document.title = 'Custom Orders — Admin'; }, []);
 
@@ -602,6 +605,9 @@ export default function AdminCustomOrders() {
                   </td>
                   <td className="py-3 pr-4">
                     <span className={getCustomOrderStatusColor(order.status)}>{STAGE_LABELS[order.status] || order.status.replace(/_/g, ' ')}</span>
+                    {order.dpConfirmedAt && order.status !== 'delivered' && (
+                      <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Delivery partner confirmed — awaiting admin" />
+                    )}
                   </td>
                   <td className="py-3 pr-4 text-dark-500 text-xs">{formatDate(order.createdAt)}</td>
                   <td className="py-3 text-right">
@@ -625,6 +631,7 @@ export default function AdminCustomOrders() {
                           Update <FiChevronDown size={12} />
                         </button>
                       )}
+
                     </div>
                   </td>
                 </tr>
@@ -650,6 +657,67 @@ export default function AdminCustomOrders() {
         {quoteModal  && <QuoteModal  order={quoteModal}               onClose={() => setQuoteModal(null)}  onSaved={loadOrders} />}
         {statusModal && <StatusModal order={statusModal}              onClose={() => setStatusModal(null)} onSaved={loadOrders} />}
         {imgModal    && <ImagesModal images={imgModal}                onClose={() => setImgModal(null)} />}
+        {dpConfirmModal && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => { setDpConfirmModal(null); setDpInput(''); }}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="bg-dark-800 border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4 space-y-4"
+              onClick={e => e.stopPropagation()}
+            >
+              <div>
+                <h3 className="text-white font-semibold">Final Delivery Confirmation</h3>
+                <p className="text-dark-400 text-sm mt-1">
+                  Delivery partner confirmed this order as delivered.
+                  {dpConfirmModal.dpNote && <span className="text-dark-500"> &ldquo;{dpConfirmModal.dpNote}&rdquo;</span>}
+                </p>
+              </div>
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-amber-400 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                Awaiting your final confirmation
+              </div>
+              <div>
+                <p className="text-xs text-dark-500 mb-1.5">Type <span className="text-white font-mono">DELIVERED</span> to confirm:</p>
+                <input
+                  value={dpInput}
+                  onChange={e => setDpInput(e.target.value)}
+                  placeholder="DELIVERED"
+                  className="w-full bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-dark-600 focus:outline-none focus:border-emerald-500/40"
+                />
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setDpConfirmModal(null); setDpInput(''); }}
+                  className="flex-1 py-2.5 rounded-xl bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  disabled={dpBusy || dpInput.trim() !== 'DELIVERED'}
+                  onClick={async () => {
+                    setDpBusy(true);
+                    try {
+                      await adminService.adminConfirmDelivery(dpConfirmModal._id, { source: 'custom_order' });
+                      toast.success('Custom order marked as delivered');
+                      setDpConfirmModal(null);
+                      setDpInput('');
+                      loadOrders(true);
+                    } catch (e) {
+                      toast.error(e.response?.data?.message || 'Failed to confirm');
+                    }
+                    setDpBusy(false);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  Confirm Delivered
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

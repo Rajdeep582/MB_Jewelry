@@ -203,7 +203,8 @@ export const { clearError, setCredentials, clearCredentials } = authSlice.action
 export const selectUser = (state) => state.auth.user;
 export const selectToken = (state) => state.auth.accessToken;
 export const selectIsAuthenticated = (state) => !!state.auth.user && !!state.auth.accessToken;
-export const selectIsAdmin = (state) => state.auth.user?.role === 'admin';
+export const selectIsAdmin    = (state) => state.auth.user?.role === 'admin';
+export const selectIsDelivery = (state) => state.auth.user?.role === 'delivery';
 export const selectAuthLoading = (state) => state.auth.loading;
 export const selectAuthError = (state) => state.auth.error;
 

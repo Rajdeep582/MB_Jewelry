@@ -8,7 +8,7 @@ export default {
     extend: {
       colors: {
         gold: {
-          50:  '#fdf8e7',
+          50: '#fdf8e7',
           100: '#f9eebd',
           200: '#f3da8a',
           300: '#ecc34f',
@@ -20,7 +20,7 @@ export default {
           900: '#6b4a12',
         },
         dark: {
-          50:  '#f5f5f5',
+          50: '#f5f5f5',
           100: '#e0e0e0',
           200: '#bdbdbd',
           300: '#9e9e9e',
@@ -33,7 +33,7 @@ export default {
           950: '#080808',
         },
         cream: {
-          50:  '#FDFBF7',
+          50: '#FDFBF7',
           100: '#F8F3E8',
           200: '#F2E9D5',
           300: '#E8D9BC',
@@ -49,8 +49,8 @@ export default {
         },
       },
       fontFamily: {
-        sans:    ['Inter', 'system-ui', 'sans-serif'],
-        serif:   ['Playfair Display', 'Georgia', 'serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        serif: ['Playfair Display', 'Georgia', 'serif'],
         display: ['Cormorant Garamond', 'Georgia', 'serif'],
         jakarta: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
       },
@@ -61,50 +61,50 @@ export default {
         'velvet-gradient': 'radial-gradient(circle at center, #742A2A 0%, #2A0A0A 100%)',
       },
       animation: {
-        'fade-in':     'fadeIn 0.5s ease-in-out',
-        'slide-up':    'slideUp 0.5s ease-out',
-        'slide-down':  'slideDown 0.3s ease-out',
+        'fade-in': 'fadeIn 0.5s ease-in-out',
+        'slide-up': 'slideUp 0.5s ease-out',
+        'slide-down': 'slideDown 0.3s ease-out',
         'slide-right': 'slideRight 0.3s ease-out',
-        'shimmer':     'shimmer 1.5s infinite',
-        'float':       'float 3s ease-in-out infinite',
-        'pulse-gold':  'pulseGold 2s ease-in-out infinite',
-        'spin-slow':   'spin 3s linear infinite',
+        'shimmer': 'shimmer 1.5s infinite',
+        'float': 'float 3s ease-in-out infinite',
+        'pulse-gold': 'pulseGold 2s ease-in-out infinite',
+        'spin-slow': 'spin 3s linear infinite',
       },
       keyframes: {
         fadeIn: {
-          '0%':   { opacity: '0' },
+          '0%': { opacity: '0' },
           '100%': { opacity: '1' },
         },
         slideUp: {
-          '0%':   { opacity: '0', transform: 'translateY(24px)' },
+          '0%': { opacity: '0', transform: 'translateY(24px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         slideDown: {
-          '0%':   { opacity: '0', transform: 'translateY(-12px)' },
+          '0%': { opacity: '0', transform: 'translateY(-12px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         slideRight: {
-          '0%':   { opacity: '0', transform: 'translateX(-12px)' },
+          '0%': { opacity: '0', transform: 'translateX(-12px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
         },
         shimmer: {
-          '0%':   { backgroundPosition: '-500px 0' },
+          '0%': { backgroundPosition: '-500px 0' },
           '100%': { backgroundPosition: '500px 0' },
         },
         float: {
           '0%, 100%': { transform: 'translateY(0px)' },
-          '50%':      { transform: 'translateY(-8px)' },
+          '50%': { transform: 'translateY(-8px)' },
         },
         pulseGold: {
           '0%, 100%': { boxShadow: '0 0 0 0 rgba(212, 175, 55, 0.4)' },
-          '50%':      { boxShadow: '0 0 0 12px rgba(212, 175, 55, 0)' },
+          '50%': { boxShadow: '0 0 0 12px rgba(212, 175, 55, 0)' },
         },
       },
       boxShadow: {
-        'gold':    '0 4px 24px rgba(212, 175, 55, 0.25)',
+        'gold': '0 4px 24px rgba(212, 175, 55, 0.25)',
         'gold-lg': '0 8px 40px rgba(212, 175, 55, 0.35)',
-        'card':    '0 2px 20px rgba(0, 0, 0, 0.3)',
-        'card-hover': '0 8px 40px rgba(116, 42, 42, 0.35)', /* velvet glow */
+        'card': '0 2px 20px rgba(0, 0, 0, 0.3)',
+        'card-hover': '0 8px 40px rgba(212, 175, 55, 0.18)', /* gold glow */
       },
       borderRadius: {
         '2xl': '16px',

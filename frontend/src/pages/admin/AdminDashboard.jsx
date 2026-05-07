@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiShoppingBag, FiPackage, FiUsers, FiDollarSign, FiArrowRight, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { orderService, userService, productService } from '../../services/services';
@@ -135,21 +135,33 @@ export default function AdminDashboard() {
   const [totalProducts, setTotalProducts] = useState(0);
   const [loading, setLoading]           = useState(true);
   const [error, setError]               = useState('');
+  const timerRef                        = useRef(null);
 
-  useEffect(() => {
-    document.title = 'Admin Dashboard — M.B. JEWELLERS';
-    Promise.all([
-      orderService.getStats(),
-      userService.getAllUsers({ page: 1, limit: 1 }),
-      productService.getProducts({ limit: 1 }),
-    ]).then(([statsRes, usersRes, productsRes]) => {
+  const fetchStats = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const [statsRes, usersRes, productsRes] = await Promise.all([
+        orderService.getStats(),
+        userService.getAllUsers({ page: 1, limit: 1 }),
+        productService.getProducts({ limit: 1 }),
+      ]);
       setStats(statsRes.data.stats);
       setTotalUsers(usersRes.data.total || 0);
       setTotalProducts(productsRes.data.pagination?.total || 0);
-    }).catch((err) => {
+      setError('');
+    } catch (err) {
       setError(err.response?.data?.message || 'Failed to load dashboard data');
-    }).finally(() => setLoading(false));
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    document.title = 'Admin Dashboard — M.B. JEWELLERS';
+    fetchStats();
+    timerRef.current = setInterval(() => fetchStats(true), 30_000);
+    return () => clearInterval(timerRef.current);
+  }, [fetchStats]);
 
 
   if (loading) {

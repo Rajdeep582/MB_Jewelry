@@ -479,57 +479,113 @@ OrderDetailView.propTypes = {
   id: PropTypes.string.isRequired,
 };
 
+// ─── Tag components ───────────────────────────────────────────────────────────
+function PayTag({ status }) {
+  const map = {
+    paid:     { bg: 'bg-emerald-500/12', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' },
+    pending:  { bg: 'bg-amber-500/12',   text: 'text-amber-400',   border: 'border-amber-500/30',   dot: 'bg-amber-400' },
+    failed:   { bg: 'bg-red-500/12',     text: 'text-red-400',     border: 'border-red-500/30',     dot: 'bg-red-400' },
+    refunded: { bg: 'bg-blue-500/12',    text: 'text-blue-400',    border: 'border-blue-500/30',    dot: 'bg-blue-400' },
+  };
+  const c = map[status] || map.pending;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold tracking-wide ${c.bg} ${c.text} ${c.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {status}
+    </span>
+  );
+}
+
+function StatusTag({ status }) {
+  const label = STATUS_LABELS[status] || status;
+  const map = {
+    confirmed:     { bg: 'bg-blue-500/12',    text: 'text-blue-400',    border: 'border-blue-500/30',    dot: 'bg-blue-400' },
+    ready_to_ship: { bg: 'bg-purple-500/12',  text: 'text-purple-400',  border: 'border-purple-500/30',  dot: 'bg-purple-400' },
+    shipped:       { bg: 'bg-sky-500/12',     text: 'text-sky-400',     border: 'border-sky-500/30',     dot: 'bg-sky-400' },
+    delivered:     { bg: 'bg-emerald-500/12', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' },
+    cancelled:     { bg: 'bg-red-500/12',     text: 'text-red-400',     border: 'border-red-500/30',     dot: 'bg-red-400' },
+  };
+  const c = map[status] || { bg: 'bg-gold-500/12', text: 'text-gold-400', border: 'border-gold-500/30', dot: 'bg-gold-400' };
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold tracking-wide ${c.bg} ${c.text} ${c.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {label}
+    </span>
+  );
+}
+
+// truncate to N words then …
+function truncateWords(str, n = 4) {
+  if (!str) return '';
+  const words = str.trim().split(/\s+/);
+  return words.length > n ? words.slice(0, n).join(' ') + '…' : str;
+}
+
 // ─── Order List Card ──────────────────────────────────────────────────────────
 function OrderCard({ order }) {
-  return (
-    <Link to={`/orders/${order._id}`} className="block card-hover p-4 group">
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="text-xs text-dark-500 mb-0.5 font-mono">
-            {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
-          </p>
-          <p className="text-dark-500 text-xs flex items-center gap-1">
-            <FiCalendar size={10} /> {formatDateTime(order.createdAt)}
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={getPaymentStatusColor(order.payment?.status)}>
-            {order.payment?.status}
-          </span>
-          <span className={getOrderStatusColor(order.orderStatus)}>
-            {STATUS_LABELS[order.orderStatus] || order.orderStatus}
-          </span>
-          <FiChevronRight size={14} className="text-dark-500 group-hover:text-gold-400 transition-colors" />
-        </div>
-      </div>
+  const firstImg   = order.items[0]?.image;
+  const extraCount = order.items.length - 1;
+  const productName = order.items[0]?.name || 'Unknown Product';
+  const allNames   = order.items.map(i => i.name).join(', ');
+  const description = truncateWords(allNames, 5);
 
-      {/* Product thumbnails */}
-      <div className="flex gap-2 mb-3">
-        {order.items.slice(0, 4).map((item, i) => (
-          <div key={i} className="w-11 h-11 rounded-lg overflow-hidden bg-dark-700 flex-shrink-0 border border-white/5">
+  return (
+    <Link to={`/orders/${order._id}`} className="block card-hover group overflow-hidden">
+      <div className="flex items-stretch">
+        {/* Left: product image */}
+        <div className="w-24 sm:w-28 flex-shrink-0 relative bg-dark-900 min-h-[100px]">
+          {firstImg ? (
             <img
-              src={resolveImageUrl(item.image) || ''}
-              alt={item.name}
-              className="w-full h-full object-cover"
+              src={resolveImageUrl(firstImg)}
+              alt={productName}
+              className="w-full h-full object-cover absolute inset-0"
               onError={e => { e.target.style.display = 'none'; }}
             />
-          </div>
-        ))}
-        {order.items.length > 4 && (
-          <div className="w-11 h-11 rounded-lg bg-dark-700 flex items-center justify-center text-dark-400 text-xs border border-white/5">
-            +{order.items.length - 4}
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="w-full h-full absolute inset-0 flex items-center justify-center">
+              <FiPackage size={20} className="text-dark-600" />
+            </div>
+          )}
+          {extraCount > 0 && (
+            <div className="absolute bottom-1.5 right-1.5 bg-dark-900/80 backdrop-blur-sm text-[10px] text-dark-300 font-medium px-1.5 py-0.5 rounded border border-white/10">
+              +{extraCount}
+            </div>
+          )}
+          <div className="absolute inset-y-0 left-0 w-0.5 bg-gold-500/0 group-hover:bg-gold-500/70 transition-all duration-300" />
+        </div>
 
-      {/* Item names */}
-      <p className="text-dark-400 text-xs mb-2 line-clamp-1">
-        {order.items.map(i => i.name).join(', ')}
-      </p>
+        {/* Right: content */}
+        <div className="flex-1 min-w-0 px-4 py-3.5 flex flex-col justify-between gap-2">
+          {/* Product name + chevron */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-white font-semibold text-sm leading-snug truncate font-display">
+                {truncateWords(productName, 4)}
+              </p>
+              {order.items.length > 1 && (
+                <p className="text-dark-500 text-[11px] truncate mt-0.5">{description}</p>
+              )}
+            </div>
+            <FiChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors flex-shrink-0 mt-0.5" />
+          </div>
 
-      <div className="flex justify-between items-center">
-        <p className="text-dark-500 text-xs">{order.items.length} item{order.items.length > 1 ? 's' : ''}</p>
-        <p className="text-gold-500 font-semibold">{formatPrice(order.totalAmount)}</p>
+          {/* Date row */}
+          <p className="text-dark-500 text-[11px] flex items-center gap-1">
+            <FiCalendar size={9} />
+            {formatDateTime(order.createdAt)}
+          </p>
+
+          {/* Bottom: tags + price */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <PayTag status={order.payment?.status} />
+              <StatusTag status={order.orderStatus} />
+            </div>
+            <span className="text-gold-400 font-bold text-sm font-jakarta flex-shrink-0">
+              {formatPrice(order.totalAmount)}
+            </span>
+          </div>
+        </div>
       </div>
     </Link>
   );
@@ -583,12 +639,12 @@ function OrdersListView() {
     <>
       {/* Filter bar */}
       {!loading && allOrders.length > 0 && (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <FiFilter size={13} className="text-dark-400" />
-            <span className="text-dark-400 text-xs">Filter by status</span>
+        <div className="mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <FiFilter size={12} className="text-dark-500" />
+            <span className="text-dark-500 text-[11px] uppercase tracking-wider">Filter</span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {FILTER_OPTIONS.map(({ value, label }) => {
               const count = counts[value] || 0;
               if (value !== 'all' && count === 0) return null;
@@ -634,7 +690,7 @@ function OrdersListView() {
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {filtered.map(order => <OrderCard key={order._id} order={order} />)}
         </div>
       )}
@@ -647,20 +703,20 @@ export default function Orders() {
   const { id } = useParams();
 
   return (
-    <div className="min-h-screen pt-24 pb-20">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-7">
+    <div className="min-h-screen pt-20 pb-16">
+      <div className="max-w-2xl mx-auto px-4 sm:px-6">
+        <div className="mb-5">
           {id && (
             <Link
               to="/orders"
-              className="text-sm text-dark-400 hover:text-gold-400 transition-colors flex items-center gap-1.5 mb-4 group"
+              className="text-xs text-dark-500 hover:text-gold-400 transition-colors flex items-center gap-1.5 mb-3 group"
             >
-              <FiArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+              <FiArrowLeft size={12} className="group-hover:-translate-x-0.5 transition-transform" />
               Back to My Orders
             </Link>
           )}
           <h1 className="section-title">{id ? 'Order Details' : 'My Orders'}</h1>
-          <div className="gold-divider mt-3 mx-0" />
+          <div className="gold-divider mt-2 mx-0" />
         </div>
 
         {id ? <OrderDetailView id={id} /> : <OrdersListView />}

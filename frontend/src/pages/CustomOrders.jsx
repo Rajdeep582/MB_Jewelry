@@ -352,7 +352,7 @@ function CustomOrderDetail({ id }) {
                   </button>
                 )}
 
-                {order.status === 'shipped' && order.finalPayment?.status !== 'paid' && (
+                {['shipped', 'final_payment_pending'].includes(order.status) && order.finalPayment?.status !== 'paid' && (
                   <>
                     <div className="mt-2 mb-2 text-center">
                       <p className="text-dark-400 text-xs">Your order has been shipped! Complete the final payment to confirm delivery.</p>

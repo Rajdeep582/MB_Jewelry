@@ -50,7 +50,21 @@ export const adminService = {
   bulkUpdateDiscounts: (data) => api.post('/admin/bulk-discounts', data),
   getGlobalPricing: () => api.get('/admin/global-pricing'),
   setGlobalPricing: (data) => api.post('/admin/global-pricing', data),
+  deleteGlobalPricing: (id) => api.delete(`/admin/global-pricing/${id}`),
   resyncDynamicPrices: () => api.post('/admin/resync-dynamic-prices'),
+  // Delivery partner management
+  getDeliveryPartners:      ()                  => api.get('/admin/delivery-partners'),
+  getUsersForDeliveryAssign: ()                 => api.get('/admin/delivery-partners/users'),
+  assignDeliveryRole:       (userId)            => api.post(`/admin/delivery-partners/${userId}/assign-role`),
+  removeDeliveryRole:       (userId)            => api.post(`/admin/delivery-partners/${userId}/remove-role`),
+  assignDeliveryAgent:      (orderId, data)     => api.patch(`/admin/orders/${orderId}/assign-delivery`, data),
+  adminConfirmDelivery:     (orderId, data)     => api.post(`/admin/orders/${orderId}/admin-confirm-delivery`, data),
+};
+
+export const deliveryService = {
+  getMyDeliveries:      ()              => api.get('/delivery/orders'),
+  updateStatus:         (id, data)      => api.patch(`/delivery/orders/${id}/status`, data),
+  confirmDelivery:      (id, data)      => api.post(`/delivery/orders/${id}/confirm`, data),
 };
 
 export const customOrderService = {

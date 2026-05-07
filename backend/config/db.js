@@ -8,6 +8,33 @@ const DB_OPTIONS = {
   minPoolSize: 2,                  // keep at least 2 warm
 };
 
+// Deduplicate GlobalPricing collection — keeps newest per material/purity/unit
+// Runs at startup; after cleanup unique index applies correctly, preventing future dupes
+const deduplicateGlobalPricing = async () => {
+  try {
+    const GlobalPricing = require('../models/GlobalPricing');
+    const all = await GlobalPricing.find({}).sort({ updatedAt: -1 }).lean();
+    const seen = new Set();
+    const toDelete = [];
+    for (const entry of all) {
+      const key = `${entry.material}|${entry.purity}|${entry.unit}`;
+      if (seen.has(key)) {
+        toDelete.push(entry._id);
+      } else {
+        seen.add(key);
+      }
+    }
+    if (toDelete.length > 0) {
+      await GlobalPricing.deleteMany({ _id: { $in: toDelete } });
+      logger.info(`🧹 GlobalPricing: removed ${toDelete.length} duplicate record(s)`);
+    }
+    // Ensure unique index is in sync after dedup
+    await GlobalPricing.syncIndexes();
+  } catch (err) {
+    logger.warn(`GlobalPricing dedup skipped: ${err.message}`);
+  }
+};
+
 // One-time category seeder — idempotent, skips existing
 const seedCategories = async () => {
   try {
@@ -34,6 +61,7 @@ const connectDB = async () => {
     try {
       const conn = await mongoose.connect(process.env.MONGO_URI, DB_OPTIONS);
       logger.info(`✅ MongoDB Connected: ${conn.connection.host} | DB: ${conn.connection.name}`);
+      await deduplicateGlobalPricing();
       await seedCategories();
       break;
     } catch (error) {

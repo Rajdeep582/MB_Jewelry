@@ -46,4 +46,9 @@ const adminOnly = (req, res, next) => {
   return res.status(403).json({ success: false, message: 'Admin access required' });
 };
 
-module.exports = { protect, adminOnly };
+const deliveryOnly = (req, res, next) => {
+  if (req.user?.role === 'delivery') return next();
+  return res.status(403).json({ success: false, message: 'Delivery partner access required' });
+};
+
+module.exports = { protect, adminOnly, deliveryOnly };

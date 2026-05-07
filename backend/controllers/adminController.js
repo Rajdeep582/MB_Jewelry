@@ -1,5 +1,9 @@
+const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const GlobalPricing = require('../models/GlobalPricing');
+const User = require('../models/User');
+const Order = require('../models/Order');
+const CustomOrder = require('../models/CustomOrder');
 const logger = require('../utils/logger');
 const { calcDynamicPrice, buildPricingKey, buildGlobalPricingMap, resolvePricingEntry } = require('../utils/pricingUtils');
 
@@ -276,10 +280,111 @@ const resyncDynamicPrices = async (req, res) => {
   });
 };
 
+// ─── Delivery Partner Management ─────────────────────────────────────────────
+
+// GET /api/admin/delivery-partners
+const getDeliveryPartners = async (req, res) => {
+  const partners = await User.find({ role: 'delivery' }).select('name email phone vehicleNumber dispatchZone createdAt isActive').lean();
+  res.json({ success: true, partners });
+};
+
+// GET /api/admin/delivery-partners/users
+const getUsersForDeliveryAssign = async (req, res) => {
+  const users = await User.find({ role: { $in: ['user', 'delivery'] }, isVerified: true })
+    .select('name email role').lean();
+  res.json({ success: true, users });
+};
+
+// POST /api/admin/delivery-partners/:id/assign-role
+const assignDeliveryRole = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+  user.role = 'delivery';
+  await user.save();
+  res.json({ success: true, message: `${user.name} assigned as delivery partner`, user });
+};
+
+// POST /api/admin/delivery-partners/:id/remove-role
+const removeDeliveryRole = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+  user.role = 'user';
+  await user.save();
+  res.json({ success: true, message: `${user.name} removed from delivery partners`, user });
+};
+
+// PATCH /api/admin/orders/:id/assign-delivery
+const assignDeliveryAgent = async (req, res) => {
+  const { agentId, source } = req.body;
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+  if (agentId && !mongoose.isValidObjectId(agentId)) {
+    return res.status(400).json({ success: false, message: 'Invalid agent ID' });
+  }
+  if (source === 'custom_order') {
+    const co = await CustomOrder.findByIdAndUpdate(
+      req.params.id, { deliveryAgent: agentId || null }, { new: true }
+    ).populate('deliveryAgent', 'name email');
+    if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
+    return res.json({ success: true, order: co });
+  }
+  const order = await Order.findByIdAndUpdate(
+    req.params.id, { deliveryAgent: agentId || null }, { new: true }
+  ).populate('deliveryAgent', 'name email');
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  res.json({ success: true, order });
+};
+
+// POST /api/admin/orders/:id/admin-confirm-delivery
+const adminConfirmDelivery = async (req, res) => {
+  const { source } = req.body;
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+  if (source === 'custom_order') {
+    const co = await CustomOrder.findById(req.params.id);
+    if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
+    if (!co.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
+    co.status = 'delivered';
+    co.deliveredAt = new Date();
+    co.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });
+    await co.save();
+    return res.json({ success: true, order: co, message: 'Order marked as delivered' });
+  }
+  const order = await Order.findById(req.params.id);
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  if (!order.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
+  order.orderStatus = 'delivered';
+  order.deliveredAt = new Date();
+  order.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });
+  await order.save();
+  res.json({ success: true, order, message: 'Order marked as delivered' });
+};
+
+const deleteGlobalPricing = async (req, res) => {
+  const deleted = await GlobalPricing.findByIdAndDelete(req.params.id);
+  if (!deleted) return res.status(404).json({ success: false, message: 'Entry not found' });
+  res.json({ success: true, message: 'Pricing entry deleted' });
+};
+
 module.exports = {
   getGlobalPricing,
   setGlobalPricing,
+  deleteGlobalPricing,
   bulkUpdatePricing,
   bulkUpdateDiscounts,
   resyncDynamicPrices,
+  getDeliveryPartners,
+  getUsersForDeliveryAssign,
+  assignDeliveryRole,
+  removeDeliveryRole,
+  assignDeliveryAgent,
+  adminConfirmDelivery,
 };

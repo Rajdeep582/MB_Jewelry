@@ -758,6 +758,9 @@ const updateOrderStatus = async (req, res) => {
   }
 
   // ── Pre-Delivery Validation ────────────────────────────────────────────────
+  if (status === 'delivered' && !order.dpConfirmedAt) {
+    return res.status(400).json({ success: false, message: 'Delivery partner must confirm delivery first before admin can mark as delivered.' });
+  }
   if (status === 'delivered' && order.payment.status !== 'paid' && paymentStatus !== 'paid') {
     return res.status(400).json({ success: false, message: 'Payment needs to be done before marking as delivered.' });
   }

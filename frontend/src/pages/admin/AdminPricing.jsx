@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { FiPercent, FiDollarSign, FiTrendingUp, FiAlertTriangle } from 'react-icons/fi';
+import { FiPercent, FiDollarSign, FiTrendingUp, FiAlertTriangle, FiTrash2 } from 'react-icons/fi';
 import { categoryService, adminService } from '../../services/services';
 import toast from 'react-hot-toast';
 
@@ -112,6 +112,16 @@ export default function AdminPricing() {
     } finally {
       setSavingGlobal(false);
       setPendingGlobalForm(null);
+    }
+  };
+
+  const handleDeleteGlobalPricing = async (id) => {
+    try {
+      await adminService.deleteGlobalPricing(id);
+      setGlobalPricingData((prev) => prev.filter((e) => e._id !== id));
+      toast.success('Pricing entry deleted');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Delete failed');
     }
   };
 
@@ -329,8 +339,15 @@ export default function AdminPricing() {
               {globalPricingData.map((entry) => (
                 <div
                   key={`${entry.material}-${entry.purity}-${entry.unit}`}
-                  className="bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-xs"
+                  className="relative bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-xs group"
                 >
+                  <button
+                    onClick={() => handleDeleteGlobalPricing(entry._id)}
+                    className="absolute top-1.5 right-1.5 text-dark-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete entry"
+                  >
+                    <FiTrash2 size={11} />
+                  </button>
                   <p className="text-dark-400">{entry.material} · {entry.purity}</p>
                   <p className="text-gold-400 font-semibold mt-0.5">
                     ₹{Number(entry.livePrice).toLocaleString('en-IN')} / {entry.unit}

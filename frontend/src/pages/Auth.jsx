@@ -193,7 +193,14 @@ function AuthPage({ type }) {
     if (result.meta.requestStatus === 'fulfilled') {
       if (type === 'login') {
         toast.success('Welcome back! 💎');
-        navigate(from, { replace: true });
+        const role = result.payload?.user?.role;
+        if (role === 'delivery') {
+          navigate('/delivery', { replace: true });
+        } else if (role === 'admin') {
+          navigate('/admin', { replace: true });
+        } else {
+          navigate(from === '/login' ? '/' : from, { replace: true });
+        }
       } else {
         toast.success('Account created! Please check your email for the OTP.');
         setStep('otp');

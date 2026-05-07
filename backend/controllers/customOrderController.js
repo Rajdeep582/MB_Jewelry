@@ -427,14 +427,17 @@ const failCustomPayment = async (req, res) => {
   if (order.user.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorised' });
 
   const failReason = reason || 'Payment cancelled by user';
-  const revertStatus = phase === 'advance' ? 'quoted' : 'final_payment_pending';
+  // For final phase: do NOT change order status (keep as 'shipped') — only reset payment flag
+  const failUpdate = phase === 'advance'
+    ? { status: 'quoted', [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: failReason }
+    : { [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: failReason };
 
   const failSession = await mongoose.startSession();
   failSession.startTransaction();
   try {
     await CustomOrder.findByIdAndUpdate(
       customOrderId,
-      { status: revertStatus, [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: failReason },
+      failUpdate,
       { session: failSession }
     );
     await Transaction.findOneAndUpdate(
@@ -557,6 +560,11 @@ function applyCustomOrderTransition(order, status) {
   // ── Guard: cannot cancel after advance payment is received ──
   if (status === 'cancelled' && order.advancePayment?.status === 'paid') {
     return { error: 'Cannot cancel order after advance payment has been received.' };
+  }
+
+  // ── Guard: delivery partner must confirm first ──
+  if (status === 'delivered' && !order.dpConfirmedAt) {
+    return { error: 'Delivery partner must confirm delivery first before admin can mark as delivered.' };
   }
 
   // ── Guard: cannot deliver unless final payment is done ──

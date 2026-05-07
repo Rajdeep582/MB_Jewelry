@@ -138,6 +138,12 @@ const customOrderSchema = new mongoose.Schema(
     trackingNumber:    { type: String, default: '' },
     deliveredAt:       { type: Date },
     trackingHistory:   [trackingStepSchema],
+
+    // ── Delivery Partner ─────────────────────────────────────────────────────
+    deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    dpConfirmedAt: { type: Date },
+    dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    dpNote:        { type: String, default: '' },
   },
   { timestamps: true }
 );

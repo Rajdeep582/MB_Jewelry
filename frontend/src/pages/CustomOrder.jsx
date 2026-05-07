@@ -79,12 +79,17 @@ export default function CustomOrder() {
 
   const [step, setStep]   = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [sizeUnit, setSizeUnit] = useState('cm');
 
-  // Step 1: Design
+  // helpers
+  const cmToInch = (v) => { const n = parseFloat(v); return isNaN(n) ? v : (n / 2.54).toFixed(2); };
+  const inchToCm = (v) => { const n = parseFloat(v); return isNaN(n) ? v : (n * 2.54).toFixed(2); };
+
+// Step 1: Design
   const [form, setForm] = useState({
     type: '', material: '', purity: 'None',
     description: '', fingerSize: '', neckSize: '',
-    wristSize: '', weight: '', budget: '',
+    wristSize: '', weight: '',
   });
 
   // Step 2: Images
@@ -276,33 +281,49 @@ export default function CustomOrder() {
                 </div>
               )}
 
-              {/* Measurements (contextual) */}
+              {/* Measurements */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {form.type === 'Ring' && (
-                  <div>
-                    <label className="label-dark" htmlFor="co-fingerSize">Finger Size <span className="text-dark-500 font-normal">(e.g. 16, US 7)</span></label>
-                    <input id="co-fingerSize" value={form.fingerSize} onChange={(e) => setForm((f) => ({ ...f, fingerSize: e.target.value }))} className="input-dark" placeholder="Optional" />
+                {/* Size — shown for all types */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="label-dark mb-0" htmlFor="co-size">
+                      {form.type === 'Ring' ? 'Finger Size' : form.type === 'Necklace' || form.type === 'Pendant' ? 'Neck Size' : 'Size'}
+                    </label>
+                    <select
+                      value={sizeUnit}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setForm(f => ({
+                          ...f,
+                          wristSize: f.wristSize ? (next === 'inch' ? cmToInch(f.wristSize) : inchToCm(f.wristSize)) : f.wristSize,
+                          neckSize:  f.neckSize  ? (next === 'inch' ? cmToInch(f.neckSize)  : inchToCm(f.neckSize))  : f.neckSize,
+                          fingerSize: f.fingerSize ? (next === 'inch' ? cmToInch(f.fingerSize) : inchToCm(f.fingerSize)) : f.fingerSize,
+                        }));
+                        setSizeUnit(next);
+                      }}
+                      className="text-xs font-semibold rounded-lg border px-3 py-1 bg-dark-800 border-gold-500/30 text-gold-400 focus:outline-none cursor-pointer"
+                    >
+                      <option value="cm">cm</option>
+                      <option value="inch">inch</option>
+                      <option value="mm">mm</option>
+                    </select>
                   </div>
-                )}
-                {['Necklace', 'Pendant'].includes(form.type) && (
-                  <div>
-                    <label className="label-dark" htmlFor="co-neckSize">Neck Size <span className="text-dark-500 font-normal">(e.g. 45 cm)</span></label>
-                    <input id="co-neckSize" value={form.neckSize} onChange={(e) => setForm((f) => ({ ...f, neckSize: e.target.value }))} className="input-dark" placeholder="Optional" />
-                  </div>
-                )}
-                {['Bracelet', 'Bangle', 'Anklet'].includes(form.type) && (
-                  <div>
-                    <label className="label-dark" htmlFor="co-wristSize">Wrist / Ankle Size <span className="text-dark-500 font-normal">(cm)</span></label>
-                    <input id="co-wristSize" value={form.wristSize} onChange={(e) => setForm((f) => ({ ...f, wristSize: e.target.value }))} className="input-dark" placeholder="Optional" />
-                  </div>
-                )}
+                  <input
+                    id="co-size"
+                    value={form.type === 'Ring' ? form.fingerSize : form.type === 'Necklace' || form.type === 'Pendant' ? form.neckSize : form.wristSize}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (form.type === 'Ring') setForm(f => ({ ...f, fingerSize: v }));
+                      else if (form.type === 'Necklace' || form.type === 'Pendant') setForm(f => ({ ...f, neckSize: v }));
+                      else setForm(f => ({ ...f, wristSize: v }));
+                    }}
+                    className="input-dark"
+                    placeholder={`Optional (${sizeUnit})`}
+                  />
+                </div>
                 <div>
                   <label className="label-dark" htmlFor="co-weight">Estimated Weight <span className="text-dark-500 font-normal">(e.g. 8–10g)</span></label>
                   <input id="co-weight" value={form.weight} onChange={(e) => setForm((f) => ({ ...f, weight: e.target.value }))} className="input-dark" placeholder="Optional" />
-                </div>
-                <div>
-                  <label className="label-dark" htmlFor="co-budget">Budget Range <span className="text-dark-500 font-normal">(e.g. ₹15,000 – ₹25,000)</span></label>
-                  <input id="co-budget" value={form.budget} onChange={(e) => setForm((f) => ({ ...f, budget: e.target.value }))} className="input-dark" placeholder="Optional" />
                 </div>
               </div>
 
@@ -439,11 +460,10 @@ export default function CustomOrder() {
                     ['Type',     form.type],
                     ['Material', form.material],
                     ['Purity',   form.purity],
-                    form.fingerSize && ['Finger Size', form.fingerSize],
-                    form.neckSize && ['Neck Size', form.neckSize],
-                    form.wristSize && ['Wrist Size', form.wristSize],
+                    form.fingerSize && ['Finger Size', `${form.fingerSize} ${sizeUnit}`],
+                    form.neckSize  && ['Neck Size',   `${form.neckSize} ${sizeUnit}`],
+                    form.wristSize && ['Wrist Size',  `${form.wristSize} ${sizeUnit}`],
                     form.weight   && ['Est. Weight', form.weight],
-                    form.budget   && ['Budget',      form.budget],
                   ].filter(Boolean).map(([k, v]) => (
                     <div key={k}>
                       <p className="text-dark-500 text-xs">{k}</p>

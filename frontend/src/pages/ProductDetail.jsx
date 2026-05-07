@@ -223,11 +223,11 @@ export default function ProductDetail() {
   const displayPrice = discountedPrice || price;
 
   return (
-    <div className="min-h-screen pt-24 pb-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen pt-20 pb-16">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs text-dark-500 mb-6">
+        <nav className="flex items-center gap-2 text-xs text-dark-500 mb-4">
           <button onClick={() => navigate('/')} className="hover:text-gold-400 transition-colors">Home</button>
           <span>/</span>
           <button onClick={() => navigate('/shop')} className="hover:text-gold-400 transition-colors">Shop</button>
@@ -245,12 +245,12 @@ export default function ProductDetail() {
         </nav>
 
         {/* Product Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-[44%_56%] gap-3 mb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-14 items-start">
 
           {/* ── Image Gallery ── */}
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-900 to-dark-950 border border-white/6 group shadow-xl"
-              style={{ aspectRatio: '4/5', maxHeight: '460px' }}
+              style={{ aspectRatio: '1/1' }}
             >
               <AnimatePresence mode="wait">
                 <motion.img
@@ -321,10 +321,10 @@ export default function ProductDetail() {
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4 }}
-            className="space-y-5"
+            className="flex flex-col gap-3.5"
           >
             {/* Badges */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="badge badge-gold">{material}</span>
               {purity && <span className="badge badge-blue">{purity}</span>}
               {stock === 0 && <span className="badge badge-red">Out of Stock</span>}
@@ -332,7 +332,7 @@ export default function ProductDetail() {
             </div>
 
             {/* Name */}
-            <h1 className="font-display text-3xl md:text-4xl text-white font-medium leading-tight tracking-tight">
+            <h1 className="font-display text-2xl md:text-3xl text-white font-medium leading-tight tracking-tight">
               {name}
             </h1>
 
@@ -340,35 +340,35 @@ export default function ProductDetail() {
             <div className="flex items-center gap-2">
               {numReviews > 0 ? (
                 <>
-                  <StarRow rating={averageRating} size={15} />
-                  <span className="text-gold-400 text-sm font-semibold font-jakarta">{averageRating}</span>
+                  <StarRow rating={averageRating} size={13} />
+                  <span className="text-gold-400 text-xs font-semibold font-jakarta">{averageRating}</span>
                   <button
                     onClick={() => document.getElementById('reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="text-dark-500 text-sm hover:text-dark-300 transition-colors"
+                    className="text-dark-500 text-xs hover:text-dark-300 transition-colors"
                   >
                     ({numReviews} {numReviews === 1 ? 'review' : 'reviews'})
                   </button>
                 </>
               ) : (
-                <span className="text-dark-500 text-sm">No reviews yet</span>
+                <span className="text-dark-600 text-xs">No reviews yet</span>
               )}
             </div>
 
             {/* Price */}
-            <div className="flex items-baseline gap-3 py-1">
-              <span className="text-3xl font-bold text-gold-500 font-jakarta">
+            <div className="flex items-baseline gap-3">
+              <span className="text-2xl md:text-3xl font-bold text-gold-500 font-jakarta">
                 {formatPrice(displayPrice)}
               </span>
               {discountedPrice && (
                 <>
-                  <span className="text-dark-500 text-lg line-through font-jakarta">{formatPrice(price)}</span>
+                  <span className="text-dark-500 text-base line-through font-jakarta">{formatPrice(price)}</span>
                   <span className="badge badge-green">Save {formatPrice(savings)}</span>
                 </>
               )}
             </div>
 
             {/* Description */}
-            <p className="text-dark-300 text-sm leading-relaxed border-t border-white/6 pt-4">
+            <p className="text-dark-400 text-sm leading-relaxed border-t border-white/6 pt-3">
               {description}
             </p>
 
@@ -376,20 +376,20 @@ export default function ProductDetail() {
             {(weightValue || purity || material) && (
               <div className="grid grid-cols-3 gap-2">
                 {material && (
-                  <div className="bg-dark-800/60 rounded-xl p-3 text-center border border-white/5">
-                    <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1">Material</p>
+                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
+                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Material</p>
                     <p className="text-white text-sm font-medium">{material}</p>
                   </div>
                 )}
                 {purity && (
-                  <div className="bg-dark-800/60 rounded-xl p-3 text-center border border-white/5">
-                    <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1">Purity</p>
+                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
+                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Purity</p>
                     <p className="text-white text-sm font-medium">{purity}</p>
                   </div>
                 )}
                 {weightValue && (
-                  <div className="bg-dark-800/60 rounded-xl p-3 text-center border border-white/5">
-                    <p className="text-[10px] text-dark-500 uppercase tracking-wider mb-1">Weight</p>
+                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
+                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Weight</p>
                     <p className="text-white text-sm font-medium">{weightValue}{unit || 'g'}</p>
                   </div>
                 )}
@@ -398,55 +398,55 @@ export default function ProductDetail() {
 
             {/* Quantity */}
             {stock > 0 && (
-              <div className="flex items-center gap-4">
-                <span className="text-sm text-dark-400">Qty</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-dark-400">Qty</span>
                 <div className="flex items-center bg-dark-800 rounded-xl border border-white/10 p-1">
                   <button
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-8 h-8 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
+                    className="w-7 h-7 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
                   >
-                    <FiMinus size={13} />
+                    <FiMinus size={12} />
                   </button>
                   <span className="w-8 text-center text-white text-sm font-semibold">{quantity}</span>
                   <button
                     onClick={() => setQuantity(Math.min(stock, quantity + 1))}
-                    className="w-8 h-8 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
+                    className="w-7 h-7 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
                   >
-                    <FiPlus size={13} />
+                    <FiPlus size={12} />
                   </button>
                 </div>
-                <span className="text-xs text-dark-500">{stock} in stock</span>
+                <span className="text-xs text-dark-600">{stock} in stock</span>
               </div>
             )}
 
             {/* CTA */}
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 id="add-to-cart-detail-btn"
                 onClick={handleAddToCart}
                 disabled={stock === 0}
-                className="flex-1 btn-gold py-4 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 btn-gold py-3 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <FiShoppingBag size={16} />
+                <FiShoppingBag size={15} />
                 {stock === 0 ? 'Out of Stock' : 'Add to Cart'}
               </button>
               <button
                 onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied!'); }}
-                className="p-4 rounded-xl bg-dark-800 border border-white/10 text-dark-400 hover:text-white transition-colors"
+                className="p-3 rounded-xl bg-dark-800 border border-white/10 text-dark-400 hover:text-white transition-colors"
                 title="Share"
               >
-                <FiShare2 size={16} />
+                <FiShare2 size={15} />
               </button>
             </div>
 
             {/* Trust badges */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div className="glass-gold rounded-xl p-3 flex items-center gap-2">
-                <FiShield size={15} className="text-gold-500 flex-shrink-0" />
+            <div className="flex gap-2">
+              <div className="glass-gold rounded-xl p-2.5 flex items-center gap-2 flex-1">
+                <FiShield size={13} className="text-gold-500 flex-shrink-0" />
                 <p className="text-xs text-dark-300">Certified Authentic</p>
               </div>
-              <div className="glass-gold rounded-xl p-3 flex items-center gap-2">
-                <FiPackage size={15} className="text-gold-500 flex-shrink-0" />
+              <div className="glass-gold rounded-xl p-2.5 flex items-center gap-2 flex-1">
+                <FiPackage size={13} className="text-gold-500 flex-shrink-0" />
                 <p className="text-xs text-dark-300">Premium Packaging</p>
               </div>
             </div>

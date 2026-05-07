@@ -103,13 +103,13 @@ export default function Shop() {
   };
 
   return (
-    <div className="min-h-screen pt-24 pb-20">
+    <div className="min-h-screen pt-20 pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-8">
-          <p className="section-subtitle mb-2">Discover</p>
+        <div className="mb-5">
+          <p className="section-subtitle mb-1">Discover</p>
           <h1 className="section-title">Our Jewelry Shop</h1>
-          <div className="gold-divider mt-3 mx-0" />
+          <div className="gold-divider mt-2 mx-0" />
         </div>
 
 

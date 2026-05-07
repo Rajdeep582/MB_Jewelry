@@ -6,6 +6,7 @@ import { FiArrowRight, FiStar, FiShield, FiTruck, FiRefreshCw } from 'react-icon
 import { fetchFeaturedProducts, selectFeaturedProducts } from '../store/productSlice';
 import ProductCard from '../components/shop/ProductCard';
 import { ProductCardSkeleton } from '../components/common/Skeletons';
+import ScrollReveal from '../components/common/ScrollReveal';
 
 const features = [
   { icon: FiShield, title: 'Certified Authentic', desc: 'All jewelry certified by independent gemologists' },
@@ -120,11 +121,11 @@ export default function Home() {
       {/* ─── Collections ────────────────────────────────────────── */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <ScrollReveal variant="up" className="text-center mb-12">
             <p className="section-subtitle mb-3">Browse By</p>
             <h2 className="section-title">Our Collections</h2>
             <div className="gold-divider mt-4" />
-          </div>
+          </ScrollReveal>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {collections.map(({ name, image, count }, i) => (
@@ -162,7 +163,7 @@ export default function Home() {
       {/* ─── Featured Products ───────────────────────────────────── */}
       <section className="py-20 bg-dark-800/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
+          <ScrollReveal variant="up" className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
             <div>
               <p className="section-subtitle mb-3">Handpicked For You</p>
               <h2 className="section-title">Featured Pieces</h2>
@@ -171,7 +172,7 @@ export default function Home() {
             <Link to="/shop" className="btn-outline-gold text-sm self-start md:self-auto">
               View All <FiArrowRight size={14} />
             </Link>
-          </div>
+          </ScrollReveal>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {loading
@@ -186,6 +187,7 @@ export default function Home() {
       {/* ─── Brand Story Banner ──────────────────────────────────── */}
       <section className="py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <ScrollReveal variant="fade">
           <div className="relative rounded-3xl overflow-hidden">
             <img
               src="https://images.unsplash.com/photo-1620843045823-5f4e028b25e9?w=1400&q=80"
@@ -209,6 +211,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+          </ScrollReveal>
         </div>
       </section>
 

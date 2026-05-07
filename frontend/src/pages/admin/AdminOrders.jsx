@@ -6,7 +6,7 @@ import {
   FiChevronUp, FiEdit2, FiFilter, FiRadio,
 } from 'react-icons/fi';
 import PropTypes from 'prop-types';
-import { orderService } from '../../services/services';
+import { orderService, adminService } from '../../services/services';
 import {
   formatPrice, formatDate, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl,
 } from '../../utils/helpers';
@@ -53,7 +53,6 @@ function formatDateTime(date) {
   });
 }
 
-/** Helper: get placeholder text for admin note input */
 function getNotePlaceholder(status) {
   if (status === 'shipped') return 'e.g. Dispatched via courier…';
   if (status === 'delivered') return 'e.g. Delivered to recipient…';
@@ -112,6 +111,82 @@ const orderPropType = PropTypes.shape({
   })),
 });
 
+// ─── DP Confirm Block ────────────────────────────────────────────────────────────
+function DpConfirmBlock({ order, source, onConfirmed }) {
+  const [input, setInput] = useState('');
+  const [modal, setModal] = useState(false);
+  const [busy, setBusy]   = useState(false);
+
+  const handleConfirm = async () => {
+    setModal(false);
+    setBusy(true);
+    try {
+      await adminService.adminConfirmDelivery(order._id, { source });
+      toast.success('Order marked as delivered');
+      onConfirmed();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Failed to confirm');
+    }
+    setBusy(false);
+    setInput('');
+  };
+
+  return (
+    <>
+      {modal && (
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+            onClick={() => setModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              className="bg-dark-800 border border-white/10 rounded-2xl p-6 w-full max-w-sm mx-4"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-white font-semibold mb-2">Final Delivery Confirmation</h3>
+              <p className="text-dark-400 text-sm mb-5">This will permanently mark the order as delivered. This cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setModal(false)} className="flex-1 py-2.5 rounded-xl bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors">Cancel</button>
+                <button onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 transition-colors">Confirm Delivered</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        </AnimatePresence>
+      )}
+      <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 space-y-2">
+        <div className="flex items-center gap-2 text-amber-400 text-xs font-medium flex-wrap">
+          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+          Delivery partner confirmed delivery — awaiting admin confirmation
+          {order.dpNote && <span className="text-dark-500 font-normal ml-1 truncate">&ldquo;{order.dpNote}&rdquo;</span>}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Type DELIVERED to confirm"
+            className="flex-1 bg-dark-900 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-dark-600 focus:outline-none focus:border-emerald-500/40"
+          />
+          <button
+            onClick={() => setModal(true)}
+            disabled={busy || input.trim() !== 'DELIVERED'}
+            className="px-3 py-2 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-xs font-medium hover:bg-emerald-600/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+DpConfirmBlock.propTypes = {
+  order:       PropTypes.object.isRequired,
+  source:      PropTypes.string.isRequired,
+  onConfirmed: PropTypes.func.isRequired,
+};
+
 // ─── Update Status Modal ────────────────────────────────────────────────────────
 function UpdateModal({ order, onClose, onSaved }) {
   const isPaid = order.payment?.status === 'paid';
@@ -159,7 +234,6 @@ function UpdateModal({ order, onClose, onSaved }) {
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         className="w-full max-w-md glass rounded-2xl p-5 shadow-2xl"
       >
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="font-display text-lg text-white">Update Order</h2>
@@ -172,7 +246,6 @@ function UpdateModal({ order, onClose, onSaved }) {
           </button>
         </div>
 
-        {/* Current state summary */}
         <div className="mb-4 flex items-center gap-3 bg-dark-900/60 border border-white/8 px-4 py-3 rounded-xl text-xs">
           <div className="flex-1">
             <p className="text-dark-500 mb-0.5">Current Status</p>
@@ -193,7 +266,6 @@ function UpdateModal({ order, onClose, onSaved }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
-          {/* Delivery status */}
           <div>
             <label htmlFor="delivery-status" className="label-dark text-xs">Delivery Status</label>
             <select
@@ -210,7 +282,6 @@ function UpdateModal({ order, onClose, onSaved }) {
             </select>
           </div>
 
-          {/* Estimated delivery date (show when shipping-related) */}
           {['ready_to_ship', 'shipped'].includes(form.status) && (
             <div>
               <label htmlFor="est-delivery-date" className="label-dark text-xs">Estimated Delivery Date</label>
@@ -224,7 +295,6 @@ function UpdateModal({ order, onClose, onSaved }) {
             </div>
           )}
 
-          {/* Comment */}
           <div>
             <label htmlFor="admin-note" className="label-dark text-xs">Admin Note <span className="text-dark-600 font-normal">(optional)</span></label>
             <input
@@ -236,7 +306,6 @@ function UpdateModal({ order, onClose, onSaved }) {
             />
           </div>
 
-          {/* Delivered confirmation */}
           {isDeliverSelected && (
             <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 space-y-2">
               <p className="text-amber-400 text-xs font-medium flex items-center gap-1.5">⚠ This action is final and irreversible</p>
@@ -278,7 +347,7 @@ UpdateModal.propTypes = {
 };
 
 // ─── Order Detail Drawer ────────────────────────────────────────────────────────
-function OrderDetailDrawer({ order, onUpdate }) {
+function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
   const [showTimeline, setShowTimeline] = useState(true);
   const reversed = [...(order.trackingHistory || [])].reverse();
 
@@ -295,7 +364,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
         {/* LEFT — Items + Pricing */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* Order items */}
           <div>
             <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FiPackage size={11} /> Order Items
@@ -324,7 +392,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
               ))}
             </div>
 
-            {/* Price breakdown */}
             <div className="border-t border-white/8 mt-4 pt-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-dark-500">
                 <span>Subtotal</span><span className="text-dark-300">{formatPrice(order.itemsPrice)}</span>
@@ -343,7 +410,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
             </div>
           </div>
 
-          {/* Payment details */}
           <div>
             <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FiCreditCard size={11} /> Payment Details
@@ -351,9 +417,7 @@ function OrderDetailDrawer({ order, onUpdate }) {
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <p className="text-dark-500 mb-0.5">Method</p>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-dark-300 font-medium">{PAYMENT_METHOD_LABELS[order.payment?.method] || order.payment?.method}</p>
-                </div>
+                <p className="text-dark-300 font-medium">{PAYMENT_METHOD_LABELS[order.payment?.method] || order.payment?.method}</p>
               </div>
               <div>
                 <p className="text-dark-500 mb-0.5">Status</p>
@@ -381,10 +445,9 @@ function OrderDetailDrawer({ order, onUpdate }) {
           </div>
         </div>
 
-        {/* RIGHT — Customer, Shipping, Timeline */}
+        {/* RIGHT — Customer, Shipping, DP Confirm, Timeline */}
         <div className="space-y-4">
 
-          {/* Customer info */}
           <div>
             <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FiUser size={11} /> Customer
@@ -407,7 +470,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
             </div>
           </div>
 
-          {/* Shipping address */}
           <div>
             <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FiMapPin size={11} /> Shipping Address
@@ -421,7 +483,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
             </div>
           </div>
 
-          {/* Delivery timestamps */}
           {(order.dispatchedAt || order.estimatedDelivery || order.deliveredAt || order.deliveryId) && (
             <div>
               <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -456,7 +517,8 @@ function OrderDetailDrawer({ order, onUpdate }) {
             </div>
           )}
 
-          {/* Status Timeline */}
+
+
           {reversed.length > 0 && (
             <div>
               <button
@@ -503,7 +565,6 @@ function OrderDetailDrawer({ order, onUpdate }) {
             </div>
           )}
 
-          {/* Quick action — hidden for delivered orders */}
           {order.orderStatus !== 'delivered' && (
             <button
               onClick={onUpdate}
@@ -519,16 +580,16 @@ function OrderDetailDrawer({ order, onUpdate }) {
 }
 
 OrderDetailDrawer.propTypes = {
-  order: orderPropType.isRequired,
-  onUpdate: PropTypes.func.isRequired,
+  order:     orderPropType.isRequired,
+  onUpdate:  PropTypes.func.isRequired,
+  onRefresh: PropTypes.func.isRequired,
 };
 
 // ─── Order Row ──────────────────────────────────────────────────────────────────
-function OrderRow({ order, onUpdate, expanded, onToggle }) {
+function OrderRow({ order, onUpdate, expanded, onToggle, onRefresh }) {
 
   return (
     <div className={`border-b border-white/5 last:border-0 transition-all duration-150 ${expanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}>
-      {/* Main row */}
       <div
         className="grid items-center gap-3 py-4 px-5 cursor-pointer select-none w-full text-left hover:bg-white/[0.015]"
         style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
@@ -536,7 +597,6 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
         tabIndex={0}
       >
-        {/* Order ID + date */}
         <div className="min-w-0">
           <p className="text-gold-400 font-mono text-xs font-semibold tracking-wide truncate">
             {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
@@ -547,14 +607,11 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
           </p>
         </div>
 
-        {/* Customer */}
         <div className="min-w-0">
           <p className="text-white text-xs font-medium truncate">{order.user?.name || '—'}</p>
           <p className="text-dark-500 text-[10px] truncate mt-0.5">{order.user?.email || '—'}</p>
         </div>
 
-
-        {/* Amount */}
         <div className="min-w-0">
           <p className="text-gold-400 font-semibold text-sm tabular-nums truncate">{formatPrice(order.totalAmount)}</p>
         </div>
@@ -565,14 +622,15 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
           </span>
         </div>
 
-        {/* Order status */}
-        <div className="min-w-0 flex items-center">
+        <div className="min-w-0 flex items-center gap-1.5">
           <span className={`${getOrderStatusColor(order.orderStatus)} capitalize truncate`}>
             {STATUS_LABELS[order.orderStatus] || order.orderStatus || '—'}
           </span>
+          {order.dpConfirmedAt && order.orderStatus !== 'delivered' && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" title="Delivery partner confirmed — awaiting admin" />
+          )}
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Order actions">
           {order.orderStatus !== 'delivered' && (
             <button
@@ -591,10 +649,9 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
         </div>
       </div>
 
-      {/* Expandable detail drawer */}
       <AnimatePresence>
         {expanded && (
-          <OrderDetailDrawer order={order} onUpdate={onUpdate} />
+          <OrderDetailDrawer order={order} onUpdate={onUpdate} onRefresh={onRefresh} />
         )}
       </AnimatePresence>
     </div>
@@ -602,10 +659,11 @@ function OrderRow({ order, onUpdate, expanded, onToggle }) {
 }
 
 OrderRow.propTypes = {
-  order: orderPropType.isRequired,
-  onUpdate: PropTypes.func.isRequired,
-  expanded: PropTypes.bool,
-  onToggle: PropTypes.func.isRequired,
+  order:     orderPropType.isRequired,
+  onUpdate:  PropTypes.func.isRequired,
+  expanded:  PropTypes.bool,
+  onToggle:  PropTypes.func.isRequired,
+  onRefresh: PropTypes.func.isRequired,
 };
 
 // ─── Main AdminOrders Page ──────────────────────────────────────────────────────
@@ -615,7 +673,7 @@ export default function AdminOrders() {
   const [error,           setError]           = useState('');
   const [statusFilter,    setStatusFilter]    = useState('');
   const [paymentFilter,   setPaymentFilter]   = useState('all');
-  const [activeQuick,     setActiveQuick]     = useState(0);           // index 0 = "All Orders"
+  const [activeQuick,     setActiveQuick]     = useState(0);
   const [search,          setSearch]          = useState('');
   const [page,            setPage]            = useState(1);
   const [total,           setTotal]           = useState(0);
@@ -631,13 +689,9 @@ export default function AdminOrders() {
     orderService.getStats().then(res => setStats(res.data.stats)).catch(() => {});
   }, []);
 
-  // Mark the currently active filter as "seen" whenever stats update or filter changes
   useEffect(() => {
     if (stats?.statusCounts && statusFilter) {
-      setSeenCounts(prev => ({
-        ...prev,
-        [statusFilter]: stats.statusCounts[statusFilter]
-      }));
+      setSeenCounts(prev => ({ ...prev, [statusFilter]: stats.statusCounts[statusFilter] }));
     }
   }, [stats, statusFilter]);
 
@@ -663,7 +717,6 @@ export default function AdminOrders() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  // 30s auto-sync
   useEffect(() => {
     const interval = setInterval(() => loadOrders(true), 30_000);
     return () => clearInterval(interval);
@@ -694,7 +747,6 @@ export default function AdminOrders() {
     setActiveQuick(match);
   };
 
-  // Client-side search + exclude failed/cancelled
   const displayed = orders
     .filter(o => !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus))
     .filter(o => {
@@ -714,7 +766,6 @@ export default function AdminOrders() {
   return (
     <div className="space-y-4">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-xl text-white">Orders</h1>
@@ -740,10 +791,7 @@ export default function AdminOrders() {
         </div>
       </div>
 
-      {/* ── Filters card ─────────────────────────────────────────────────────── */}
       <div className="card p-4 space-y-4">
-
-        {/* Quick filter pills */}
         <div className="flex flex-wrap gap-2">
           {QUICK_FILTERS.map((f, idx) => (
             <button
@@ -763,9 +811,7 @@ export default function AdminOrders() {
           ))}
         </div>
 
-        {/* Advanced controls row */}
         <div className="flex flex-wrap gap-3 items-center">
-          {/* Search */}
           <div className="relative flex-1 min-w-[180px]">
             <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
             <input
@@ -782,7 +828,6 @@ export default function AdminOrders() {
             )}
           </div>
 
-          {/* Status dropdown */}
           <div className="flex items-center gap-1.5">
             <FiFilter size={12} className="text-dark-500" />
             <select
@@ -796,7 +841,6 @@ export default function AdminOrders() {
             </select>
           </div>
 
-          {/* Payment dropdown */}
           <select
             value={paymentFilter}
             onChange={e => handlePaymentFilterChange(e.target.value)}
@@ -809,7 +853,6 @@ export default function AdminOrders() {
           </select>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="flex items-center gap-2 text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 text-sm">
             <FiAlertCircle size={14} /> {error}
@@ -817,10 +860,7 @@ export default function AdminOrders() {
         )}
       </div>
 
-      {/* ── Orders table ─────────────────────────────────────────────────────── */}
       <div className="card overflow-hidden">
-
-        {/* Table header */}
         <div
           className="grid gap-3 py-3 px-5 border-b border-white/8 text-dark-500 text-[10px] uppercase tracking-widest font-semibold"
           style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
@@ -833,7 +873,6 @@ export default function AdminOrders() {
           <span />
         </div>
 
-        {/* Rows */}
         {loading && (
           Array.from({ length: 8 }).map((_, idx) => (
             <div key={`skeleton-${idx}`} className="border-b border-white/5 px-4 py-3.5">
@@ -853,11 +892,11 @@ export default function AdminOrders() {
             expanded={expandedRow === order._id}
             onToggle={() => setExpandedRow(prev => prev === order._id ? null : order._id)}
             onUpdate={() => { setActiveModal(order); setExpandedRow(null); }}
+            onRefresh={() => loadOrders(true)}
           />
         ))}
       </div>
 
-      {/* ── Pagination ───────────────────────────────────────────────────────── */}
       {pages > 1 && (
         <div className="flex justify-center gap-2">
           {Array.from({ length: pages }, (_, i) => i + 1).map(p => (
@@ -876,7 +915,6 @@ export default function AdminOrders() {
         </div>
       )}
 
-      {/* ── Update Modal ─────────────────────────────────────────────────────── */}
       <AnimatePresence>
         {activeModal && (
           <UpdateModal
