@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import PropTypes from 'prop-types';
 import {
   FiPackage, FiTruck, FiCheckCircle, FiSearch, FiRefreshCw,
   FiMapPin, FiPhone, FiUser, FiAlertCircle, FiDownload, FiX,
@@ -20,7 +21,7 @@ function fmt(d) {
 
 function maskId(uuid) {
   if (!uuid) return null;
-  return `MB-${uuid.replace(/-/g, '').slice(-8).toUpperCase()}`;
+  return `MB-${uuid.replaceAll('-', '').slice(-8).toUpperCase()}`;
 }
 
 function normalise(raw, type) {
@@ -133,6 +134,11 @@ function ProfileDrawer({ onClose }) {
       <p className={`text-sm text-white ${mono ? 'font-mono' : ''}`}>{value || '—'}</p>
     </div>
   );
+  Field.propTypes = {
+    label: PropTypes.string.isRequired,
+    value: PropTypes.string,
+    mono:  PropTypes.bool,
+  };
 
   const genderLabel = { male: 'Male', female: 'Female', other: 'Other' };
 
@@ -182,7 +188,7 @@ function ProfileDrawer({ onClose }) {
 
         {loading ? (
           <div className="p-5 space-y-4">
-            {[...Array(5)].map((_, i) => (
+            {[...new Array(5)].map((_, i) => (
               <div key={i} className="space-y-1.5">
                 <div className="h-3 w-20 bg-dark-700 rounded animate-pulse" />
                 <div className="h-4 w-36 bg-dark-800 rounded animate-pulse" />
@@ -209,8 +215,9 @@ function ProfileDrawer({ onClose }) {
               /* ── Edit form ── */
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs text-dark-500 uppercase tracking-wide">Name</label>
+                  <label htmlFor="dp-edit-name" className="text-xs text-dark-500 uppercase tracking-wide">Name</label>
                   <input
+                    id="dp-edit-name"
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                     maxLength={50}
@@ -218,8 +225,9 @@ function ProfileDrawer({ onClose }) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-dark-500 uppercase tracking-wide">Gender</label>
+                  <label htmlFor="dp-edit-gender" className="text-xs text-dark-500 uppercase tracking-wide">Gender</label>
                   <select
+                    id="dp-edit-gender"
                     value={form.gender}
                     onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
                     className="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
@@ -231,8 +239,9 @@ function ProfileDrawer({ onClose }) {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs text-dark-500 uppercase tracking-wide">Mobile Number</label>
+                  <label htmlFor="dp-edit-phone" className="text-xs text-dark-500 uppercase tracking-wide">Mobile Number</label>
                   <input
+                    id="dp-edit-phone"
                     value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                     type="tel"
@@ -284,6 +293,10 @@ function ProfileDrawer({ onClose }) {
     </motion.div>
   );
 }
+
+ProfileDrawer.propTypes = {
+  onClose: PropTypes.func.isRequired,
+};
 
 /* ── PDF Invoice ─────────────────────────────────────────────────────────────── */
 
@@ -345,6 +358,13 @@ function ConfirmModal({ onConfirm, onClose, title, message }) {
     </motion.div>
   );
 }
+
+ConfirmModal.propTypes = {
+  onConfirm: PropTypes.func.isRequired,
+  onClose:   PropTypes.func.isRequired,
+  title:     PropTypes.string.isRequired,
+  message:   PropTypes.string.isRequired,
+};
 
 /* ── Delivery Card ───────────────────────────────────────────────────────────── */
 
@@ -493,6 +513,35 @@ function DeliveryCard({ item, onStatusUpdate, onConfirm }) {
     </>
   );
 }
+
+DeliveryCard.propTypes = {
+  item:           PropTypes.shape({
+    _id:           PropTypes.string.isRequired,
+    _source:       PropTypes.string.isRequired,
+    rawStatus:     PropTypes.string,
+    displayId:     PropTypes.string,
+    customer:      PropTypes.shape({
+      name:  PropTypes.string,
+      phone: PropTypes.string,
+    }),
+    address:       PropTypes.shape({
+      addressLine1: PropTypes.string,
+      city:         PropTypes.string,
+      state:        PropTypes.string,
+      pincode:      PropTypes.string,
+    }),
+    items:         PropTypes.arrayOf(PropTypes.shape({
+      name:     PropTypes.string,
+      quantity: PropTypes.number,
+      price:    PropTypes.number,
+    })),
+    total:         PropTypes.number,
+    createdAt:     PropTypes.string,
+    dpConfirmedAt: PropTypes.string,
+  }).isRequired,
+  onStatusUpdate: PropTypes.func.isRequired,
+  onConfirm:      PropTypes.func.isRequired,
+};
 
 /* ── Main Page ───────────────────────────────────────────────────────────────── */
 

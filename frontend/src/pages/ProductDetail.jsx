@@ -14,6 +14,7 @@ import { productService } from '../services/services';
 import { ProductDetailSkeleton } from '../components/common/Skeletons';
 import ProductCard from '../components/shop/ProductCard';
 import toast from 'react-hot-toast';
+import PropTypes from 'prop-types';
 
 // ── Star Row ──────────────────────────────────────────────────────────────────
 function StarRow({ rating, size = 14, interactive = false, hoverRating = 0, onHover, onClick }) {
@@ -40,6 +41,15 @@ function StarRow({ rating, size = 14, interactive = false, hoverRating = 0, onHo
     </div>
   );
 }
+
+StarRow.propTypes = {
+  rating:      PropTypes.number.isRequired,
+  size:        PropTypes.number,
+  interactive: PropTypes.bool,
+  hoverRating: PropTypes.number,
+  onHover:     PropTypes.func,
+  onClick:     PropTypes.func,
+};
 
 // ── Review Card ───────────────────────────────────────────────────────────────
 function ReviewCard({ review }) {
@@ -76,6 +86,19 @@ function ReviewCard({ review }) {
     </motion.div>
   );
 }
+
+ReviewCard.propTypes = {
+  review: PropTypes.shape({
+    user: PropTypes.shape({
+      name: PropTypes.string,
+    }),
+    isVerifiedPurchase: PropTypes.bool,
+    createdAt:          PropTypes.string,
+    rating:             PropTypes.number,
+    title:              PropTypes.string,
+    comment:            PropTypes.string,
+  }).isRequired,
+};
 
 // ── All Reviews Modal ─────────────────────────────────────────────────────────
 function AllReviewsModal({ reviews, onClose, productName, averageRating, numReviews }) {
@@ -133,6 +156,14 @@ function AllReviewsModal({ reviews, onClose, productName, averageRating, numRevi
   );
 }
 
+AllReviewsModal.propTypes = {
+  reviews:       PropTypes.arrayOf(PropTypes.object).isRequired,
+  onClose:       PropTypes.func.isRequired,
+  productName:   PropTypes.string,
+  averageRating: PropTypes.number,
+  numReviews:    PropTypes.number,
+};
+
 // ── Related Products Slider ───────────────────────────────────────────────────
 function RelatedProducts({ categoryId, currentProductId }) {
   const [products, setProducts] = useState([]);
@@ -186,7 +217,7 @@ function RelatedProducts({ categoryId, currentProductId }) {
 
       {loading ? (
         <div className="flex gap-4 overflow-hidden">
-          {[...Array(4)].map((_, i) => (
+          {[...new Array(4)].map((_, i) => (
             <div key={i} className="flex-shrink-0 w-56 h-72 rounded-2xl bg-dark-800 animate-pulse" />
           ))}
         </div>
@@ -211,6 +242,11 @@ function RelatedProducts({ categoryId, currentProductId }) {
     </section>
   );
 }
+
+RelatedProducts.propTypes = {
+  categoryId:       PropTypes.string,
+  currentProductId: PropTypes.string,
+};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductDetail() {
@@ -545,8 +581,7 @@ export default function ProductDetail() {
             <div>
               <p className="section-subtitle mb-1">What Customers Say</p>
               <h2 className="font-display text-2xl text-white">
-                Reviews
-                <span className="text-dark-500 text-base font-sans font-normal ml-2">({numReviews})</span>
+                Reviews{' '}<span className="text-dark-500 text-base font-sans font-normal ml-2">({numReviews})</span>
               </h2>
             </div>
             {numReviews > 3 && (

@@ -152,7 +152,7 @@ OrderProgressStepper.propTypes = {
 
 // ─── Timeline Entry ───────────────────────────────────────────────────────────
 function TimelineEntry({ entry, isFirst, isLast }) {
-  const label = STATUS_LABELS[entry.status] || entry.status.replaceAll(/_/g, ' ');
+  const label = STATUS_LABELS[entry.status] || entry.status.replaceAll('_', ' ');
   return (
     <div className="flex gap-4">
       {/* spine */}
@@ -444,7 +444,7 @@ function OrderDetailView({ id }) {
               <div>
                 <p className="text-dark-500 text-xs mb-0.5">Tracking Number</p>
                 <p className="text-white text-sm font-mono">
-                  MB-{order.deliveryId.replace(/-/g, '').slice(-8).toUpperCase()}
+                  MB-{order.deliveryId.replaceAll('-', '').slice(-8).toUpperCase()}
                 </p>
               </div>
             )}
@@ -509,6 +509,10 @@ function PayTag({ status }) {
   );
 }
 
+PayTag.propTypes = {
+  status: PropTypes.string.isRequired,
+};
+
 function StatusTag({ status }) {
   const label = STATUS_LABELS[status] || status;
   const map = {
@@ -526,6 +530,10 @@ function StatusTag({ status }) {
     </span>
   );
 }
+
+StatusTag.propTypes = {
+  status: PropTypes.string.isRequired,
+};
 
 // truncate to N words then …
 function truncateWords(str, n = 4) {

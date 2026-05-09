@@ -49,6 +49,10 @@ function StepIndicator({ current }) {
   );
 }
 
+StepIndicator.propTypes = {
+  current: PropTypes.number.isRequired,
+};
+
 // ─── Option Button ────────────────────────────────────────────────────────────
 function OptionBtn({ active, onClick, children }) {
   return (
@@ -82,8 +86,8 @@ export default function CustomOrder() {
   const [sizeUnit, setSizeUnit] = useState('cm');
 
   // helpers
-  const cmToInch = (v) => { const n = parseFloat(v); return isNaN(n) ? v : (n / 2.54).toFixed(2); };
-  const inchToCm = (v) => { const n = parseFloat(v); return isNaN(n) ? v : (n * 2.54).toFixed(2); };
+  const cmToInch = (v) => { const n = Number.parseFloat(v); return Number.isNaN(n) ? v : (n / 2.54).toFixed(2); };
+  const inchToCm = (v) => { const n = Number.parseFloat(v); return Number.isNaN(n) ? v : (n * 2.54).toFixed(2); };
 
 // Step 1: Design
   const [form, setForm] = useState({
@@ -245,7 +249,7 @@ export default function CustomOrder() {
 
               {/* Jewelry Type */}
               <div>
-                <label className="label-dark">Jewelry Type <span className="text-red-400">*</span></label>
+                <p className="label-dark">Jewelry Type <span className="text-red-400">*</span></p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {JEWELRY_TYPES.map((t) => (
                     <OptionBtn key={t} active={form.type === t} onClick={() => setForm((f) => ({ ...f, type: t }))}>
@@ -257,7 +261,7 @@ export default function CustomOrder() {
 
               {/* Material */}
               <div>
-                <label className="label-dark">Material <span className="text-red-400">*</span></label>
+                <p className="label-dark">Material <span className="text-red-400">*</span></p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   {MATERIALS.map((m) => (
                     <OptionBtn key={m} active={form.material === m} onClick={() => setForm((f) => ({ ...f, material: m, purity: 'None' }))}>
@@ -270,7 +274,7 @@ export default function CustomOrder() {
               {/* Purity — dynamic options based on selected material */}
               {form.material && PURITY_MAP[form.material] && (
                 <div>
-                  <label className="label-dark">Purity</label>
+                  <p className="label-dark">Purity</p>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {PURITY_MAP[form.material].map((p) => (
                       <OptionBtn key={p} active={form.purity === p} onClick={() => setForm((f) => ({ ...f, purity: p }))}>
@@ -524,8 +528,7 @@ export default function CustomOrder() {
               >
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                    Submitting…
+                    <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{'Submitting…'}
                   </span>
                 ) : (
                   <>💎 Submit Custom Order Request</>

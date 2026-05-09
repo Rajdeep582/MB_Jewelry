@@ -77,7 +77,7 @@ function CustomOrderCard({ order }) {
         </div>
         <div className="flex items-center gap-2">
           <span className={getCustomOrderStatusColor(order.status)}>
-            {order.status.replaceAll(/_/g, ' ')}
+            {order.status.replaceAll('_', ' ')}
           </span>
           <FiChevronRight size={14} className="text-dark-500 group-hover:text-gold-400 transition-colors" />
         </div>
@@ -266,7 +266,7 @@ function CustomOrderDetail({ id }) {
             <h2 className="text-white font-medium">Custom #{order._id.slice(-8).toUpperCase()}</h2>
             <p className="text-dark-400 text-sm">{formatDate(order.createdAt)}</p>
           </div>
-          <span className={getCustomOrderStatusColor(order.status)}>{order.status.replaceAll(/_/g, ' ')}</span>
+          <span className={getCustomOrderStatusColor(order.status)}>{order.status.replaceAll('_', ' ')}</span>
         </div>
         {['advance_paid', 'in_production', 'final_payment_pending', 'final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'].includes(order.status) && (
           <OrderTimeline status={order.status} />
@@ -343,8 +343,7 @@ function CustomOrderDetail({ id }) {
                   >
                     {processing ? (
                       <span className="flex items-center justify-center gap-2">
-                        <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        Processing…
+                        <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{'Processing…'}
                       </span>
                     ) : (
                       <><FiCreditCard size={16} /> Pay 70% Advance ({formatPrice(advanceAmt)})</>
@@ -364,8 +363,7 @@ function CustomOrderDetail({ id }) {
                     >
                       {processing ? (
                         <span className="flex items-center justify-center gap-2">
-                          <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                          Processing…
+                          <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{'Processing…'}
                         </span>
                       ) : (
                         <><FiCreditCard size={16} /> Pay 30% Balance ({formatPrice(finalAmt)})</>

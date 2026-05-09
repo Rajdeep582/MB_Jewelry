@@ -216,10 +216,11 @@ function DeliveryAuthPage({ type }) {
                 <>
                   {/* Name */}
                   <div>
-                    <label className="block text-xs font-medium text-dark-400 mb-1.5">Full Name</label>
+                    <label htmlFor="dp-name" className="block text-xs font-medium text-dark-400 mb-1.5">Full Name</label>
                     <div className="relative">
                       <InputIcon icon={FiUser} />
                       <input
+                        id="dp-name"
                         type="text" name="name" value={form.name}
                         onChange={handleChange} placeholder="Your full name"
                         className={inputClass}
@@ -230,10 +231,11 @@ function DeliveryAuthPage({ type }) {
 
                   {/* Phone */}
                   <div>
-                    <label className="block text-xs font-medium text-dark-400 mb-1.5">Phone Number</label>
+                    <label htmlFor="dp-phone" className="block text-xs font-medium text-dark-400 mb-1.5">Phone Number</label>
                     <div className="relative">
                       <InputIcon icon={FiPhone} />
                       <input
+                        id="dp-phone"
                         type="tel" name="phone" value={form.phone}
                         onChange={handleChange} placeholder="10-digit mobile number"
                         className={inputClass}
@@ -244,8 +246,9 @@ function DeliveryAuthPage({ type }) {
 
                   {/* Gender */}
                   <div>
-                    <label className="block text-xs font-medium text-dark-400 mb-1.5">Gender</label>
+                    <label htmlFor="dp-gender" className="block text-xs font-medium text-dark-400 mb-1.5">Gender</label>
                     <select
+                      id="dp-gender"
                       name="gender" value={form.gender} onChange={handleChange}
                       className="w-full bg-dark-800 border border-dark-600 rounded-xl px-4 py-3 text-dark-100 focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500/30 transition-all text-sm"
                     >
@@ -258,10 +261,11 @@ function DeliveryAuthPage({ type }) {
 
                   {/* Aadhaar */}
                   <div>
-                    <label className="block text-xs font-medium text-dark-400 mb-1.5">Aadhaar Number</label>
+                    <label htmlFor="dp-aadhaar" className="block text-xs font-medium text-dark-400 mb-1.5">Aadhaar Number</label>
                     <div className="relative">
                       <InputIcon icon={FiCreditCard} />
                       <input
+                        id="dp-aadhaar"
                         type="text" name="aadhaarNumber" value={form.aadhaarNumber}
                         onChange={handleChange} placeholder="12-digit Aadhaar number"
                         maxLength={12}
@@ -274,16 +278,18 @@ function DeliveryAuthPage({ type }) {
                   {/* Vehicle + Zone */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-dark-400 mb-1.5">Vehicle Number</label>
+                      <label htmlFor="dp-vehicle" className="block text-xs font-medium text-dark-400 mb-1.5">Vehicle Number</label>
                       <input
+                        id="dp-vehicle"
                         type="text" name="vehicleNumber" value={form.vehicleNumber}
                         onChange={handleChange} placeholder="e.g. MH12AB1234"
                         className="w-full bg-dark-800 border border-dark-600 rounded-xl px-3 py-3 text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500/30 transition-all text-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-dark-400 mb-1.5">Dispatch Zone</label>
+                      <label htmlFor="dp-zone" className="block text-xs font-medium text-dark-400 mb-1.5">Dispatch Zone</label>
                       <input
+                        id="dp-zone"
                         type="text" name="dispatchZone" value={form.dispatchZone}
                         onChange={handleChange} placeholder="e.g. Mumbai North"
                         className="w-full bg-dark-800 border border-dark-600 rounded-xl px-3 py-3 text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-500 focus:ring-1 focus:ring-gold-500/30 transition-all text-sm"
@@ -295,10 +301,11 @@ function DeliveryAuthPage({ type }) {
 
               {/* Email */}
               <div>
-                <label className="block text-xs font-medium text-dark-400 mb-1.5">Email Address</label>
+                <label htmlFor="dp-email" className="block text-xs font-medium text-dark-400 mb-1.5">Email Address</label>
                 <div className="relative">
                   <InputIcon icon={FiMail} />
                   <input
+                    id="dp-email"
                     type="email" name="email" value={form.email}
                     onChange={handleChange} placeholder="partner@example.com"
                     className={inputClass}
@@ -309,10 +316,11 @@ function DeliveryAuthPage({ type }) {
 
               {/* Password */}
               <div>
-                <label className="block text-xs font-medium text-dark-400 mb-1.5">Password</label>
+                <label htmlFor="dp-password" className="block text-xs font-medium text-dark-400 mb-1.5">Password</label>
                 <div className="relative">
                   <InputIcon icon={FiLock} />
                   <input
+                    id="dp-password"
                     type={showPassword ? 'text' : 'password'}
                     name="password" value={form.password}
                     onChange={handleChange} placeholder="••••••••"
@@ -333,10 +341,11 @@ function DeliveryAuthPage({ type }) {
               {/* Confirm Password */}
               {type === 'register' && (
                 <div>
-                  <label className="block text-xs font-medium text-dark-400 mb-1.5">Confirm Password</label>
+                  <label htmlFor="dp-confirm-password" className="block text-xs font-medium text-dark-400 mb-1.5">Confirm Password</label>
                   <div className="relative">
                     <InputIcon icon={FiLock} />
                     <input
+                      id="dp-confirm-password"
                       type={showPassword ? 'text' : 'password'}
                       name="confirmPassword" value={form.confirmPassword}
                       onChange={handleChange} placeholder="••••••••"

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import PropTypes from 'prop-types';
 
 /**
  * Wraps children in a Framer Motion whileInView reveal.
@@ -32,3 +33,12 @@ export default function ScrollReveal({
     </motion.div>
   );
 }
+
+ScrollReveal.propTypes = {
+  children:  PropTypes.node.isRequired,
+  variant:   PropTypes.oneOf(['up', 'fade', 'left', 'right']),
+  delay:     PropTypes.number,
+  duration:  PropTypes.number,
+  className: PropTypes.string,
+  once:      PropTypes.bool,
+};

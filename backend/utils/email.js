@@ -7,7 +7,7 @@ const getTransporter = () => {
   }
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10),
+    port: Number.parseInt(process.env.SMTP_PORT, 10),
     secure: false,
     auth: {
       user: process.env.SMTP_USER,

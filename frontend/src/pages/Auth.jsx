@@ -759,7 +759,7 @@ function AuthPage({ type }) {
                   {/* Name (register only) */}
                   {type === 'register' && (
                     <div>
-                      <label className="label-dark">Full Name</label>
+                      <label htmlFor="name" className="label-dark">Full Name</label>
                       <div className="relative">
                         <FiUser size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
                         <input
@@ -815,7 +815,7 @@ function AuthPage({ type }) {
                   {/* Password */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="label-dark !mb-0">Password</label>
+                      <label htmlFor="password" className="label-dark !mb-0">Password</label>
                       {/* Forgot password link — login only */}
                       {type === 'login' && (
                         <button
@@ -858,7 +858,7 @@ function AuthPage({ type }) {
                   {/* Confirm Password (register only) */}
                   {type === 'register' && (
                     <div>
-                      <label className="label-dark">Confirm Password</label>
+                      <label htmlFor="confirmPassword" className="label-dark">Confirm Password</label>
                       <div className="relative">
                         <FiLock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
                         <input
