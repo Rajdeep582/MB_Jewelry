@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   FiUser, FiMapPin, FiPlus, FiTrash2, FiEdit3, FiCheck,
-  FiShoppingBag, FiHeart, FiShield, FiSmartphone
+  FiShoppingBag, FiHeart, FiShield, FiSmartphone, FiMail,
 } from 'react-icons/fi';
 import { setCredentials } from '../store/authSlice';
 import { addToCart, openCart } from '../store/cartSlice';
 import { userService } from '../services/services';
 import { resolveImageUrl, formatPrice } from '../utils/helpers';
 import toast from 'react-hot-toast';
+import api from '../services/api';
 
 export default function Profile() {
   const dispatch = useDispatch();
@@ -21,6 +22,11 @@ export default function Profile() {
   const [form, setForm] = useState({ 
     firstName: '', lastName: '', gender: '', phone: '', alternateEmail: ''
   });
+
+  const [emailForm, setEmailForm] = useState({ email: '' });
+  const [addEmailStep, setAddEmailStep] = useState('input'); // input | otp | done
+  const [addingEmail, setAddingEmail] = useState(false);
+  const [emailOtp, setEmailOtp] = useState('');
 
   const [showAddrForm, setShowAddrForm] = useState(false);
   const [newAddr, setNewAddr] = useState({
@@ -110,6 +116,36 @@ export default function Profile() {
     } catch {
       toast.error('Failed to remove item');
       // In a real app we'd fetch profile again to rollback, but for now it's okay
+    }
+  };
+
+  const handleAddEmail = async (e) => {
+    e.preventDefault();
+    setAddingEmail(true);
+    try {
+      await api.post('/auth/add-email', { email: emailForm.email });
+      setAddEmailStep('otp');
+      toast.success('Verification email sent!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to send email');
+    } finally {
+      setAddingEmail(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (e) => {
+    e.preventDefault();
+    setAddingEmail(true);
+    try {
+      const res = await api.post('/auth/verify-email-otp', { otp: emailOtp });
+      setProfile((p) => ({ ...p, email: res.data.email, isVerified: true }));
+      dispatch(setCredentials({ user: { ...profile, email: res.data.email }, accessToken: localStorage.getItem('mb_access_token') }));
+      setAddEmailStep('done');
+      toast.success('Email verified and saved!');
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Invalid OTP');
+    } finally {
+      setAddingEmail(false);
     }
   };
 
@@ -249,6 +285,67 @@ export default function Profile() {
                 </div>
               </form>
             </div>
+
+            {/* ADD EMAIL (mobile-registered users) */}
+            {profile?.mobile && (
+              <div className="card p-6 border border-white/5">
+                <h3 className="text-white font-display text-xl mb-4 flex items-center gap-2"><FiMail className="text-gold-500"/> Email Address</h3>
+
+                {profile?.email ? (
+                  <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
+                    <FiCheck className="text-green-400 shrink-0" size={16} />
+                    <div>
+                      <p className="text-white text-sm">{profile.email}</p>
+                      <p className="text-green-400 text-xs mt-0.5">Verified</p>
+                    </div>
+                  </div>
+                ) : addEmailStep === 'done' ? (
+                  <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
+                    <FiCheck className="text-green-400 shrink-0" size={16} />
+                    <p className="text-white text-sm">Email verified successfully</p>
+                  </div>
+                ) : addEmailStep === 'otp' ? (
+                  <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
+                    <p className="text-dark-400 text-sm">Enter the 6-digit OTP sent to <span className="text-white">{emailForm.email}</span></p>
+                    <div>
+                      <label className="label-dark">OTP Code</label>
+                      <input
+                        value={emailOtp}
+                        onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        className="input-dark text-sm tracking-[0.4em] text-center font-mono"
+                        placeholder="000000"
+                        maxLength={6}
+                        required
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <button type="submit" disabled={addingEmail || emailOtp.length !== 6} className="btn-gold text-sm py-2.5 px-6">
+                        {addingEmail ? 'Verifying…' : 'Verify OTP'}
+                      </button>
+                      <button type="button" onClick={() => { setAddEmailStep('input'); setEmailOtp(''); }} className="btn-dark text-sm py-2.5 px-6">Back</button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={handleAddEmail} className="space-y-4">
+                    <p className="text-dark-400 text-sm">Add an email address to your account for alternative login and notifications.</p>
+                    <div>
+                      <label className="label-dark">Email Address</label>
+                      <input
+                        type="email"
+                        value={emailForm.email}
+                        onChange={(e) => setEmailForm({ email: e.target.value })}
+                        className="input-dark text-sm"
+                        placeholder="you@example.com"
+                        required
+                      />
+                    </div>
+                    <button type="submit" disabled={addingEmail} className="btn-gold text-sm py-2.5 px-6">
+                      {addingEmail ? 'Sending OTP…' : 'Add Email'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
 
             {/* ADDRESS BOOK */}
             <div className="card p-6 border border-white/5">

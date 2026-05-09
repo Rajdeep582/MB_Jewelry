@@ -5,6 +5,7 @@ import {
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryService } from '../services/services';
+import { downloadInvoice } from '../utils/invoice';
 import { useSelector } from 'react-redux';
 import { selectUser } from '../store/authSlice';
 
@@ -65,111 +66,36 @@ const STAGE_META = {
 
 /* ── PDF Invoice ─────────────────────────────────────────────────────────────── */
 
+// Adapts DP item shape → shared downloadInvoice shape
 function printDpInvoice(item) {
-  const addr     = item.address || {};
-  const customer = item.customer?.name || addr.fullName || '—';
-  const isCustom = item._source === 'custom_order';
-  const status   = STATUS_DISPLAY[item.rawStatus] || 'In Progress';
-
-  const itemRows = (item.items || []).map(it => `
-    <tr>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;">${it.name || '—'}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;">${it.quantity ?? 1}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">₹${Number(it.price || 0).toLocaleString('en-IN')}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">₹${Number((it.price || 0) * (it.quantity || 1)).toLocaleString('en-IN')}</td>
-    </tr>`).join('');
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-  <title>Invoice ${item.displayId}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:13px;color:#222;padding:32px;max-width:720px;margin:0 auto}
-    .logo{font-size:22px;font-weight:700;letter-spacing:2px;color:#b8860b}
-    .divider{border:none;border-top:2px solid #b8860b;margin:12px 0}
-    .thin{border:none;border-top:1px solid #eee;margin:10px 0}
-    .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid}
-    .badge-custom{color:#7c3aed;border-color:#7c3aed;background:#f5f0ff}
-    .badge-regular{color:#b8860b;border-color:#b8860b;background:#fffbeb}
-    .badge-status{color:#0369a1;border-color:#0369a1;background:#eff6ff}
-    table{width:100%;border-collapse:collapse}
-    th{background:#f5f5f5;padding:8px 6px;text-align:left;font-size:12px;color:#555;border-bottom:2px solid #ddd}
-    th:nth-child(2){text-align:center}th:nth-child(3),th:nth-child(4){text-align:right}
-    .total-row td{font-weight:700;font-size:14px;padding:10px 6px;border-top:2px solid #b8860b;color:#b8860b}
-    .total-row td:last-child{text-align:right}
-    .section-label{font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-    .footer{margin-top:32px;text-align:center;font-size:11px;color:#999}
-    @media print{body{padding:20px}.no-print{display:none}}
-  </style></head><body>
-
-  <div style="display:flex;justify-content:space-between;align-items:flex-start">
-    <div>
-      <div class="logo">MB JEWELRY</div>
-      <div style="font-size:11px;color:#888;margin-top:4px">Delivery Invoice · Partner Copy</div>
-    </div>
-    <div style="text-align:right">
-      <div style="font-size:18px;font-weight:700;color:#333">${item.displayId}</div>
-      <div style="font-size:11px;color:#888;margin-top:2px">
-        Date: ${new Date(item.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}
-      </div>
-    </div>
-  </div>
-  <hr class="divider">
-
-  <div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <span class="badge ${isCustom ? 'badge-custom' : 'badge-regular'}">${isCustom ? 'Custom Order' : 'Regular Order'}</span>
-    <span class="badge badge-status">${status}</span>
-  </div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:16px 0">
-    <div>
-      <div class="section-label">Customer</div>
-      <div style="font-weight:600">${customer}</div>
-      ${item.customer?.email ? `<div style="color:#555;font-size:12px">${item.customer.email}</div>` : ''}
-      ${item.customer?.phone || addr.phone ? `<div style="color:#555;font-size:12px">${item.customer?.phone || addr.phone}</div>` : ''}
-    </div>
-    <div>
-      <div class="section-label">Delivery Address</div>
-      <div>${addr.addressLine1 || '—'}</div>
-      ${addr.addressLine2 ? `<div style="color:#555">${addr.addressLine2}</div>` : ''}
-      <div style="color:#555">${[addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}</div>
-    </div>
-  </div>
-
-  <table style="margin-top:12px">
-    <thead><tr>
-      <th>Item</th>
-      <th style="text-align:center">Qty</th>
-      <th style="text-align:right">Unit Price</th>
-      <th style="text-align:right">Total</th>
-    </tr></thead>
-    <tbody>${itemRows}</tbody>
-    <tfoot><tr class="total-row">
-      <td colspan="3">Grand Total</td>
-      <td>₹${Number(item.total || 0).toLocaleString('en-IN')}</td>
-    </tr></tfoot>
-  </table>
-
-  ${item.dpConfirmedAt ? `
-  <hr class="thin">
-  <div style="font-size:12px;color:#16a34a;font-weight:600">
-    ✓ Delivery confirmed by partner on ${new Date(item.dpConfirmedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}
-  </div>
-  ${item.dpNote ? `<div style="font-size:12px;color:#555;margin-top:4px">Note: ${item.dpNote}</div>` : ''}` : ''}
-
-  <div class="footer">
-    <hr class="thin">
-    <p>MB Jewelry · Delivery Partner Invoice · Generated ${new Date().toLocaleString('en-IN')}</p>
-  </div>
-
-  <div class="no-print" style="margin-top:24px;text-align:center">
-    <button onclick="window.print()" style="background:#b8860b;color:#fff;border:none;padding:10px 28px;border-radius:6px;font-size:14px;cursor:pointer">
-      Print / Save as PDF
-    </button>
-  </div>
-  </body></html>`;
-
-  const w = window.open('', '_blank', 'width=800,height=900');
-  if (w) { w.document.write(html); w.document.close(); }
+  const addr = item.address || {};
+  downloadInvoice({
+    orderId:         item.displayId,
+    _id:             item._id,
+    createdAt:       item.createdAt,
+    items:           item.items || [],
+    itemsPrice:      item.total || 0,
+    shippingPrice:   0,
+    taxPrice:        0,
+    totalAmount:     item.total || 0,
+    payment: {
+      status:              'paid',
+      method:              item.paymentMethod || 'razorpay',
+      paidAt:              item.paidAt || item.createdAt,
+      razorpayPaymentId:   item.razorpayPaymentId || '',
+    },
+    shippingAddress: {
+      fullName:     addr.fullName  || item.customer?.name || '—',
+      addressLine1: addr.addressLine1 || '',
+      addressLine2: addr.addressLine2 || '',
+      city:         addr.city     || '',
+      state:        addr.state    || '',
+      pincode:      addr.pincode  || '',
+      country:      addr.country  || 'India',
+      phone:        addr.phone    || item.customer?.phone || '',
+    },
+    user: item.customer || {},
+  });
 }
 
 /* ── Confirm Modal ───────────────────────────────────────────────────────────── */

@@ -5,7 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiEye, FiEyeOff, FiMail, FiLock, FiUser, FiKey,
-  FiArrowLeft, FiCheckCircle, FiRefreshCw, FiShield,
+  FiArrowLeft, FiCheckCircle, FiRefreshCw, FiShield, FiPhone,
 } from 'react-icons/fi';
 import {
   registerUser, loginUser, loginWithGoogle, selectAuthLoading, selectAuthError, clearError,
@@ -15,7 +15,14 @@ import toast from 'react-hot-toast';
 import api from '../services/api';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
-const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+const PASSWORD_REGEX  = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+const MOBILE_REGEX    = /^(\+91[-\s]?)?[6-9]\d{9}$/;
+const detectType = (val) => {
+  const v = val?.trim() || '';
+  if (MOBILE_REGEX.test(v.replace(/[-\s]/g, ''))) return 'mobile';
+  if (/^\S+@\S+\.\S+$/.test(v)) return 'email';
+  return '';
+};
 
 const slideVariants = {
   initial: { opacity: 0, x: 30 },
@@ -126,13 +133,16 @@ function AuthPage({ type }) {
   const from      = location.state?.from?.pathname || '/';
 
   // ── State ──────────────────────────────────────────────────────────────────
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [form, setForm] = useState({ name: '', identifier: '', password: '', confirmPassword: '' });
+  const [inputType, setInputType]         = useState(''); // 'email' | 'mobile' | ''
   const [showPassword, setShowPassword]   = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [errors, setErrors]               = useState({});
+  const [sendingOtp, setSendingOtp]       = useState(false);
 
   // Registration OTP step
-  const [step, setStep]           = useState('form'); // 'form' | 'otp' | 'forgot-email' | 'forgot-otp' | 'reset-password'
+  // step: 'form' | 'otp' | 'mobile-otp' | 'forgot-email' | 'forgot-otp' | 'reset-password'
+  const [step, setStep]           = useState('form');
   const [otp, setOtp]             = useState('');
   const [verifying, setVerifying] = useState(false);
 
@@ -164,7 +174,8 @@ function AuthPage({ type }) {
   const validate = () => {
     const e = {};
     if (type === 'register' && !form.name.trim()) e.name = 'Name is required';
-    if (!form.email.match(/^\S+@\S+\.\S+$/)) e.email = 'Valid email required';
+    const det = detectType(form.identifier);
+    if (!det) e.identifier = 'Enter a valid email address or Indian mobile number';
     if (!PASSWORD_REGEX.test(form.password)) {
       e.password = 'Password must have min 8 chars, 1 letter, 1 number & 1 special char';
     }
@@ -176,37 +187,86 @@ function AuthPage({ type }) {
   };
 
   const handleChange = (e) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-    if (errors[e.target.name]) setErrors({ ...errors, [e.target.name]: '' });
+    const { name, value } = e.target;
+    setForm(f => ({ ...f, [name]: value }));
+    if (name === 'identifier') setInputType(detectType(value));
+    if (errors[name]) setErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   // ── Registration / Login submit ─────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
+    const det = detectType(form.identifier);
 
-    const action = type === 'login'
-      ? loginUser({ email: form.email, password: form.password })
-      : registerUser({ name: form.name, email: form.email, password: form.password });
-
-    const result = await dispatch(action);
-    if (result.meta.requestStatus === 'fulfilled') {
-      if (type === 'login') {
+    if (type === 'login') {
+      const result = await dispatch(loginUser({ identifier: form.identifier.trim(), password: form.password }));
+      if (result.meta.requestStatus === 'fulfilled') {
         toast.success('Welcome back! 💎');
         const role = result.payload?.user?.role;
-        if (role === 'delivery') {
-          navigate('/delivery', { replace: true });
-        } else if (role === 'admin') {
-          navigate('/admin', { replace: true });
-        } else {
-          navigate(from === '/login' ? '/' : from, { replace: true });
-        }
-      } else {
-        toast.success('Account created! Please check your email for the OTP.');
-        setStep('otp');
+        if (role === 'delivery') navigate('/delivery', { replace: true });
+        else if (role === 'admin') navigate('/admin', { replace: true });
+        else navigate(from === '/login' ? '/' : from, { replace: true });
       }
+      return;
+    }
+
+    // Register — mobile flow: send OTP first
+    if (det === 'mobile') {
+      setSendingOtp(true);
+      try {
+        await api.post('/auth/send-mobile-otp', { mobile: form.identifier.trim() });
+        toast.success('OTP sent to your mobile number!');
+        setStep('mobile-otp');
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Failed to send OTP');
+      } finally {
+        setSendingOtp(false);
+      }
+      return;
+    }
+
+    // Register — email flow
+    const result = await dispatch(registerUser({ name: form.name, email: form.identifier.trim(), password: form.password }));
+    if (result.meta.requestStatus === 'fulfilled') {
+      toast.success('Account created! Please check your email for the OTP.');
+      setStep('otp');
     }
   };
+
+  // ── Mobile OTP: verify + create account ─────────────────────────────────────
+  const handleVerifyMobileOtp = async (e) => {
+    e.preventDefault();
+    if (otp.length !== 6) return toast.error('OTP must be exactly 6 digits');
+    setVerifying(true);
+    try {
+      await api.post('/auth/register', {
+        mobile: form.identifier.trim(),
+        name: form.name,
+        password: form.password,
+        otp,
+      });
+      toast.success('Account created! You can now log in.');
+      setForm({ name: '', identifier: '', password: '', confirmPassword: '' });
+      setOtp('');
+      setInputType('');
+      setStep('form');
+      navigate('/login');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Verification failed');
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleResendMobileOtp = useCallback(async () => {
+    try {
+      await api.post('/auth/send-mobile-otp', { mobile: form.identifier.trim() });
+      toast.success('OTP resent!');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not resend OTP');
+    }
+  }, [form.identifier]);
 
   // ── Registration OTP verify ─────────────────────────────────────────────────
   const handleVerifyOtp = async (e) => {
@@ -214,10 +274,11 @@ function AuthPage({ type }) {
     if (otp.length !== 6) return toast.error('OTP must be exactly 6 digits');
     setVerifying(true);
     try {
-      const res = await api.post('/auth/verify-otp', { email: form.email, otp });
+      const res = await api.post('/auth/verify-otp', { email: form.identifier.trim(), otp });
       toast.success(res.data.message);
-      setForm({ name: '', email: '', password: '', confirmPassword: '' });
+      setForm({ name: '', identifier: '', password: '', confirmPassword: '' });
       setOtp('');
+      setInputType('');
       setStep('form');
       navigate('/login');
     } catch (err) {
@@ -395,7 +456,51 @@ function AuthPage({ type }) {
           {/* ── Animated step content ── */}
           <AnimatePresence mode="wait">
 
-            {/* ═══ REGISTRATION OTP ═══ */}
+            {/* ═══ MOBILE OTP (register) ═══ */}
+            {step === 'mobile-otp' && (
+              <motion.form
+                key="mobile-otp"
+                variants={slideVariants}
+                initial="initial" animate="animate" exit="exit"
+                transition={{ duration: 0.2 }}
+                onSubmit={handleVerifyMobileOtp}
+                className="space-y-4"
+              >
+                <div>
+                  <label className="label-dark" htmlFor="mob-otp">6-Digit OTP</label>
+                  <p className="text-dark-400 text-sm mb-3">
+                    Sent to <span className="text-gold-500">{form.identifier}</span>
+                  </p>
+                  <div className="relative">
+                    <FiPhone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
+                    <input
+                      id="mob-otp"
+                      type="text"
+                      inputMode="numeric"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="• • • • • •"
+                      className="input-dark pl-10 tracking-[0.5em] text-center text-lg"
+                      autoComplete="one-time-code"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                <button type="submit" disabled={verifying || otp.length < 6}
+                  className="btn-gold w-full py-3.5 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {verifying ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" /> Verifying…</span> : 'Verify & Create Account'}
+                </button>
+                <div className="flex items-center justify-between pt-1">
+                  <ResendButton onResend={handleResendMobileOtp} />
+                  <button type="button" onClick={() => { setStep('form'); setOtp(''); }}
+                    className="text-sm text-dark-400 hover:text-white transition-colors flex items-center gap-1">
+                    <FiArrowLeft size={13} /> Change number
+                  </button>
+                </div>
+              </motion.form>
+            )}
+
+            {/* ═══ REGISTRATION OTP (email) ═══ */}
             {step === 'otp' && (
               <motion.form
                 key="otp"
@@ -408,7 +513,7 @@ function AuthPage({ type }) {
                 <div>
                   <label className="label-dark" htmlFor="reg-otp">6-Digit Verification Code</label>
                   <p className="text-dark-400 text-sm mb-3">
-                    We sent an OTP to <span className="text-gold-500">{form.email}</span>
+                    We sent an OTP to <span className="text-gold-500">{form.identifier}</span>
                   </p>
                   <div className="relative">
                     <FiKey size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
@@ -671,22 +776,40 @@ function AuthPage({ type }) {
                     </div>
                   )}
 
-                  {/* Email */}
+                  {/* Identifier: email or mobile */}
                   <div>
-                    <label className="label-dark">Email Address</label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="label-dark !mb-0">
+                        {inputType === 'mobile' ? 'Mobile Number' : inputType === 'email' ? 'Email Address' : 'Email or Mobile'}
+                      </label>
+                      {inputType && (
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${
+                          inputType === 'mobile'
+                            ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
+                            : 'bg-gold-500/10 border-gold-500/30 text-gold-400'
+                        }`}>
+                          {inputType === 'mobile' ? '📱 Mobile' : '✉️ Email'}
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
-                      <FiMail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
+                      {inputType === 'mobile'
+                        ? <FiPhone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
+                        : <FiMail  size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
+                      }
                       <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        value={form.email}
+                        id="identifier"
+                        name="identifier"
+                        type="text"
+                        inputMode={inputType === 'mobile' ? 'numeric' : 'email'}
+                        value={form.identifier}
                         onChange={handleChange}
-                        placeholder="you@example.com"
-                        className={`input-dark pl-10 ${errors.email ? 'border-red-500' : ''}`}
+                        placeholder="you@example.com or 9876543210"
+                        className={`input-dark pl-10 ${errors.identifier ? 'border-red-500' : ''}`}
+                        autoComplete="username"
                       />
                     </div>
-                    {errors.email && <p className="text-red-400 text-xs mt-1">{errors.email}</p>}
+                    {errors.identifier && <p className="text-red-400 text-xs mt-1">{errors.identifier}</p>}
                   </div>
 
                   {/* Password */}
@@ -698,7 +821,7 @@ function AuthPage({ type }) {
                         <button
                           type="button"
                           onClick={() => {
-                            setFpEmail(form.email); // pre-fill if typed
+                            setFpEmail(inputType === 'email' ? form.identifier : '');
                             setFpEmailError('');
                             setStep('forgot-email');
                           }}
@@ -756,16 +879,16 @@ function AuthPage({ type }) {
 
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || sendingOtp}
                     className="btn-gold w-full py-3.5 mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {loading ? (
+                    {(loading || sendingOtp) ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        {' '}{type === 'login' ? 'Signing in…' : 'Creating account…'}
+                        {' '}{type === 'login' ? 'Signing in…' : sendingOtp ? 'Sending OTP…' : 'Creating account…'}
                       </span>
                     ) : (
-                      type === 'login' ? 'Sign In' : 'Create Account'
+                      type === 'login' ? 'Sign In' : inputType === 'mobile' ? 'Send OTP' : 'Create Account'
                     )}
                   </button>
 

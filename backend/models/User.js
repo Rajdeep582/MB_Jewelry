@@ -24,17 +24,25 @@ const userSchema = new mongoose.Schema(
     },
     email: {
       type: String,
-      required: [true, 'Email is required'],
       unique: true,
+      sparse: true, // allows multiple nulls
       lowercase: true,
       trim: true,
       match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
     },
+    mobile: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      match: [/^(\+91[-\s]?)?[6-9]\d{9}$/, 'Please provide a valid Indian mobile number'],
+    },
+    mobileVerified: { type: Boolean, default: false },
     password: {
       type: String,
       required: [
         function () {
-          return this.providers?.some(p => p.providerType === 'local');
+          return this.providers?.some(p => ['local', 'mobile'].includes(p.providerType));
         },
         'Password is required for local accounts',
       ],
@@ -49,7 +57,7 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
     providers: [{
-      providerType: { type: String, enum: ['local', 'google'], required: true },
+      providerType: { type: String, enum: ['local', 'mobile', 'google'], required: true },
       providerId: { type: String }, // e.g. google sub, facebook id
       _id: false,
     }],
@@ -126,6 +134,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // Index for faster lookups
 userSchema.index({ role: 1 });
 userSchema.index({ otpHash: 1 });
+userSchema.index({ mobile: 1 });
 
 
 // Instance method to check if user is locked out

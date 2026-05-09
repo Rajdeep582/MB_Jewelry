@@ -22,30 +22,54 @@ const validateSchema = (schema) => (req, res, next) => {
   next();
 };
 
+const MOBILE_RE = /^(\+91[-\s]?)?[6-9]\d{9}$/;
+const PWD_RE    = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+
 const schemas = {
   register: Joi.object({
     name: Joi.string().trim().max(50).required().messages({
       'string.empty': 'Name is required',
       'string.max': 'Name cannot exceed 50 characters'
     }),
-    email: Joi.string().email().lowercase().trim().required().messages({
+    email: Joi.string().email().lowercase().trim().optional().messages({
       'string.email': 'Valid email required'
     }),
-    password: Joi.string().min(8)
-      .pattern(/^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/)
-      .required().messages({
-        'string.min': 'Password must be at least 8 characters',
-        'string.pattern.base': 'Password must contain a letter, a number, and a special character'
-      }),
+    mobile: Joi.string().trim().pattern(MOBILE_RE).optional().messages({
+      'string.pattern.base': 'Valid Indian mobile number required'
+    }),
+    otp: Joi.string().length(6).optional(),
+    password: Joi.string().min(8).pattern(PWD_RE).required().messages({
+      'string.min': 'Password must be at least 8 characters',
+      'string.pattern.base': 'Password must contain a letter, a number, and a special character'
+    }),
+  }).or('email', 'mobile'), // at least one required
+
+  sendMobileOtp: Joi.object({
+    mobile: Joi.string().trim().pattern(MOBILE_RE).required().messages({
+      'string.pattern.base': 'Valid Indian mobile number required'
+    }),
   }),
 
   login: Joi.object({
-    email: Joi.string().email().lowercase().trim().required().messages({
-      'string.email': 'Valid email required'
+    identifier: Joi.string().trim().required().messages({
+      'string.empty': 'Email or mobile number is required'
     }),
     password: Joi.string().required().messages({
       'string.empty': 'Password is required'
     })
+  }),
+
+  addEmail: Joi.object({
+    email: Joi.string().email().lowercase().trim().required().messages({
+      'string.email': 'Valid email required'
+    }),
+  }),
+
+  verifyEmailOtp: Joi.object({
+    otp: Joi.string().length(6).required().messages({
+      'string.empty': 'OTP is required',
+      'string.length': 'OTP must be 6 digits'
+    }),
   }),
 
   forgotPassword: Joi.object({

@@ -6,25 +6,31 @@ const { otpLimiter, loginLimiter, authLimiter } = require('../middleware/rateLim
 // ─── Validation rule sets ─────────────────────────────────────────────────────
 // Validation is imported from validation.js
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+const ctrl = require('../controllers/authController');
+const { protect } = require('../middleware/auth');
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-router.post('/register', authLimiter, validateSchema(schemas.register), require('../controllers/authController').register);
-router.post('/verify-otp', authLimiter, validateSchema(schemas.verifyOtp), require('../controllers/authController').verifyOTP);
-router.post('/login', loginLimiter, validateSchema(schemas.login), require('../controllers/authController').login);
-router.post('/google', authLimiter, validateSchema(schemas.googleOAuth), require('../controllers/authController').googleLogin);
-router.post('/logout', require('../middleware/auth').protect, require('../controllers/authController').logout);
-router.post('/refresh', require('../controllers/authController').refreshToken);
-router.get('/me', require('../middleware/auth').protect, require('../controllers/authController').getMe);
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+router.post('/send-mobile-otp', otpLimiter,  validateSchema(schemas.sendMobileOtp), ctrl.sendMobileOtp);
+router.post('/register',        authLimiter, validateSchema(schemas.register),       ctrl.register);
+router.post('/verify-otp',      authLimiter, validateSchema(schemas.verifyOtp),      ctrl.verifyOTP);
+router.post('/login',           loginLimiter, validateSchema(schemas.login),         ctrl.login);
+router.post('/google',          authLimiter, validateSchema(schemas.googleOAuth),    ctrl.googleLogin);
+router.post('/logout',          protect,                                             ctrl.logout);
+router.post('/refresh',                                                              ctrl.refreshToken);
+router.get('/me',               protect,                                             ctrl.getMe);
 
-// Forgot password flow
-router.post('/forgot-password', otpLimiter, validateSchema(schemas.forgotPassword), require('../controllers/authController').forgotPassword);
-router.post('/verify-reset-otp', otpLimiter, validateSchema(schemas.verifyOtp), require('../controllers/authController').verifyResetOtp);
-router.post('/reset-password', validateSchema(schemas.resetPassword), require('../controllers/authController').resetPassword);
+// Forgot password
+router.post('/forgot-password',   otpLimiter, validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
+router.post('/verify-reset-otp',  otpLimiter, validateSchema(schemas.verifyOtp),      ctrl.verifyResetOtp);
+router.post('/reset-password',               validateSchema(schemas.resetPassword),   ctrl.resetPassword);
 
-// Device / Session management
-router.get('/sessions', require('../middleware/auth').protect, require('../controllers/authController').getActiveSessions);
-router.delete('/sessions/all', require('../middleware/auth').protect, require('../controllers/authController').revokeAllSessions);
-router.delete('/sessions/:id', require('../middleware/auth').protect, require('../controllers/authController').revokeSession);
+// Profile: add email (mobile-registered users)
+router.post('/add-email',        protect, validateSchema(schemas.addEmail),        ctrl.addEmail);
+router.post('/verify-email-otp', protect, validateSchema(schemas.verifyEmailOtp),  ctrl.verifyEmailOtp);
+
+// Session management
+router.get('/sessions',        protect, ctrl.getActiveSessions);
+router.delete('/sessions/all', protect, ctrl.revokeAllSessions);
+router.delete('/sessions/:id', protect, ctrl.revokeSession);
 
 module.exports = router;

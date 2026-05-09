@@ -3,10 +3,11 @@ import {
   FiChevronDown, FiX, FiAlertCircle, FiRefreshCw, FiSearch,
   FiPackage, FiTruck, FiClock, FiUser, FiMail,
   FiPhone, FiMapPin, FiCreditCard, FiCalendar,
-  FiChevronUp, FiEdit2, FiFilter, FiRadio,
+  FiChevronUp, FiEdit2, FiFilter, FiRadio, FiDownload,
 } from 'react-icons/fi';
 import PropTypes from 'prop-types';
 import { orderService, adminService } from '../../services/services';
+import { downloadInvoice } from '../../utils/invoice';
 import {
   formatPrice, formatDate, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl,
 } from '../../utils/helpers';
@@ -571,6 +572,15 @@ function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
               className="btn-gold w-full py-2 text-xs flex items-center justify-center gap-1.5"
             >
               <FiEdit2 size={12} /> Update Status
+            </button>
+          )}
+
+          {order.payment?.status === 'paid' && (
+            <button
+              onClick={() => downloadInvoice(order)}
+              className="w-full py-2 text-xs flex items-center justify-center gap-1.5 text-gold-400 bg-gold-500/10 border border-gold-500/20 hover:bg-gold-500/20 rounded-xl transition-colors"
+            >
+              <FiDownload size={12} /> Download Invoice
             </button>
           )}
         </div>

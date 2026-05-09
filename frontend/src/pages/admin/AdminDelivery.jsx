@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { orderService, customOrderService, adminService } from '../../services/services';
+import { downloadInvoice } from '../../utils/invoice';
 import toast from 'react-hot-toast';
 import { formatDate, formatPrice, resolveImageUrl } from '../../utils/helpers';
 
@@ -87,111 +88,36 @@ function StatPill({ label, value, color, icon: Icon, active, onClick }) {
 
 /* ── PDF Invoice Generator ──────────────────────────────────────────────────── */
 
+// Adapts AdminDelivery item shape → shared downloadInvoice shape
 function printInvoice(item) {
-  const isCustom = item._sourceType === 'custom_order';
-  const orderId  = resolveOrderId(item);
-  const delivID  = maskDeliveryId(item.deliveryId);
-  const addr     = item.shippingAddress || {};
-  const customer = item.user?.name || addr.fullName || '—';
-
-  const itemRows = (item.items || []).map(it => `
-    <tr>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;">${it.name || '—'}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:center;">${it.quantity ?? 1}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">₹${Number(it.price || 0).toLocaleString('en-IN')}</td>
-      <td style="padding:8px 6px;border-bottom:1px solid #eee;text-align:right;">₹${Number((it.price || 0) * (it.quantity || 1)).toLocaleString('en-IN')}</td>
-    </tr>`).join('');
-
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Invoice ${orderId}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:13px;color:#222;padding:32px;max-width:720px;margin:0 auto}
-    .logo{font-size:22px;font-weight:700;letter-spacing:2px;color:#b8860b}
-    .divider{border:none;border-top:2px solid #b8860b;margin:12px 0}
-    .thin{border:none;border-top:1px solid #eee;margin:10px 0}
-    .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid}
-    .badge-custom{color:#7c3aed;border-color:#7c3aed;background:#f5f0ff}
-    .badge-regular{color:#b8860b;border-color:#b8860b;background:#fffbeb}
-    table{width:100%;border-collapse:collapse}
-    th{background:#f5f5f5;padding:8px 6px;text-align:left;font-size:12px;color:#555;border-bottom:2px solid #ddd}
-    th:nth-child(2){text-align:center}th:nth-child(3),th:nth-child(4){text-align:right}
-    .total-row td{font-weight:700;font-size:14px;padding:10px 6px;border-top:2px solid #b8860b;color:#b8860b}
-    .total-row td:last-child{text-align:right}
-    .footer{margin-top:32px;text-align:center;font-size:11px;color:#999}
-    @media print{body{padding:20px}.no-print{display:none}}
-  </style></head><body>
-  <div style="display:flex;justify-content:space-between;align-items:flex-start">
-    <div><div class="logo">MB JEWELRY</div><div style="font-size:11px;color:#888;margin-top:4px">Delivery Invoice</div></div>
-    <div style="text-align:right">
-      <div style="font-size:18px;font-weight:700;color:#333">${orderId}</div>
-      <div style="font-size:11px;color:#888;margin-top:2px">Date: ${new Date(item.createdAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
-      ${delivID ? `<div style="font-size:11px;color:#b8860b;margin-top:2px;font-family:monospace">Ref: ${delivID}</div>` : ''}
-    </div>
-  </div>
-  <hr class="divider">
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:16px 0">
-    <div>
-      <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Customer</div>
-      <div style="font-weight:600">${customer}</div>
-      ${item.user?.email ? `<div style="color:#555;font-size:12px">${item.user.email}</div>` : ''}
-      ${addr.phone ? `<div style="color:#555;font-size:12px">${addr.phone}</div>` : ''}
-    </div>
-    <div>
-      <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Ship To</div>
-      <div>${addr.addressLine1 || '—'}</div>
-      ${addr.addressLine2 ? `<div style="color:#555">${addr.addressLine2}</div>` : ''}
-      <div style="color:#555">${[addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}</div>
-    </div>
-  </div>
-
-  <div style="margin-bottom:6px;display:flex;align-items:center;gap:8px">
-    <span class="badge ${isCustom ? 'badge-custom' : 'badge-regular'}">${isCustom ? 'Custom Order' : 'Regular Order'}</span>
-    ${item._displayStatus ? `<span style="font-size:12px;color:#666;text-transform:capitalize">Status: ${item._displayStatus.replace(/_/g,' ')}</span>` : ''}
-  </div>
-
-  <table style="margin-top:12px">
-    <thead><tr>
-      <th>Item</th><th style="text-align:center">Qty</th>
-      <th style="text-align:right">Unit Price</th><th style="text-align:right">Total</th>
-    </tr></thead>
-    <tbody>${itemRows}</tbody>
-    <tfoot><tr class="total-row">
-      <td colspan="3">Grand Total</td>
-      <td>₹${Number(item.totalAmount || 0).toLocaleString('en-IN')}</td>
-    </tr></tfoot>
-  </table>
-
-  ${item.dispatchedAt || item.estimatedDelivery || item.deliveredAt ? `
-  <hr class="thin">
-  <div style="display:flex;gap:20px;font-size:12px;color:#666;flex-wrap:wrap">
-    ${item.dispatchedAt ? `<span>Dispatched: <b>${new Date(item.dispatchedAt).toLocaleDateString('en-IN')}</b></span>` : ''}
-    ${item.estimatedDelivery ? `<span>ETA: <b>${new Date(item.estimatedDelivery).toLocaleDateString('en-IN')}</b></span>` : ''}
-    ${item.deliveredAt ? `<span style="color:#16a34a">Delivered: <b>${new Date(item.deliveredAt).toLocaleDateString('en-IN')}</b></span>` : ''}
-  </div>` : ''}
-
-  ${item.trackingHistory?.length ? `
-  <hr class="thin">
-  <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Tracking History</div>
-  ${item.trackingHistory.map(h => `
-    <div style="display:flex;gap:12px;margin-bottom:6px;font-size:12px">
-      <span style="color:#999;min-width:90px">${new Date(h.timestamp||h.date).toLocaleDateString('en-IN')}</span>
-      <span style="text-transform:capitalize;color:#333">${(h.status||h.note||'').replace(/_/g,' ')}</span>
-      ${h.note && h.note !== h.status ? `<span style="color:#888">— ${h.note}</span>` : ''}
-    </div>`).join('')}` : ''}
-
-  <div class="footer">
-    <hr class="thin">
-    <p>Thank you for choosing MB Jewelry · Generated ${new Date().toLocaleString('en-IN')}</p>
-  </div>
-
-  <div class="no-print" style="margin-top:24px;text-align:center">
-    <button onclick="window.print()" style="background:#b8860b;color:#fff;border:none;padding:10px 28px;border-radius:6px;font-size:14px;cursor:pointer">Print / Save as PDF</button>
-  </div>
-  </body></html>`;
-
-  const w = window.open('', '_blank', 'width=800,height=900');
-  if (w) { w.document.write(html); w.document.close(); }
+  const addr = item.shippingAddress || {};
+  downloadInvoice({
+    orderId:        resolveOrderId(item),
+    _id:            item._id,
+    createdAt:      item.createdAt,
+    items:          item.items || [],
+    itemsPrice:     item.itemsPrice ?? item.totalAmount ?? 0,
+    shippingPrice:  item.shippingPrice ?? 0,
+    taxPrice:       item.taxPrice ?? 0,
+    totalAmount:    item.totalAmount ?? 0,
+    payment: {
+      status:             item.payment?.status || 'paid',
+      method:             item.payment?.method || 'razorpay',
+      paidAt:             item.payment?.paidAt || item.createdAt,
+      razorpayPaymentId:  item.payment?.razorpayPaymentId || '',
+    },
+    shippingAddress: {
+      fullName:     addr.fullName    || item.user?.name || '—',
+      addressLine1: addr.addressLine1 || '',
+      addressLine2: addr.addressLine2 || '',
+      city:         addr.city        || '',
+      state:        addr.state       || '',
+      pincode:      addr.pincode     || '',
+      country:      addr.country     || 'India',
+      phone:        addr.phone       || '',
+    },
+    user: item.user || {},
+  });
 }
 
 /* ── Delivery Card (read-only, collapsible) ─────────────────────────────────── */
@@ -372,7 +298,8 @@ function DeliveryCard({ item }) {
 
 /* ── Delivery Partner Manager ────────────────────────────────────────────────── */
 
-const ASSIGN_PHRASE = 'Make this email id delivery partner';
+const ASSIGN_PHRASE  = 'Make this email id delivery partner';
+const REMOVE_PHRASE  = 'Remove Partner';
 
 function DeliveryPartnerManager({ onRefreshOrders }) {
   const [open, setOpen]               = useState(false);
@@ -381,6 +308,8 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
   const [busy, setBusy]               = useState(false);
   const [confirmingId, setConfirmingId] = useState(null);
   const [confirmText, setConfirmText] = useState('');
+  const [removingId, setRemovingId]   = useState(null);
+  const [removeText, setRemoveText]   = useState('');
 
   const load = async () => {
     try {
@@ -393,7 +322,8 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
     } catch { /* silent */ }
   };
 
-  useEffect(() => { if (open) load(); }, [open]);
+  useEffect(() => { load(); }, []);          // load count on mount
+  useEffect(() => { if (open) load(); }, [open]); // refresh on expand
 
   const startAssign = (userId) => {
     setConfirmingId(userId);
@@ -420,11 +350,20 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
     setBusy(false);
   };
 
+  const startRemove = (userId) => { setRemovingId(userId); setRemoveText(''); };
+  const cancelRemove = () => { setRemovingId(null); setRemoveText(''); };
+
   const remove = async (userId) => {
+    if (removeText.trim() !== REMOVE_PHRASE) {
+      toast.error(`Type exactly: "${REMOVE_PHRASE}"`);
+      return;
+    }
     setBusy(true);
     try {
       await adminService.removeDeliveryRole(userId);
       toast.success('Delivery role removed');
+      setRemovingId(null);
+      setRemoveText('');
       await load();
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
     setBusy(false);
@@ -456,18 +395,50 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
               <p className="text-xs text-dark-500 uppercase tracking-wider mb-2">Active Partners</p>
               <div className="space-y-2">
                 {partners.map(p => (
-                  <div key={p._id} className="flex items-center justify-between bg-dark-900 rounded-lg px-3 py-2.5 border border-white/5">
-                    <div>
-                      <p className="text-white text-sm">{p.name}</p>
-                      <p className="text-dark-500 text-xs">{p.email}</p>
+                  <div key={p._id} className="bg-dark-900 rounded-lg border border-white/5 overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2.5">
+                      <div>
+                        <p className="text-white text-sm">{p.name}</p>
+                        <p className="text-dark-500 text-xs">{p.email}</p>
+                      </div>
+                      {removingId === p._id ? (
+                        <button onClick={cancelRemove} className="text-xs text-dark-500 hover:text-white px-2 py-1">Cancel</button>
+                      ) : (
+                        <button
+                          onClick={() => startRemove(p._id)}
+                          disabled={busy}
+                          className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/20 rounded-lg px-2.5 py-1.5 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                        >
+                          <FiUserX size={12} /> Remove
+                        </button>
+                      )}
                     </div>
-                    <button
-                      onClick={() => remove(p._id)}
-                      disabled={busy}
-                      className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/20 rounded-lg px-2.5 py-1.5 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                    >
-                      <FiUserX size={12} /> Remove
-                    </button>
+
+                    {removingId === p._id && (
+                      <div className="px-3 pb-3 border-t border-white/5 pt-3 space-y-2">
+                        <p className="text-xs text-dark-400">Type to confirm removal:</p>
+                        <p className="text-xs font-mono text-red-300 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 select-none">
+                          {REMOVE_PHRASE}
+                        </p>
+                        <div className="flex gap-2">
+                          <input
+                            autoFocus
+                            value={removeText}
+                            onChange={e => setRemoveText(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && remove(p._id)}
+                            placeholder="Type the phrase above…"
+                            className="flex-1 bg-dark-800 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white placeholder-dark-600 focus:outline-none focus:border-red-500/50"
+                          />
+                          <button
+                            onClick={() => remove(p._id)}
+                            disabled={busy || removeText.trim() !== REMOVE_PHRASE}
+                            className="text-xs bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5"
+                          >
+                            <FiUserX size={12} /> Confirm
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

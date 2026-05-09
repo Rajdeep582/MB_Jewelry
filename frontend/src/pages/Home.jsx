@@ -1,5 +1,9 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import imgPendant from '../assets/pendant.png';
+import imgRing from '../assets/ring.png';
+import imgEarring from '../assets/earing.png';
+import imgNecklace from '../assets/necklage.png';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import { FiArrowRight, FiStar, FiShield, FiTruck, FiRefreshCw } from 'react-icons/fi';
@@ -25,14 +29,14 @@ const collectionTypeMap = {
   Rings: 'Ring',
   Necklaces: 'Necklace',
   Earrings: 'Earrings',
-  Bracelets: 'Bracelet',
+  Pendants: 'Pendant',
 };
 
 const collections = [
-  { name: 'Rings', image: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=600&q=80', count: '48 pieces' },
-  { name: 'Necklaces', image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=600&q=80', count: '62 pieces' },
-  { name: 'Earrings', image: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=600&q=80', count: '34 pieces' },
-  { name: 'Bracelets', image: 'https://images.unsplash.com/photo-1573408301185-9519f94816b5?w=600&q=80', count: '29 pieces' },
+  { name: 'Rings', image: imgRing, count: '48 pieces' },
+  { name: 'Necklaces', image: imgNecklace, count: '62 pieces' },
+  { name: 'Earrings', image: imgEarring, count: '34 pieces' },
+  { name: 'Pendants', image: imgPendant, count: '29 pieces' },
 ];
 
 export default function Home() {

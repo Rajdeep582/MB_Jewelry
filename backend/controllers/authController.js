@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const PendingMobileOtp = require('../models/PendingMobileOtp');
 const jwt = require('jsonwebtoken');
 const {
   generateAccessToken,
@@ -7,6 +8,7 @@ const {
 } = require('../utils/generateToken');
 const crypto = require('node:crypto');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { sendSmsOtp } = require('../utils/sms');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { logAlert } = require('../utils/alerting');
@@ -22,19 +24,80 @@ const addAuditLog = (user, action, details, ipAddress) => {
   user.auditLogs.push({ action, details, ipAddress });
 };
 
-// @desc    Register new user
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const isMobile = (val) => /^(\+91[-\s]?)?[6-9]\d{9}$/.test(val?.replace(/[-\s]/g, '') || '');
+const isEmail  = (val) => /^\S+@\S+\.\S+$/.test(val || '');
+const normaliseMobile = (m) => m.replace(/[-\s]/g, '').replace(/^\+91/, '').replace(/^91([6-9])/, '$1');
+
+// @desc    Send OTP to mobile (pre-registration)
+// @route   POST /api/auth/send-mobile-otp
+const sendMobileOtp = async (req, res) => {
+  const { mobile } = req.body;
+  if (!mobile || !isMobile(mobile)) {
+    return res.status(400).json({ success: false, message: 'Valid Indian mobile number required.' });
+  }
+  const norm = normaliseMobile(mobile);
+
+  const existing = await User.findOne({ mobile: norm });
+  if (existing) return res.status(400).json({ success: false, message: 'Mobile number already registered.' });
+
+  const rawOtp = crypto.randomInt(100000, 999999).toString();
+  // Upsert pending OTP (replace old if resend)
+  await PendingMobileOtp.findOneAndUpdate(
+    { mobile: norm },
+    { mobile: norm, otpHash: hashToken(rawOtp), attempts: 0, createdAt: new Date() },
+    { upsert: true, new: true }
+  );
+
+  await sendSmsOtp(norm, rawOtp);
+  res.json({ success: true, message: 'OTP sent to your mobile number.' });
+};
+
+// @desc    Register new user (email or mobile)
 // @route   POST /api/auth/register
 const register = async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, mobile, password, otp } = req.body;
   const ipAddress = req.ip;
 
-  const existingUser = await User.findOne({ email });
-  if (existingUser) {
-    return res.status(400).json({ success: false, message: 'Email already registered' });
+  // ── Mobile registration ──────────────────────────────────────────────────
+  if (mobile) {
+    const norm = normaliseMobile(mobile);
+
+    const pending = await PendingMobileOtp.findOne({ mobile: norm });
+    if (!pending) return res.status(400).json({ success: false, message: 'OTP not sent or expired. Request a new one.' });
+    if (pending.attempts >= 5) return res.status(403).json({ success: false, message: 'Too many attempts. Request a new OTP.' });
+
+    if (hashToken(otp?.toString()) !== pending.otpHash) {
+      pending.attempts += 1;
+      await pending.save();
+      return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+    }
+
+    const existing = await User.findOne({ mobile: norm });
+    if (existing) return res.status(400).json({ success: false, message: 'Mobile already registered.' });
+
+    try {
+      await User.create({
+        name, mobile: norm, password,
+        providers: [{ providerType: 'mobile' }],
+        isVerified: true, mobileVerified: true,
+        auditLogs: [{ action: 'ACCOUNT_CREATED', details: 'Mobile OTP signup', ipAddress }],
+      });
+      await PendingMobileOtp.deleteOne({ mobile: norm });
+      return res.status(201).json({ success: true, message: 'Account created! You can now log in.' });
+    } catch (err) {
+      logger.error(`Mobile registration error for ${norm}: ${err.message}`);
+      return res.status(500).json({ success: false, message: 'Registration failed.' });
+    }
   }
 
+  // ── Email registration ───────────────────────────────────────────────────
+  if (!email) return res.status(400).json({ success: false, message: 'Email or mobile required.' });
+
+  const existingUser = await User.findOne({ email });
+  if (existingUser) return res.status(400).json({ success: false, message: 'Email already registered' });
+
   const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const rawOtp = crypto.randomInt(100000, 999999).toString();
     const otpHash = hashToken(rawOtp);
@@ -50,15 +113,14 @@ const register = async (req, res) => {
     );
 
     await sendVerificationEmail(email, name, rawOtp);
-    await session.commitTransaction();
-    session.endSession();
-
     res.status(201).json({ success: true, message: 'Account created! Please check your email for the verification code.' });
   } catch (error) {
-    await session.abortTransaction();
+    logger.error(`Registration error for ${email}: ${error.message} | stack: ${error.stack}`);
+    // Clean up orphaned user if email send failed
+    await User.deleteOne({ email }, { session }).catch(() => {});
+    return res.status(500).json({ success: false, message: process.env.NODE_ENV === 'development' ? `Registration failed: ${error.message}` : 'Registration failed. Please try again.' });
+  } finally {
     session.endSession();
-    logger.error(`Registration error for ${email}: ${error.message}`);
-    return res.status(500).json({ success: false, message: 'Registration failed.' });
   }
 };
 
@@ -91,12 +153,17 @@ const verifyOTP = async (req, res) => {
   res.json({ success: true, message: 'Email verified successfully! You can now log in.' });
 };
 
-// @desc    Login user
+// @desc    Login user (email or mobile)
 // @route   POST /api/auth/login
 const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, password } = req.body; // identifier = email or mobile
   const ipAddress = req.ip;
-  const user = await User.findOne({ email }).select('+password +sessions');
+
+  const query = isMobile(identifier)
+    ? { mobile: normaliseMobile(identifier) }
+    : { email: identifier?.toLowerCase()?.trim() };
+
+  const user = await User.findOne(query).select('+password +sessions');
 
   if (!user || user.isLocked()) {
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
@@ -108,7 +175,7 @@ const login = async (req, res) => {
     if (user.loginAttempts >= 5) {
       user.lockUntil = Date.now() + 15 * 60 * 1000;
       addAuditLog(user, 'ACCOUNT_LOCKED', 'Exceeded login attempts', ipAddress);
-      logAlert('ACCOUNT_LOCKED', `User ${email} locked out`, ipAddress);
+      logAlert('ACCOUNT_LOCKED', `User ${identifier} locked out`, ipAddress);
     }
     await user.save({ validateBeforeSave: false });
     return res.status(401).json({ success: false, message: 'Invalid credentials.' });
@@ -139,7 +206,7 @@ const login = async (req, res) => {
   await user.save({ validateBeforeSave: false });
 
   sendRefreshTokenCookie(res, refreshToken);
-  res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
+  res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, mobile: user.mobile, role: user.role, avatar: user.avatar } });
 };
 
 // @desc    Refresh Token & Handle Replay Attacks
@@ -382,9 +449,65 @@ const revokeAllSessions = async (req, res) => {
   res.json({ success: true, message: 'All active sessions globally revoked.' });
 };
 
+// @desc    Add/update email for mobile-registered user (sends verification email)
+// @route   POST /api/auth/add-email  (protected)
+const addEmail = async (req, res) => {
+  const { email } = req.body;
+  if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+    return res.status(400).json({ success: false, message: 'Valid email required.' });
+  }
+
+  const existing = await User.findOne({ email: email.toLowerCase() });
+  if (existing && String(existing._id) !== String(req.user._id)) {
+    return res.status(400).json({ success: false, message: 'Email already in use.' });
+  }
+
+  const user = await User.findById(req.user._id).select('+otpHash +otpExpires');
+  const rawOtp = crypto.randomInt(100000, 999999).toString();
+  user.email = email.toLowerCase();
+  user.isVerified = false; // require email verify
+  user.otpHash = hashToken(rawOtp);
+  user.otpExpires = Date.now() + 10 * 60 * 1000;
+  user.otpAttempts = 0;
+  await user.save({ validateBeforeSave: false });
+
+  await sendVerificationEmail(email, user.name, rawOtp);
+  res.json({ success: true, message: 'Verification email sent. Enter the code to confirm.' });
+};
+
+// @desc    Verify email OTP (for add-email flow on profile)
+// @route   POST /api/auth/verify-email-otp (protected)
+const verifyEmailOtp = async (req, res) => {
+  const { otp } = req.body;
+  const user = await User.findById(req.user._id).select('+otpHash +otpExpires +otpAttempts');
+
+  if (!user.email || user.isVerified) {
+    return res.status(400).json({ success: false, message: 'No pending email verification.' });
+  }
+  if (user.otpAttempts >= 5) return res.status(403).json({ success: false, message: 'Too many attempts.' });
+  if (!user.otpExpires || Date.now() > user.otpExpires) {
+    return res.status(400).json({ success: false, message: 'OTP expired. Request again.' });
+  }
+  if (hashToken(otp?.toString()) !== user.otpHash) {
+    user.otpAttempts += 1;
+    await user.save({ validateBeforeSave: false });
+    return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+  }
+
+  user.isVerified = true;
+  user.otpHash = undefined;
+  user.otpExpires = undefined;
+  user.otpAttempts = 0;
+  addAuditLog(user, 'EMAIL_ADDED', `Email ${user.email} verified`, req.ip);
+  await user.save({ validateBeforeSave: false });
+
+  res.json({ success: true, message: 'Email verified and linked to your account.' });
+};
+
 module.exports = {
-  register, verifyOTP, login, logout, refreshToken, getMe,
+  register, sendMobileOtp, verifyOTP, login, logout, refreshToken, getMe,
   forgotPassword, verifyResetOtp, resetPassword,
   googleLogin,
-  getActiveSessions, revokeSession, revokeAllSessions
+  getActiveSessions, revokeSession, revokeAllSessions,
+  addEmail, verifyEmailOtp,
 };

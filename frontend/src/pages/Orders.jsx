@@ -3,10 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import {
   FiPackage, FiChevronRight, FiTruck, FiCheck, FiAlertCircle,
   FiRefreshCw, FiClock, FiMapPin, FiPhone, FiUser, FiCreditCard,
-  FiCalendar, FiHash, FiChevronDown, FiArrowLeft, FiFilter,
+  FiCalendar, FiHash, FiChevronDown, FiArrowLeft, FiFilter, FiDownload,
 } from 'react-icons/fi';
 import { orderService } from '../services/services';
 import { formatPrice, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl } from '../utils/helpers';
+import { downloadInvoice } from '../utils/invoice';
 import { OrderCardSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
 import PropTypes from 'prop-types';
@@ -261,6 +262,18 @@ function OrderDetailView({ id }) {
 
         {/* Progress stepper */}
         <OrderProgressStepper order={order} />
+
+        {/* Invoice download */}
+        {order.payment?.status === 'paid' && (
+          <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
+            <button
+              onClick={() => downloadInvoice(order)}
+              className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"
+            >
+              <FiDownload size={14} /> Download Invoice
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Payment Recovery Banner ──────────────────────────────────────────── */}
