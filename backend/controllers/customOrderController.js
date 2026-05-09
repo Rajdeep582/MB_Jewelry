@@ -441,7 +441,7 @@ const failCustomPayment = async (req, res) => {
       { session: failSession }
     );
     await Transaction.findOneAndUpdate(
-      { order: customOrderId, status: 'pending' },
+      { order: new mongoose.Types.ObjectId(customOrderId), status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );

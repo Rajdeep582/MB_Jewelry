@@ -473,7 +473,7 @@ const failPayment = async (req, res) => {
     );
 
     await Transaction.findOneAndUpdate(
-      { order: pendingOrderId, status: 'pending' },
+      { order: new mongoose.Types.ObjectId(pendingOrderId), status: 'pending' },
       { status: 'failed', failReason },
       { session: failSession }
     );
