@@ -53,7 +53,16 @@ const transactionSchema = new mongoose.Schema(
     failReason: { type: String, default: '' },
 
     // Raw gateway response for debugging / dispute resolution
-    gatewayResponse: { type: mongoose.Schema.Types.Mixed },
+    gatewayResponse: {
+      razorpayOrderId:  { type: String, default: '' },    // redundant copy — for audit trail
+      razorpayPaymentId:{ type: String, default: '' },
+      errorCode:        { type: String, default: '' },
+      errorDescription: { type: String, default: '' },
+      errorSource:      { type: String, default: '' },
+      errorStep:        { type: String, default: '' },
+      errorReason:      { type: String, default: '' },
+      acquirerData:     { type: mongoose.Schema.Types.Mixed },  // bank-specific arbitrary data
+    },
   },
   { timestamps: true }
 );

@@ -28,6 +28,7 @@ const categoryRoutes = require('./routes/categoryRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const customOrderRoutes = require('./routes/customOrderRoutes');
 const deliveryRoutes = require('./routes/deliveryRoutes');
+const dpAuthRoutes = require('./routes/dpAuthRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const { attachCsrfCookie, validateCsrf } = require('./middleware/csrf');
 const { authLimiter } = require('./middleware/rateLimiter');
@@ -128,6 +129,7 @@ app.use('/api/categories', categoryRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/custom-orders', customOrderRoutes);
 app.use('/api/delivery', deliveryRoutes);
+app.use('/api/dp-auth', dpAuthRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 app.use(notFound);

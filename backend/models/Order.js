@@ -70,10 +70,10 @@ const orderSchema = new mongoose.Schema(
     trackingNumber: { type: String, default: '' },
     trackingUrl: { type: String, default: '' },
     courierPartner: { type: String, default: '' },
-    deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
     // Delivery partner confirmation (awaits admin final confirmation)
     dpConfirmedAt: { type: Date },
-    dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
     dpNote:        { type: String, default: '' },
     trackingHistory: [trackingStepSchema],
   },

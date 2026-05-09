@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Admin = require('../models/Admin');
 const PendingMobileOtp = require('../models/PendingMobileOtp');
 const jwt = require('jsonwebtoken');
 const {
@@ -188,8 +189,41 @@ const login = async (req, res) => {
   user.loginAttempts = 0;
   user.lockUntil = undefined;
   
-  const accessToken = generateAccessToken(user._id, user.role);
-  const refreshToken = generateRefreshToken(user._id);
+  // Delivery partners must use /dp-auth/login
+  if (user.role === 'delivery') {
+    return res.status(403).json({ success: false, message: 'Please use the delivery partner login page.' });
+  }
+
+  // Admin: look up in Admin collection to get correct _id for token
+  if (user.role === 'admin') {
+    const adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
+    if (!adminRecord || !adminRecord.isActive) {
+      return res.status(403).json({ success: false, message: 'Admin account not found. Contact support.' });
+    }
+    const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
+    const refreshToken = generateRefreshToken(adminRecord._id, 'admin');
+
+    adminRecord.sessions = (adminRecord.sessions || []).filter(s => s.expiresAt > new Date());
+    adminRecord.sessions.push({
+      sessionId: crypto.randomUUID(),
+      tokenHash: hashToken(refreshToken),
+      deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
+      ipAddress,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+    adminRecord.lastLogin = new Date();
+    await adminRecord.save({ validateBeforeSave: false });
+
+    sendRefreshTokenCookie(res, refreshToken);
+    return res.json({
+      success: true,
+      accessToken,
+      user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar },
+    });
+  }
+
+  const accessToken = generateAccessToken(user._id, user.role, 'user');
+  const refreshToken = generateRefreshToken(user._id, 'user');
 
   user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
 
@@ -216,10 +250,44 @@ const refreshToken = async (req, res) => {
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
 
   let decoded;
-  try { decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET); } 
+  try { decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET); }
   catch { return res.status(401).json({ success: false, message: 'Invalid token' }); }
 
+  // Delivery tokens must use /dp-auth/refresh
+  if (decoded.userType === 'delivery') {
+    return res.status(401).json({ success: false, message: 'Invalid token for this endpoint' });
+  }
+
+  // Admin token — query Admin collection
+  if (decoded.userType === 'admin') {
+    const admin = await Admin.findById(decoded.id).select('+sessions');
+    if (!admin) return res.status(401).json({ success: false, message: 'Admin not found' });
+    admin.sessions = (admin.sessions || []).filter(s => s.expiresAt > new Date());
+    const hashedR = hashToken(token);
+    const idx = admin.sessions.findIndex(s => s.tokenHash === hashedR);
+    if (idx === -1) {
+      admin.sessions = [];
+      await admin.save({ validateBeforeSave: false });
+      return res.status(401).json({ success: false, message: 'Security breach detected. All sessions terminated.' });
+    }
+    const newAccess  = generateAccessToken(admin._id, 'admin', 'admin');
+    const newRefresh = generateRefreshToken(admin._id, 'admin');
+    admin.sessions[idx] = {
+      sessionId: admin.sessions[idx].sessionId,
+      tokenHash: hashToken(newRefresh),
+      deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
+      ipAddress: req.ip,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    };
+    admin.markModified('sessions');
+    await admin.save({ validateBeforeSave: false });
+    sendRefreshTokenCookie(res, newRefresh);
+    return res.json({ success: true, accessToken: newAccess });
+  }
+
+  // Normal user token
   const user = await User.findById(decoded.id).select('+sessions');
+  if (!user) return res.status(401).json({ success: false, message: 'User not found' });
   user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
 
   const hashedRToken = hashToken(token);
@@ -235,8 +303,8 @@ const refreshToken = async (req, res) => {
   }
 
   // Issue new pair (Rotation)
-  const newAccessToken = generateAccessToken(user._id, user.role);
-  const newRefreshToken = generateRefreshToken(user._id);
+  const newAccessToken = generateAccessToken(user._id, user.role, 'user');
+  const newRefreshToken = generateRefreshToken(user._id, 'user');
 
   user.sessions[sessionIndex] = {
     sessionId: user.sessions[sessionIndex].sessionId,
@@ -245,7 +313,7 @@ const refreshToken = async (req, res) => {
     ipAddress: req.ip,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   };
-  
+
   user.markModified('sessions');
   await user.save({ validateBeforeSave: false });
   sendRefreshTokenCookie(res, newRefreshToken);
@@ -259,7 +327,8 @@ const logout = async (req, res) => {
   const token = req.cookies.refreshToken;
   if (token) {
     const hashed = hashToken(token);
-    await User.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
+    const Model = req.userType === 'admin' ? Admin : User;
+    await Model.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
   }
   res.clearCookie('refreshToken');
   res.json({ success: true, message: 'Logged out.' });
@@ -267,8 +336,8 @@ const logout = async (req, res) => {
 
 // @desc    Get Me
 const getMe = async (req, res) => {
-  const user = await User.findById(req.user._id);
-  res.json({ success: true, user });
+  // req.user is already populated by protect middleware from the correct model
+  res.json({ success: true, user: req.user });
 };
 
 // ─── OAuth Flows ───────────────────────────────────────────────────────────────
@@ -297,9 +366,31 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
 
     if (!user.isActive) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-    const accessToken = generateAccessToken(user._id, user.role);
-    const splitRToken = generateRefreshToken(user._id);
-    
+    // Admin: route to Admin collection for correct _id + userType
+    if (user.role === 'admin') {
+      const adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
+      if (!adminRecord || !adminRecord.isActive) {
+        return res.status(403).json({ success: false, message: 'Admin record not found. Contact support.' });
+      }
+      const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
+      const splitRToken = generateRefreshToken(adminRecord._id, 'admin');
+      adminRecord.sessions = (adminRecord.sessions || []).filter(s => s.expiresAt > new Date());
+      adminRecord.sessions.push({
+        sessionId: crypto.randomUUID(),
+        tokenHash: hashToken(splitRToken),
+        deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
+        ipAddress: req.ip,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+      adminRecord.lastLogin = new Date();
+      await adminRecord.save({ validateBeforeSave: false });
+      sendRefreshTokenCookie(res, splitRToken);
+      return res.json({ success: true, accessToken, user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar } });
+    }
+
+    const accessToken = generateAccessToken(user._id, user.role, 'user');
+    const splitRToken = generateRefreshToken(user._id, 'user');
+
     user.sessions.push({
       sessionId: crypto.randomUUID(),
       tokenHash: hashToken(splitRToken),
@@ -500,7 +591,6 @@ const verifyEmailOtp = async (req, res) => {
   user.otpAttempts = 0;
   addAuditLog(user, 'EMAIL_ADDED', `Email ${user.email} verified`, req.ip);
   await user.save({ validateBeforeSave: false });
-
   res.json({ success: true, message: 'Email verified and linked to your account.' });
 };
 

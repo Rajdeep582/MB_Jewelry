@@ -28,6 +28,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import CustomOrder from './pages/CustomOrder';
 import CustomOrders from './pages/CustomOrders';
 import DeliveryPartnerPage from './pages/DeliveryPartnerPage';
+import { DeliveryLogin, DeliveryRegister } from './pages/DeliveryAuth';
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout';
@@ -71,6 +72,7 @@ function DeliveryRedirect() {
     if (isDelivery && !location.pathname.startsWith('/delivery')) {
       navigate('/delivery', { replace: true });
     }
+    // Redirect unauthenticated delivery auth pages when already logged in as delivery
   }, [isDelivery, location.pathname, navigate]);
 
   return null;
@@ -84,15 +86,21 @@ export default function App() {
         <DeliveryRedirect />
         <ErrorBoundary>
           <Toaster
-            position="top-right"
+            position="bottom-center"
+            gutter={10}
+            containerStyle={{ bottom: 28 }}
             toastOptions={{
               duration: 3000,
               style: {
-                background: '#141414',
-                color: '#fff',
-                border: '1px solid rgba(212, 175, 55, 0.2)',
-                borderRadius: '12px',
-                fontSize: '14px',
+                background: '#1a1a1a',
+                color: '#f5f5f5',
+                border: '1px solid rgba(212, 175, 55, 0.25)',
+                borderRadius: '14px',
+                fontSize: '13.5px',
+                padding: '10px 16px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px rgba(212,175,55,0.08)',
+                backdropFilter: 'blur(8px)',
+                maxWidth: '360px',
               },
               success: { iconTheme: { primary: '#D4AF37', secondary: '#0D0D0D' } },
               error: { iconTheme: { primary: '#ef4444', secondary: '#0D0D0D' } },
@@ -124,6 +132,8 @@ export default function App() {
               </Route>
             </Route>
 
+            <Route path="/delivery/login"    element={<DeliveryLogin />} />
+            <Route path="/delivery/register" element={<DeliveryRegister />} />
             <Route path="/delivery" element={<DeliveryRoute><DeliveryPartnerPage /></DeliveryRoute>} />
 
             <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>

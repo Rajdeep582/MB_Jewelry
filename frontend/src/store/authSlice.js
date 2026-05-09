@@ -21,6 +21,24 @@ export const loginUser = createAsyncThunk('auth/login', async (data, { rejectWit
   }
 });
 
+export const loginDP = createAsyncThunk('auth/loginDP', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/dp-auth/login', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Login failed');
+  }
+});
+
+export const registerDP = createAsyncThunk('auth/registerDP', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/dp-auth/register', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Registration failed');
+  }
+});
+
 export const loginWithGoogle = createAsyncThunk('auth/google', async (idToken, { rejectWithValue }) => {
   try {
     const res = await api.post('/auth/google', { idToken });
@@ -30,27 +48,32 @@ export const loginWithGoogle = createAsyncThunk('auth/google', async (idToken, {
   }
 });
 
-export const logoutUser = createAsyncThunk('auth/logout', async (_, { rejectWithValue }) => {
+export const logoutUser = createAsyncThunk('auth/logout', async (_, { getState, rejectWithValue }) => {
   try {
-    await api.post('/auth/logout');
+    const role = getState().auth.user?.role;
+    const endpoint = role === 'delivery' ? '/dp-auth/logout' : '/auth/logout';
+    await api.post(endpoint);
   } catch (err) {
-    // Even if server logout fails, we still clear client state
     return rejectWithValue(err.response?.data?.message);
   }
 });
 
-export const fetchCurrentUser = createAsyncThunk('auth/me', async (_, { rejectWithValue }) => {
+export const fetchCurrentUser = createAsyncThunk('auth/me', async (_, { getState, rejectWithValue }) => {
   try {
-    const res = await api.get('/auth/me');
+    const role = getState().auth.user?.role;
+    const endpoint = role === 'delivery' ? '/dp-auth/me' : '/auth/me';
+    const res = await api.get(endpoint);
     return res.data;
   } catch (err) {
     return rejectWithValue(err.response?.data?.message);
   }
 });
 
-export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { rejectWithValue }) => {
+export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { getState, rejectWithValue }) => {
   try {
-    const res = await api.post('/auth/refresh');
+    const role = getState().auth.user?.role;
+    const endpoint = role === 'delivery' ? '/dp-auth/refresh' : '/auth/refresh';
+    const res = await api.post(endpoint);
     return res.data;
   } catch (err) {
     return rejectWithValue(err.response?.data?.message);
@@ -141,6 +164,21 @@ const authSlice = createSlice({
         persistAuth(payload.accessToken, payload.user);
       })
       .addCase(loginUser.rejected, handleRejected)
+
+      // DP Login
+      .addCase(loginDP.pending, handlePending)
+      .addCase(loginDP.fulfilled, (state, { payload }) => {
+        state.loading = false;
+        state.user = payload.user;
+        state.accessToken = payload.accessToken;
+        persistAuth(payload.accessToken, payload.user);
+      })
+      .addCase(loginDP.rejected, handleRejected)
+
+      // DP Register
+      .addCase(registerDP.pending, handlePending)
+      .addCase(registerDP.fulfilled, (state) => { state.loading = false; })
+      .addCase(registerDP.rejected, handleRejected)
 
       // Google Login
       .addCase(loginWithGoogle.pending, handlePending)

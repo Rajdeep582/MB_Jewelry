@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,7 @@ import { selectIsAuthenticated } from '../store/authSlice';
 import { formatPrice, generateStars, formatDate, resolveImageUrl } from '../utils/helpers';
 import { productService } from '../services/services';
 import { ProductDetailSkeleton } from '../components/common/Skeletons';
+import ProductCard from '../components/shop/ProductCard';
 import toast from 'react-hot-toast';
 
 // ── Star Row ──────────────────────────────────────────────────────────────────
@@ -132,6 +133,85 @@ function AllReviewsModal({ reviews, onClose, productName, averageRating, numRevi
   );
 }
 
+// ── Related Products Slider ───────────────────────────────────────────────────
+function RelatedProducts({ categoryId, currentProductId }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const trackRef                = useRef(null);
+  const navigate                = useNavigate();
+
+  useEffect(() => {
+    if (!categoryId) { setLoading(false); return; }
+    setLoading(true);
+    productService.getProducts({ category: categoryId, limit: 12 })
+      .then(res => {
+        const all = res.data?.products || [];
+        setProducts(all.filter(p => p._id !== currentProductId));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [categoryId, currentProductId]);
+
+  const scroll = (dir) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const cardW = track.querySelector('[data-card]')?.offsetWidth || 260;
+    track.scrollBy({ left: dir * (cardW + 16), behavior: 'smooth' });
+  };
+
+  if (!loading && products.length === 0) return null;
+
+  return (
+    <section className="border-t border-white/8 pt-12 pb-2">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <p className="section-subtitle mb-1">Discover More</p>
+          <h2 className="font-display text-2xl text-white">You May Also Like</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => scroll(-1)}
+            className="w-9 h-9 rounded-full border border-white/10 bg-dark-800 flex items-center justify-center text-dark-400 hover:text-white hover:border-gold-500/40 transition-all"
+          >
+            <FiChevronLeft size={16} />
+          </button>
+          <button
+            onClick={() => scroll(1)}
+            className="w-9 h-9 rounded-full border border-white/10 bg-dark-800 flex items-center justify-center text-dark-400 hover:text-white hover:border-gold-500/40 transition-all"
+          >
+            <FiChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex gap-4 overflow-hidden">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="flex-shrink-0 w-56 h-72 rounded-2xl bg-dark-800 animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div
+          ref={trackRef}
+          className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-2"
+          style={{ scrollSnapType: 'x mandatory' }}
+        >
+          {products.map(p => (
+            <div
+              key={p._id}
+              data-card
+              className="flex-shrink-0 w-56 sm:w-64"
+              style={{ scrollSnapAlign: 'start' }}
+            >
+              <ProductCard product={p} view="grid" />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ProductDetail() {
   const { id } = useParams();
@@ -245,12 +325,12 @@ export default function ProductDetail() {
         </nav>
 
         {/* Product Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-14 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-20 items-start">
 
           {/* ── Image Gallery ── */}
           <div className="space-y-2.5">
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-900 to-dark-950 border border-white/6 group shadow-xl"
-              style={{ aspectRatio: '1/1' }}
+              style={{ aspectRatio: '6/5' }}
             >
               <AnimatePresence mode="wait">
                 <motion.img
@@ -453,8 +533,13 @@ export default function ProductDetail() {
           </motion.div>
         </div>
 
+        {/* ── Related Products ── */}
+        <div className="mt-20">
+          <RelatedProducts categoryId={category?._id} currentProductId={id} />
+        </div>
+
         {/* ── Reviews Section ── */}
-        <div id="reviews-section" className="border-t border-white/8 pt-12">
+        <div id="reviews-section" className="border-t border-white/8 mt-20 pt-16">
           {/* Section Header */}
           <div className="flex items-center justify-between mb-8">
             <div>

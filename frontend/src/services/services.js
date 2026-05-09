@@ -57,6 +57,7 @@ export const adminService = {
   getUsersForDeliveryAssign: ()                 => api.get('/admin/delivery-partners/users'),
   assignDeliveryRole:       (userId)            => api.post(`/admin/delivery-partners/${userId}/assign-role`),
   removeDeliveryRole:       (userId)            => api.post(`/admin/delivery-partners/${userId}/remove-role`),
+  deleteDeliveryPartner:    (userId)            => api.delete(`/admin/delivery-partners/${userId}`),
   assignDeliveryAgent:      (orderId, data)     => api.patch(`/admin/orders/${orderId}/assign-delivery`, data),
   adminConfirmDelivery:     (orderId, data)     => api.post(`/admin/orders/${orderId}/admin-confirm-delivery`, data),
 };

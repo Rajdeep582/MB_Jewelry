@@ -300,6 +300,7 @@ function DeliveryCard({ item }) {
 
 const ASSIGN_PHRASE  = 'Make this email id delivery partner';
 const REMOVE_PHRASE  = 'Remove Partner';
+const DELETE_PHRASE  = 'DELETE';
 
 function DeliveryPartnerManager({ onRefreshOrders }) {
   const [open, setOpen]               = useState(false);
@@ -310,6 +311,8 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
   const [confirmText, setConfirmText] = useState('');
   const [removingId, setRemovingId]   = useState(null);
   const [removeText, setRemoveText]   = useState('');
+  const [deletingId, setDeletingId]   = useState(null);
+  const [deleteText, setDeleteText]   = useState('');
 
   const load = async () => {
     try {
@@ -318,6 +321,7 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
         adminService.getUsersForDeliveryAssign(),
       ]);
       setPartners(pRes.data.partners || []);
+      // allUsers = all DP accounts not yet approved (pending)
       setAllUsers((uRes.data.users || []).filter(u => u.role !== 'delivery'));
     } catch { /* silent */ }
   };
@@ -353,6 +357,24 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
   const startRemove = (userId) => { setRemovingId(userId); setRemoveText(''); };
   const cancelRemove = () => { setRemovingId(null); setRemoveText(''); };
 
+  const startDelete = (userId) => { setDeletingId(userId); setDeleteText(''); cancelAssign(); };
+  const cancelDelete = () => { setDeletingId(null); setDeleteText(''); };
+
+  const deletePartner = async (userId) => {
+    if (deleteText.trim() !== DELETE_PHRASE) {
+      toast.error('Type exactly: DELETE');
+      return;
+    }
+    setBusy(true);
+    try {
+      await adminService.deleteDeliveryPartner(userId);
+      toast.success('Partner deleted permanently');
+      cancelDelete();
+      await load();
+    } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }
+    setBusy(false);
+  };
+
   const remove = async (userId) => {
     if (removeText.trim() !== REMOVE_PHRASE) {
       toast.error(`Type exactly: "${REMOVE_PHRASE}"`);
@@ -381,7 +403,7 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
           </div>
           <div>
             <p className="text-white text-sm font-medium">Delivery Partner Management</p>
-            <p className="text-dark-500 text-xs">{partners.length} active partner{partners.length !== 1 ? 's' : ''}</p>
+            <p className="text-dark-500 text-xs">{partners.filter(p => p.isApproved).length} active partner{partners.filter(p => p.isApproved).length !== 1 ? 's' : ''}</p>
           </div>
         </div>
         <span className="text-dark-500 text-xs">{open ? '▲' : '▼'}</span>
@@ -389,12 +411,12 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
 
       {open && (
         <div className="mt-4 space-y-4 border-t border-white/5 pt-4">
-          {/* Current partners */}
-          {partners.length > 0 && (
+          {/* Current partners — only approved */}
+          {partners.filter(p => p.isApproved).length > 0 && (
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wider mb-2">Active Partners</p>
               <div className="space-y-2">
-                {partners.map(p => (
+                {partners.filter(p => p.isApproved).map(p => (
                   <div key={p._id} className="bg-dark-900 rounded-lg border border-white/5 overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2.5">
                       <div>
@@ -457,20 +479,31 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
                         <p className="text-white text-sm">{u.name}</p>
                         <p className="text-dark-500 text-xs">{u.email}</p>
                       </div>
-                      {confirmingId === u._id ? (
-                        <button
-                          onClick={cancelAssign}
-                          className="text-xs text-dark-500 hover:text-white px-2 py-1"
-                        >Cancel</button>
-                      ) : (
-                        <button
-                          onClick={() => startAssign(u._id)}
-                          disabled={busy}
-                          className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 rounded-lg px-2.5 py-1.5 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
-                        >
-                          <FiUserPlus size={12} /> Assign
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {confirmingId === u._id || deletingId === u._id ? (
+                          <button
+                            onClick={() => { cancelAssign(); cancelDelete(); }}
+                            className="text-xs text-dark-500 hover:text-white px-2 py-1"
+                          >Cancel</button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => startAssign(u._id)}
+                              disabled={busy}
+                              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/20 rounded-lg px-2.5 py-1.5 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                            >
+                              <FiUserPlus size={12} /> Assign
+                            </button>
+                            <button
+                              onClick={() => startDelete(u._id)}
+                              disabled={busy}
+                              className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 border border-red-500/20 rounded-lg px-2.5 py-1.5 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                            >
+                              <FiUserX size={12} /> Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
 
                     {confirmingId === u._id && (
@@ -494,6 +527,30 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
                             className="text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5"
                           >
                             <FiUserPlus size={12} /> Assign
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {deletingId === u._id && (
+                      <div className="px-3 pb-3 border-t border-red-500/10 pt-3 space-y-2 bg-red-500/5">
+                        <p className="text-xs text-red-400 font-medium">⚠ This will permanently delete this account from the database.</p>
+                        <p className="text-xs text-dark-400">Type <span className="font-mono text-red-300">DELETE</span> to confirm:</p>
+                        <div className="flex gap-2">
+                          <input
+                            autoFocus
+                            value={deleteText}
+                            onChange={e => setDeleteText(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && deletePartner(u._id)}
+                            placeholder="DELETE"
+                            className="flex-1 bg-dark-800 border border-red-500/30 rounded-lg px-3 py-1.5 text-sm text-white placeholder-dark-600 focus:outline-none focus:border-red-500/60"
+                          />
+                          <button
+                            onClick={() => deletePartner(u._id)}
+                            disabled={busy || deleteText.trim() !== DELETE_PHRASE}
+                            className="text-xs bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg px-3 py-1.5 font-medium transition-colors flex items-center gap-1.5"
+                          >
+                            <FiUserX size={12} /> Delete
                           </button>
                         </div>
                       </div>

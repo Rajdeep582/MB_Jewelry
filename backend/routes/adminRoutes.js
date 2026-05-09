@@ -13,6 +13,7 @@ const {
   removeDeliveryRole,
   assignDeliveryAgent,
   adminConfirmDelivery,
+  deleteDeliveryPartner,
 } = require('../controllers/adminController');
 const { protect, adminOnly } = require('../middleware/auth');
 
@@ -27,6 +28,7 @@ router.get('/delivery-partners',                   protect, adminOnly, getDelive
 router.get('/delivery-partners/users',             protect, adminOnly, getUsersForDeliveryAssign);
 router.post('/delivery-partners/:id/assign-role',  protect, adminOnly, assignDeliveryRole);
 router.post('/delivery-partners/:id/remove-role',  protect, adminOnly, removeDeliveryRole);
+router.delete('/delivery-partners/:id',            protect, adminOnly, deleteDeliveryPartner);
 router.patch('/orders/:id/assign-delivery',        protect, adminOnly, assignDeliveryAgent);
 router.post('/orders/:id/admin-confirm-delivery',  protect, adminOnly, adminConfirmDelivery);
 

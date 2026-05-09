@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const GlobalPricing = require('../models/GlobalPricing');
 const User = require('../models/User');
+const DeliveryPartner = require('../models/DeliveryPartner');
 const Order = require('../models/Order');
 const CustomOrder = require('../models/CustomOrder');
 const logger = require('../utils/logger');
@@ -283,40 +284,49 @@ const resyncDynamicPrices = async (req, res) => {
 // ─── Delivery Partner Management ─────────────────────────────────────────────
 
 // GET /api/admin/delivery-partners
+// Returns all delivery partner accounts (approved and pending) from DeliveryPartner collection
 const getDeliveryPartners = async (req, res) => {
-  const partners = await User.find({ role: 'delivery' }).select('name email phone vehicleNumber dispatchZone createdAt isActive').lean();
+  const partners = await DeliveryPartner.find()
+    .select('name email phone vehicleNumber dispatchZone createdAt isActive isApproved partnerId')
+    .lean();
   res.json({ success: true, partners });
 };
 
 // GET /api/admin/delivery-partners/users
+// Returns all DP accounts for the assign panel (no normal users)
 const getUsersForDeliveryAssign = async (req, res) => {
-  const users = await User.find({ role: { $in: ['user', 'delivery'] }, isVerified: true })
-    .select('name email role').lean();
-  res.json({ success: true, users });
+  const users = await DeliveryPartner.find()
+    .select('name email isApproved partnerId')
+    .lean();
+  // Normalise shape: add role field for frontend compat
+  const normalised = users.map(u => ({ ...u, role: u.isApproved ? 'delivery' : 'pending' }));
+  res.json({ success: true, users: normalised });
 };
 
 // POST /api/admin/delivery-partners/:id/assign-role
+// Approves a delivery partner (sets isApproved = true)
 const assignDeliveryRole = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    return res.status(400).json({ success: false, message: 'Invalid partner ID' });
   }
-  const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  user.role = 'delivery';
-  await user.save();
-  res.json({ success: true, message: `${user.name} assigned as delivery partner`, user });
+  const dp = await DeliveryPartner.findById(req.params.id);
+  if (!dp) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+  dp.isApproved = true;
+  await dp.save();
+  res.json({ success: true, message: `${dp.name} approved as delivery partner`, user: { ...dp.toObject(), role: 'delivery' } });
 };
 
 // POST /api/admin/delivery-partners/:id/remove-role
+// Revokes approval (sets isApproved = false)
 const removeDeliveryRole = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    return res.status(400).json({ success: false, message: 'Invalid partner ID' });
   }
-  const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  user.role = 'user';
-  await user.save();
-  res.json({ success: true, message: `${user.name} removed from delivery partners`, user });
+  const dp = await DeliveryPartner.findById(req.params.id);
+  if (!dp) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+  dp.isApproved = false;
+  await dp.save();
+  res.json({ success: true, message: `${dp.name} removed from active delivery partners`, user: dp });
 };
 
 // PATCH /api/admin/orders/:id/assign-delivery
@@ -327,6 +337,13 @@ const assignDeliveryAgent = async (req, res) => {
   }
   if (agentId && !mongoose.isValidObjectId(agentId)) {
     return res.status(400).json({ success: false, message: 'Invalid agent ID' });
+  }
+  // Validate agent is an approved DeliveryPartner
+  if (agentId) {
+    const dp = await DeliveryPartner.findById(agentId).select('isApproved isActive').lean();
+    if (!dp) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+    if (!dp.isApproved) return res.status(400).json({ success: false, message: 'Delivery partner not yet approved' });
+    if (!dp.isActive) return res.status(400).json({ success: false, message: 'Delivery partner account is inactive' });
   }
   if (source === 'custom_order') {
     const co = await CustomOrder.findByIdAndUpdate(
@@ -369,9 +386,28 @@ const adminConfirmDelivery = async (req, res) => {
 };
 
 const deleteGlobalPricing = async (req, res) => {
-  const deleted = await GlobalPricing.findByIdAndDelete(req.params.id);
-  if (!deleted) return res.status(404).json({ success: false, message: 'Entry not found' });
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid ID' });
+  }
+  const entry = await GlobalPricing.findByIdAndDelete(req.params.id);
+  if (!entry) return res.status(404).json({ success: false, message: 'Pricing entry not found' });
   res.json({ success: true, message: 'Pricing entry deleted' });
+};
+
+// DELETE /api/admin/delivery-partners/:id
+// Hard-delete only non-approved (pending) partners
+const deleteDeliveryPartner = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid partner ID' });
+  }
+  const dp = await DeliveryPartner.findById(req.params.id);
+  if (!dp) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
+  if (dp.isApproved) {
+    return res.status(400).json({ success: false, message: 'Cannot delete an active partner. Remove their role first.' });
+  }
+  await DeliveryPartner.deleteOne({ _id: dp._id });
+  logger.info(`Admin ${req.user._id} hard-deleted pending DP ${dp._id} (${dp.email})`);
+  res.json({ success: true, message: `${dp.name} deleted permanently` });
 };
 
 module.exports = {
@@ -385,6 +421,7 @@ module.exports = {
   getUsersForDeliveryAssign,
   assignDeliveryRole,
   removeDeliveryRole,
+  deleteDeliveryPartner,
   assignDeliveryAgent,
   adminConfirmDelivery,
 };
