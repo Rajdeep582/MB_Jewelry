@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiUser, FiMapPin, FiPlus, FiTrash2, FiEdit3, FiCheck,
   FiShoppingBag, FiHeart, FiShield, FiSmartphone, FiMail,
 } from 'react-icons/fi';
-import { setCredentials } from '../store/authSlice';
+import { setCredentials, selectUser } from '../store/authSlice';
 import { addToCart, openCart } from '../store/cartSlice';
 import { userService } from '../services/services';
 import { resolveImageUrl, formatPrice } from '../utils/helpers';
@@ -14,47 +15,77 @@ import api from '../services/api';
 
 export default function Profile() {
   const dispatch = useDispatch();
+  const authUser = useSelector(selectUser);
+
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  
   const [saving, setSaving] = useState(false);
-  
-  const [form, setForm] = useState({ 
-    firstName: '', lastName: '', gender: '', phone: '', alternateEmail: ''
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', gender: '', phone: '', alternateEmail: '',
   });
-
   const [emailForm, setEmailForm] = useState({ email: '' });
   const [addEmailStep, setAddEmailStep] = useState('input'); // input | otp | done
   const [addingEmail, setAddingEmail] = useState(false);
   const [emailOtp, setEmailOtp] = useState('');
-
   const [showAddrForm, setShowAddrForm] = useState(false);
   const [newAddr, setNewAddr] = useState({
     fullName: '', phone: '', addressLine1: '', addressLine2: '',
     city: '', state: '', pincode: '', country: 'India', isDefault: false,
   });
 
+  const isNonUser = authUser?.role === 'admin' || authUser?.role === 'delivery';
+
   useEffect(() => {
+    if (isNonUser) return; // admin/delivery don't use the user profile fetch
     document.title = 'My Profile — M.B. JEWELLERS';
     userService.getProfile()
       .then((profRes) => {
         const user = profRes.data.user;
+        if (!user) { setLoading(false); return; }
         setProfile(user);
-        
         const nameParts = (user.name || '').trim().split(' ');
         const fName = nameParts[0] || '';
         const lName = nameParts.slice(1).join(' ') || '';
+        setForm({
+          firstName: fName,
+          lastName: lName,
+          gender: user.gender || '',
+          phone: user.phone || '',
+          alternateEmail: user.alternateEmail || '',
+        });
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [isNonUser]);
 
-      setForm({ 
-        firstName: fName,
-        lastName: lName,
-        gender: user.gender || '',
-        phone: user.phone || '',
-        alternateEmail: user.alternateEmail || ''
-      });
-      setLoading(false);
-    });
-  }, []);
+  // Delivery partners have dedicated profile on /delivery page
+  if (authUser?.role === 'delivery') return <Navigate to="/delivery" replace />;
+
+  // Admin profile — show minimal view
+  if (authUser?.role === 'admin') {
+    return (
+      <div className="min-h-screen pt-20 pb-16">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6">
+          <h1 className="section-title mb-2">Admin Profile</h1>
+          <div className="gold-divider mt-2 mx-0 mb-6" />
+          <div className="card p-6 space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gold-500/20 to-gold-700/10 border border-gold-500/20 flex items-center justify-center text-2xl font-bold text-gold-400">
+                {(authUser.name || 'A')[0].toUpperCase()}
+              </div>
+              <div>
+                <p className="text-white font-semibold text-lg">{authUser.name || '—'}</p>
+                <p className="text-dark-500 text-sm">{authUser.email}</p>
+                <span className="inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full bg-gold-500/10 border border-gold-500/20 text-gold-400">
+                  Admin
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
@@ -165,7 +196,6 @@ export default function Profile() {
     </div>
   );
 
-  // Profile completion calculation
   const calculateCompletion = () => {
     let score = 0;
     if (profile?.name) score += 20;
@@ -176,6 +206,106 @@ export default function Profile() {
     return Math.min(score, 100);
   };
   const completion = calculateCompletion();
+
+  const renderEmailContent = () => {
+    if (profile?.email) {
+      return (
+        <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
+          <FiCheck className="text-green-400 shrink-0" size={16} />
+          <div>
+            <p className="text-white text-sm">{profile.email}</p>
+            <p className="text-green-400 text-xs mt-0.5">Verified</p>
+          </div>
+        </div>
+      );
+    }
+    if (addEmailStep === 'done') {
+      return (
+        <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
+          <FiCheck className="text-green-400 shrink-0" size={16} />
+          <p className="text-white text-sm">Email verified successfully</p>
+        </div>
+      );
+    }
+    if (addEmailStep === 'otp') {
+      return (
+        <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
+          <p className="text-dark-400 text-sm">Enter the 6-digit OTP sent to <span className="text-white">{emailForm.email}</span></p>
+          <div>
+            <label className="label-dark">OTP Code</label>
+            <input
+              value={emailOtp}
+              onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              className="input-dark text-sm tracking-[0.4em] text-center font-mono"
+              placeholder="000000"
+              maxLength={6}
+              required
+            />
+          </div>
+          <div className="flex gap-3">
+            <button type="submit" disabled={addingEmail || emailOtp.length !== 6} className="btn-gold text-sm py-2.5 px-6">
+              {addingEmail ? 'Verifying…' : 'Verify OTP'}
+            </button>
+            <button type="button" onClick={() => { setAddEmailStep('input'); setEmailOtp(''); }} className="btn-dark text-sm py-2.5 px-6">Back</button>
+          </div>
+        </form>
+      );
+    }
+    return (
+      <form onSubmit={handleAddEmail} className="space-y-4">
+        <p className="text-dark-400 text-sm">Add an email address to your account for alternative login and notifications.</p>
+        <div>
+          <label className="label-dark">Email Address</label>
+          <input
+            type="email"
+            value={emailForm.email}
+            onChange={(e) => setEmailForm({ email: e.target.value })}
+            className="input-dark text-sm"
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+        <button type="submit" disabled={addingEmail} className="btn-gold text-sm py-2.5 px-6">
+          {addingEmail ? 'Sending OTP…' : 'Add Email'}
+        </button>
+      </form>
+    );
+  };
+
+  const renderWishlistItem = (product) => (
+    <div key={product._id} className="group flex flex-col sm:flex-row items-center gap-5 p-4 bg-dark-800 rounded-2xl border border-white/5 hover:border-gold-500/30 transition-all">
+      <div className="w-24 h-24 shrink-0 rounded-xl overflow-hidden bg-dark-900 border border-white/5">
+        <img
+          src={resolveImageUrl(product?.images?.[0]?.url)}
+          alt={product.name}
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+        />
+      </div>
+      <div className="flex-1 text-center sm:text-left">
+        <p className="text-dark-400 text-[10px] uppercase tracking-wider mb-1">{product.material} · {product.type}</p>
+        <h4 className="text-white font-medium text-sm sm:text-base mb-2 group-hover:text-gold-400 transition-colors">{product.name}</h4>
+        <div className="flex items-center justify-center sm:justify-start gap-2">
+          <span className="text-gold-400 font-medium text-sm sm:text-base">{formatPrice(product.discountedPrice || product.price)}</span>
+          {product.discountedPrice && <span className="text-dark-500 text-xs line-through">{formatPrice(product.price)}</span>}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t border-white/5 sm:border-t-0">
+        <button
+          onClick={() => handleAddToCart(product)}
+          className="flex-1 sm:flex-none py-2.5 px-6 rounded-xl bg-gold-500/10 text-gold-500 hover:bg-gold-500 hover:text-dark-900 text-sm font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          <FiShoppingBag size={14} /> Add to Cart
+        </button>
+        <button
+          onClick={() => handleRemoveWishlist(product._id)}
+          className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-dark-900 text-dark-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 transition-all"
+          title="Remove from saved"
+        >
+          <FiTrash2 size={16} />
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen pt-24 pb-20 bg-dark-900">
@@ -291,59 +421,7 @@ export default function Profile() {
               <div className="card p-6 border border-white/5">
                 <h3 className="text-white font-display text-xl mb-4 flex items-center gap-2"><FiMail className="text-gold-500"/> Email Address</h3>
 
-                {profile?.email ? (
-                  <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
-                    <FiCheck className="text-green-400 shrink-0" size={16} />
-                    <div>
-                      <p className="text-white text-sm">{profile.email}</p>
-                      <p className="text-green-400 text-xs mt-0.5">Verified</p>
-                    </div>
-                  </div>
-                ) : addEmailStep === 'done' ? (
-                  <div className="flex items-center gap-3 p-4 bg-dark-800 rounded-xl border border-green-500/20">
-                    <FiCheck className="text-green-400 shrink-0" size={16} />
-                    <p className="text-white text-sm">Email verified successfully</p>
-                  </div>
-                ) : addEmailStep === 'otp' ? (
-                  <form onSubmit={handleVerifyEmailOtp} className="space-y-4">
-                    <p className="text-dark-400 text-sm">Enter the 6-digit OTP sent to <span className="text-white">{emailForm.email}</span></p>
-                    <div>
-                      <label className="label-dark">OTP Code</label>
-                      <input
-                        value={emailOtp}
-                        onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        className="input-dark text-sm tracking-[0.4em] text-center font-mono"
-                        placeholder="000000"
-                        maxLength={6}
-                        required
-                      />
-                    </div>
-                    <div className="flex gap-3">
-                      <button type="submit" disabled={addingEmail || emailOtp.length !== 6} className="btn-gold text-sm py-2.5 px-6">
-                        {addingEmail ? 'Verifying…' : 'Verify OTP'}
-                      </button>
-                      <button type="button" onClick={() => { setAddEmailStep('input'); setEmailOtp(''); }} className="btn-dark text-sm py-2.5 px-6">Back</button>
-                    </div>
-                  </form>
-                ) : (
-                  <form onSubmit={handleAddEmail} className="space-y-4">
-                    <p className="text-dark-400 text-sm">Add an email address to your account for alternative login and notifications.</p>
-                    <div>
-                      <label className="label-dark">Email Address</label>
-                      <input
-                        type="email"
-                        value={emailForm.email}
-                        onChange={(e) => setEmailForm({ email: e.target.value })}
-                        className="input-dark text-sm"
-                        placeholder="you@example.com"
-                        required
-                      />
-                    </div>
-                    <button type="submit" disabled={addingEmail} className="btn-gold text-sm py-2.5 px-6">
-                      {addingEmail ? 'Sending OTP…' : 'Add Email'}
-                    </button>
-                  </form>
-                )}
+                {renderEmailContent()}
               </div>
             )}
 
@@ -438,42 +516,7 @@ export default function Profile() {
               </div>
               {profile?.wishlist && profile.wishlist.length > 0 ? (
                 <div className="space-y-4">
-                  {profile.wishlist.map(product => (
-                    <div key={product._id} className="group flex flex-col sm:flex-row items-center gap-5 p-4 bg-dark-800 rounded-2xl border border-white/5 hover:border-gold-500/30 transition-all">
-                      <div className="w-24 h-24 shrink-0 rounded-xl overflow-hidden bg-dark-900 border border-white/5">
-                        <img 
-                          src={resolveImageUrl(product?.images?.[0]?.url)} 
-                          alt={product.name} 
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                        />
-                      </div>
-                      
-                      <div className="flex-1 text-center sm:text-left">
-                        <p className="text-dark-400 text-[10px] uppercase tracking-wider mb-1">{product.material} · {product.type}</p>
-                        <h4 className="text-white font-medium text-sm sm:text-base mb-2 group-hover:text-gold-400 transition-colors">{product.name}</h4>
-                        <div className="flex items-center justify-center sm:justify-start gap-2">
-                          <span className="text-gold-400 font-medium text-sm sm:text-base">{formatPrice(product.discountedPrice || product.price)}</span>
-                          {product.discountedPrice && <span className="text-dark-500 text-xs line-through">{formatPrice(product.price)}</span>}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0 pt-4 sm:pt-0 border-t border-white/5 sm:border-t-0">
-                        <button 
-                          onClick={() => handleAddToCart(product)} 
-                          className="flex-1 sm:flex-none py-2.5 px-6 rounded-xl bg-gold-500/10 text-gold-500 hover:bg-gold-500 hover:text-dark-900 text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                        >
-                          <FiShoppingBag size={14} /> Add to Cart
-                        </button>
-                        <button 
-                          onClick={() => handleRemoveWishlist(product._id)} 
-                          className="w-10 h-10 shrink-0 flex items-center justify-center rounded-xl bg-dark-900 text-dark-400 hover:text-red-400 hover:bg-red-500/10 border border-white/5 hover:border-red-500/30 transition-all" 
-                          title="Remove from saved"
-                        >
-                          <FiTrash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  {profile.wishlist.map(renderWishlistItem)}
                 </div>
               ) : (
                 <div className="text-center py-8 bg-dark-800 rounded-xl border border-white/5">

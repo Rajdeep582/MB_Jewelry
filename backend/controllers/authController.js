@@ -21,7 +21,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 const addAuditLog = (user, action, details, ipAddress) => {
-  if (!user.auditLogs) user.auditLogs = [];
+  user.auditLogs ??= [];
   user.auditLogs.push({ action, details, ipAddress });
 };
 
@@ -29,6 +29,32 @@ const addAuditLog = (user, action, details, ipAddress) => {
 const isMobile = (val) => /^(\+91[-\s]?)?[6-9]\d{9}$/.test(val?.replace(/[-\s]/g, '') || '');
 const isEmail  = (val) => /^\S+@\S+\.\S+$/.test(val || '');
 const normaliseMobile = (m) => m.replace(/[-\s]/g, '').replace(/^\+91/, '').replace(/^91([6-9])/, '$1');
+
+const buildSessionEntry = (req, refreshToken) => ({
+  sessionId: crypto.randomUUID(),
+  tokenHash: hashToken(refreshToken),
+  deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
+  ipAddress: req.ip,
+  expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+});
+
+const pruneExpiredSessions = (sessions) =>
+  (sessions || []).filter((s) => s.expiresAt > new Date());
+
+async function loginAdmin(adminRecord, req, res) {
+  const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
+  const refreshToken = generateRefreshToken(adminRecord._id, 'admin');
+  adminRecord.sessions = pruneExpiredSessions(adminRecord.sessions);
+  adminRecord.sessions.push(buildSessionEntry(req, refreshToken));
+  adminRecord.lastLogin = new Date();
+  await adminRecord.save({ validateBeforeSave: false });
+  sendRefreshTokenCookie(res, refreshToken);
+  return res.json({
+    success: true,
+    accessToken,
+    user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar },
+  });
+}
 
 // @desc    Send OTP to mobile (pre-registration)
 // @route   POST /api/auth/send-mobile-otp
@@ -188,59 +214,52 @@ const login = async (req, res) => {
 
   user.loginAttempts = 0;
   user.lockUntil = undefined;
-  
-  // Delivery partners must use /dp-auth/login
-  if (user.role === 'delivery') {
-    return res.status(403).json({ success: false, message: 'Please use the delivery partner login page.' });
-  }
 
-  // Admin: look up in Admin collection to get correct _id for token
+  // Admin: look up or auto-create in Admin collection to get correct _id for token
   if (user.role === 'admin') {
-    const adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
-    if (!adminRecord || !adminRecord.isActive) {
-      return res.status(403).json({ success: false, message: 'Admin account not found. Contact support.' });
+    let adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
+    if (!adminRecord) {
+      // Auto-create Admin record from User data (handles migration from before role separation)
+      // Use insertOne to bypass Mongoose pre-save hook which would double-hash the password
+      const AdminModel = mongoose.connection.collection('admins');
+      const now = new Date();
+      const adminId = `ADM-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+      await AdminModel.insertOne({
+        name: user.name,
+        email: user.email,
+        password: user.password, // already hashed from User model
+        avatar: user.avatar || '',
+        isActive: true,
+        loginAttempts: 0,
+        sessions: [],
+        auditLogs: [],
+        adminId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
+      logger.info(`Auto-created Admin record for ${user.email} from User collection`);
     }
-    const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
-    const refreshToken = generateRefreshToken(adminRecord._id, 'admin');
-
-    adminRecord.sessions = (adminRecord.sessions || []).filter(s => s.expiresAt > new Date());
-    adminRecord.sessions.push({
-      sessionId: crypto.randomUUID(),
-      tokenHash: hashToken(refreshToken),
-      deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-      ipAddress,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
-    adminRecord.lastLogin = new Date();
-    await adminRecord.save({ validateBeforeSave: false });
-
-    sendRefreshTokenCookie(res, refreshToken);
-    return res.json({
-      success: true,
-      accessToken,
-      user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar },
-    });
+    if (!adminRecord.isActive) {
+      return res.status(403).json({ success: false, message: 'Admin account deactivated. Contact support.' });
+    }
+    return loginAdmin(adminRecord, req, res);
   }
+
+  // Delivery partners in User collection: login as regular user (they can also use /dp-auth/login for DP-specific features)
+  // Don't block them — they still have a valid User account
 
   const accessToken = generateAccessToken(user._id, user.role, 'user');
   const refreshToken = generateRefreshToken(user._id, 'user');
 
-  user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
-
-  user.sessions.push({
-    sessionId: crypto.randomUUID(),
-    tokenHash: hashToken(refreshToken),
-    deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-    ipAddress,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-  });
-
+  user.sessions = pruneExpiredSessions(user.sessions);
+  user.sessions.push(buildSessionEntry(req, refreshToken));
   user.lastLogin = new Date();
   addAuditLog(user, 'LOGGED_IN', 'Local login', ipAddress);
   await user.save({ validateBeforeSave: false });
 
   sendRefreshTokenCookie(res, refreshToken);
-  res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, mobile: user.mobile, role: user.role, avatar: user.avatar } });
+  res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, mobile: user.mobile, role: 'user', avatar: user.avatar } });
 };
 
 // @desc    Refresh Token & Handle Replay Attacks
@@ -337,7 +356,12 @@ const logout = async (req, res) => {
 // @desc    Get Me
 const getMe = async (req, res) => {
   // req.user is already populated by protect middleware from the correct model
-  res.json({ success: true, user: req.user });
+  // Convert to plain object and ensure role is included (Mongoose toJSON may strip dynamically added fields)
+  const userData = req.user.toObject ? req.user.toObject() : { ...req.user };
+  if (req.userType === 'admin') userData.role = 'admin';
+  else if (req.userType === 'delivery') userData.role = 'delivery';
+  else userData.role = 'user'; // Always 'user' for userType='user' regardless of User.role field
+  res.json({ success: true, user: userData });
 };
 
 // ─── OAuth Flows ───────────────────────────────────────────────────────────────
@@ -368,42 +392,35 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
 
     // Admin: route to Admin collection for correct _id + userType
     if (user.role === 'admin') {
-      const adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
-      if (!adminRecord || !adminRecord.isActive) {
-        return res.status(403).json({ success: false, message: 'Admin record not found. Contact support.' });
+      let adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
+      if (!adminRecord) {
+        // Auto-create Admin record for OAuth admin users
+        adminRecord = await Admin.create({
+          name: user.name,
+          email: user.email,
+          password: require('node:crypto').randomBytes(32).toString('hex'), // random password (OAuth only)
+          avatar: user.avatar || '',
+          isActive: true,
+        });
+        adminRecord = await Admin.findById(adminRecord._id).select('+sessions');
+        logger.info(`Auto-created Admin record for OAuth admin ${user.email}`);
       }
-      const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
-      const splitRToken = generateRefreshToken(adminRecord._id, 'admin');
-      adminRecord.sessions = (adminRecord.sessions || []).filter(s => s.expiresAt > new Date());
-      adminRecord.sessions.push({
-        sessionId: crypto.randomUUID(),
-        tokenHash: hashToken(splitRToken),
-        deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-        ipAddress: req.ip,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      });
-      adminRecord.lastLogin = new Date();
-      await adminRecord.save({ validateBeforeSave: false });
-      sendRefreshTokenCookie(res, splitRToken);
-      return res.json({ success: true, accessToken, user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar } });
+      if (!adminRecord.isActive) {
+        return res.status(403).json({ success: false, message: 'Admin account deactivated. Contact support.' });
+      }
+      return loginAdmin(adminRecord, req, res);
     }
 
     const accessToken = generateAccessToken(user._id, user.role, 'user');
     const splitRToken = generateRefreshToken(user._id, 'user');
 
-    user.sessions.push({
-      sessionId: crypto.randomUUID(),
-      tokenHash: hashToken(splitRToken),
-      deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-      ipAddress: req.ip,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-    });
-
+    user.sessions = pruneExpiredSessions(user.sessions);
+    user.sessions.push(buildSessionEntry(req, splitRToken));
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
 
     sendRefreshTokenCookie(res, splitRToken);
-    res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar } });
+    res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, role: 'user', avatar: user.avatar } });
   } catch (err) {
     logger.error(`${providerName} login error: ` + err.message);
     res.status(401).json({ success: false, message: `${providerName} integration failed.` });

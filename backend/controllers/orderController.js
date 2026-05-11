@@ -7,6 +7,7 @@ const { razorpay, isRazorpayConfigured } = require('../config/razorpay');
 const { verifyRazorpaySignature } = require('../utils/razorpayHelper');
 
 const logger = require('../utils/logger');
+const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -419,7 +420,8 @@ const retryVerifyPayment = async (req, res) => {
 
   logger.info(`retry-verify: Payment confirmed via Razorpay API for order=${id}, payment=${capturedPayment.id}`);
 
-  const result = await atomicConfirmOrder(order, capturedPayment.id, capturedPayment.id, razorpayOrderId);
+  // Signature not available in retry path — mark as API-verified
+  const result = await atomicConfirmOrder(order, capturedPayment.id, 'razorpay_api_verified', razorpayOrderId);
 
   if (!result.success) {
     return res.status(500).json({
@@ -547,20 +549,21 @@ const handleWebhook = async (req, res) => {
   res.status(200).json({ received: true });
 
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (webhookSecret) {
-    // 2. Verify webhook signature
-    const signature = req.headers['x-razorpay-signature'];
-    const expectedSig = crypto
-      .createHmac('sha256', webhookSecret)
-      .update(req.body) // raw buffer from express.raw()
-      .digest('hex');
+  if (!webhookSecret) {
+    logger.error('RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook event');
+    return;
+  }
 
-    if (expectedSig !== signature) {
-      logger.warn('Webhook signature mismatch. Rejecting event.');
-      return;
-    }
-  } else {
-    logger.warn('RAZORPAY_WEBHOOK_SECRET is not set — skipping webhook signature verification');
+  // 2. Verify webhook signature
+  const signature = req.headers['x-razorpay-signature'];
+  const expectedSig = crypto
+    .createHmac('sha256', webhookSecret)
+    .update(req.body) // raw buffer from express.raw()
+    .digest('hex');
+
+  if (expectedSig !== signature) {
+    logger.warn('Webhook signature mismatch. Rejecting event.');
+    return;
   }
 
   let event;
@@ -624,7 +627,8 @@ const getOrder = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  const ownerId = order.user?._id ?? order.user;
+  if (ownerId?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorized' });
   }
 
@@ -767,6 +771,17 @@ const updateOrderStatus = async (req, res) => {
 
   applyOrderTransition(order, status, paymentStatus, estimatedDelivery);
 
+  // ── Store delivery partner ID when marked delivered ────────────────────────
+  if (status === 'delivered' && !order.deliveredByPartnerId) {
+    const agentRef = order.deliveryAgent || order.dpConfirmedBy;
+    if (agentRef) {
+      const DeliveryPartner = require('../models/DeliveryPartner');
+      const dp = await DeliveryPartner.findById(agentRef).select('partnerId name').lean();
+      if (dp?.partnerId) order.deliveredByPartnerId   = dp.partnerId;
+      if (dp?.name)      order.deliveredByPartnerName = dp.name;
+    }
+  }
+
   order.trackingHistory.push({
     status,
     comment: comment || '',
@@ -777,6 +792,31 @@ const updateOrderStatus = async (req, res) => {
   await order.save();
 
   logger.info(`Order ${order._id} transitioned "${current}" → "${status}" by admin ${req.user._id}` + (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : ''));
+
+  // ── Persist delivery snapshot (independent collection) ────────────────────
+  if (status === 'shipped' || status === 'delivered') {
+    const populatedUser = order.user?.name ? order.user : await require('../models/User').findById(order.user).select('name email').lean();
+    const itemsSummary = (order.items || []).map(i => i.name).join(', ');
+    await upsertDeliverySnapshot({
+      sourceType:          'order',
+      sourceId:            order._id,
+      orderId:             order.orderId || '',
+      deliveryId:          order.deliveryId || '',
+      customerName:        populatedUser?.name  || '',
+      customerEmail:       populatedUser?.email || '',
+      shippingAddress:     order.shippingAddress,
+      itemsSummary,
+      totalAmount:         order.totalAmount || 0,
+      status,
+      dispatchedAt:        order.dispatchedAt,
+      estimatedDelivery:   order.estimatedDelivery,
+      deliveredAt:         order.deliveredAt,
+      deliveryAgent:       order.deliveryAgent,
+      deliveredByPartnerId:   order.deliveredByPartnerId   || '',
+      deliveredByPartnerName: order.deliveredByPartnerName || '',
+      trackingHistory:        order.trackingHistory,
+    });
+  }
 
   res.json({ success: true, order });
 };
@@ -860,7 +900,6 @@ const getDeliveryStats = async (req, res) => {
   const oc = orderCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
   const cc = customCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
 
-  // Merge: CustomOrder.final_payment_paid maps to "confirmed" bucket
   const confirmed     = (oc.confirmed     || 0) + (cc.final_payment_paid || 0);
   const ready_to_ship = (oc.ready_to_ship || 0) + (cc.ready_to_ship     || 0);
   const shipped       = (oc.shipped       || 0) + (cc.shipped            || 0);

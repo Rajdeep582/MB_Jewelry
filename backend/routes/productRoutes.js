@@ -5,6 +5,17 @@ const {
 } = require('../controllers/productController');
 const { protect, adminOnly } = require('../middleware/auth');
 const { uploadProductImages } = require('../middleware/upload');
+const GlobalPricing = require('../models/GlobalPricing');
+
+// Public: returns GST rates per material/purity (no sensitive pricing data)
+router.get('/public/gst-rates', async (req, res) => {
+  try {
+    const pricing = await GlobalPricing.find({}).select('material purity gst').lean();
+    res.json({ success: true, rates: pricing });
+  } catch {
+    res.json({ success: true, rates: [] });
+  }
+});
 
 router.get('/', getProducts);
 router.get('/:id', getProduct);

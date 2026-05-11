@@ -6,7 +6,7 @@ import { Toaster } from 'react-hot-toast';
 import { store } from './store/store';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { ProtectedRoute, AdminRoute, DeliveryRoute } from './components/common/ProtectedRoute';
-import { selectIsDelivery } from './store/authSlice';
+import { selectIsDelivery, selectIsAdmin } from './store/authSlice';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
 import CartDrawer from './components/common/CartDrawer';
@@ -31,6 +31,8 @@ import DeliveryPartnerPage from './pages/DeliveryPartnerPage';
 import { DeliveryLogin, DeliveryRegister } from './pages/DeliveryAuth';
 
 // Admin Pages
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminRegister from './pages/admin/AdminRegister';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminProducts from './pages/admin/AdminProducts';
@@ -39,6 +41,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminPricing from './pages/admin/AdminPricing';
 import AdminDelivery from './pages/admin/AdminDelivery';
 import AdminCustomOrders from './pages/admin/AdminCustomOrders';
+import AdminProfile from './pages/admin/AdminProfile';
 
 function RootNavbarLayout() {
   return (
@@ -72,8 +75,22 @@ function DeliveryRedirect() {
     if (isDelivery && !location.pathname.startsWith('/delivery')) {
       navigate('/delivery', { replace: true });
     }
-    // Redirect unauthenticated delivery auth pages when already logged in as delivery
   }, [isDelivery, location.pathname, navigate]);
+
+  return null;
+}
+
+function AdminRedirect() {
+  const isAdmin  = useSelector(selectIsAdmin);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Admin must only see /admin/** routes
+    if (isAdmin && !location.pathname.startsWith('/admin')) {
+      navigate('/admin', { replace: true });
+    }
+  }, [isAdmin, location.pathname, navigate]);
 
   return null;
 }
@@ -84,6 +101,7 @@ export default function App() {
       <BrowserRouter>
         <ScrollToTop />
         <DeliveryRedirect />
+        <AdminRedirect />
         <ErrorBoundary>
           <Toaster
             position="bottom-center"
@@ -136,6 +154,9 @@ export default function App() {
             <Route path="/delivery/register" element={<DeliveryRegister />} />
             <Route path="/delivery" element={<DeliveryRoute><DeliveryPartnerPage /></DeliveryRoute>} />
 
+            <Route path="/admin/login"    element={<AdminLogin />} />
+            <Route path="/admin/register" element={<AdminRegister />} />
+
             <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
               <Route index element={<AdminDashboard />} />
               <Route path="products"      element={<AdminProducts />} />
@@ -144,6 +165,7 @@ export default function App() {
               <Route path="deliveries"    element={<AdminDelivery />} />
               <Route path="users"         element={<AdminUsers />} />
               <Route path="pricing"       element={<AdminPricing />} />
+              <Route path="profile"       element={<AdminProfile />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -5,10 +5,19 @@ const mongoose = require('mongoose');
 // @route   GET /api/users/profile
 // @access  Private
 const getProfile = async (req, res) => {
+  // Admin and delivery tokens are not in the User collection
+  if (req.userType !== 'user') {
+    const userData = req.user.toObject ? req.user.toObject() : { ...req.user };
+    userData.role = req.userType === 'admin' ? 'admin' : req.userType === 'delivery' ? 'delivery' : 'user';
+    return res.json({ success: true, user: userData });
+  }
   const user = await User.findById(req.user._id)
     .select('+sessions')
     .populate('wishlist');
-  res.json({ success: true, user });
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+  const userObj = user.toObject();
+  userObj.role = 'user'; // Always 'user' when accessed via user auth flow
+  res.json({ success: true, user: userObj });
 };
 
 // ─── Profile Update Helper ───────────────────────────────────────────────────

@@ -105,6 +105,22 @@ export default function FilterSidebar() {
     setSearchParams(new URLSearchParams());
   };
 
+  const handlePurityChange = (purity) => {
+    const currentPurities = filters.purity ? filters.purity.split(',') : [];
+    const isChecked = currentPurities.includes(purity);
+    const newPurities = isChecked
+      ? currentPurities.filter((p) => p !== purity)
+      : [...currentPurities, purity];
+    const updatedValue = newPurities.join(',');
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (updatedValue) next.set('purity', updatedValue);
+      else next.delete('purity');
+      next.delete('page');
+      return next;
+    });
+  };
+
   const renderFilterContent = () => (
     <div>
       {/* Price Range */}
@@ -180,22 +196,7 @@ export default function FilterSidebar() {
                 type="button"
                 key={purity}
                 className="flex items-center gap-2 cursor-pointer w-fit group"
-                onClick={() => {
-                  let newPurities = [...currentPurities];
-                  if (isChecked) {
-                    newPurities = newPurities.filter(p => p !== purity);
-                  } else {
-                    newPurities.push(purity);
-                  }
-                  const updatedValue = newPurities.join(',');
-                  setSearchParams(prev => {
-                    const next = new URLSearchParams(prev);
-                    if (updatedValue) next.set('purity', updatedValue);
-                    else next.delete('purity');
-                    next.delete('page');
-                    return next;
-                  });
-                }}
+                onClick={() => handlePurityChange(purity)}
               >
                 <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
                   isChecked ? 'bg-gold-500 border-gold-500' : 'border-dark-500 group-hover:border-white/50 bg-dark-900'

@@ -3,13 +3,13 @@ import PropTypes from 'prop-types';
 import {
   FiPackage, FiTruck, FiCheckCircle, FiSearch, FiRefreshCw,
   FiMapPin, FiPhone, FiUser, FiAlertCircle, FiDownload, FiX,
-  FiCreditCard, FiActivity,
+  FiCreditCard, FiActivity, FiLogOut,
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryService } from '../services/services';
 import { downloadInvoice } from '../utils/invoice';
-import { useSelector } from 'react-redux';
-import { selectUser } from '../store/authSlice';
+import { useSelector, useDispatch } from 'react-redux';
+import { selectUser, logoutUser } from '../store/authSlice';
 import api from '../services/api';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
@@ -92,9 +92,9 @@ function LiveClock() {
   );
 }
 
-/* ── Profile Drawer ──────────────────────────────────────────────────────────── */
+/* ── Profile Modal (centered) ────────────────────────────────────────────────── */
 
-function ProfileDrawer({ onClose }) {
+function ProfileModal({ onClose }) {
   const [profile, setProfile]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [editing, setEditing]   = useState(false);
@@ -105,10 +105,13 @@ function ProfileDrawer({ onClose }) {
     api.get('/dp-auth/profile')
       .then(r => {
         const p = r.data.profile;
+        if (!p) { setLoading(false); return; }
         setProfile(p);
         setForm({ name: p.name || '', gender: p.gender || '', phone: p.phone || '' });
       })
-      .catch(() => {})
+      .catch(err => {
+        console.error('DP profile load failed:', err?.response?.status, err?.response?.data?.message);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -129,16 +132,12 @@ function ProfileDrawer({ onClose }) {
   };
 
   const Field = ({ label, value, mono }) => (
-    <div className="space-y-1">
-      <p className="text-xs text-dark-500 uppercase tracking-wide">{label}</p>
+    <div className="space-y-0.5">
+      <p className="text-[10px] text-dark-500 uppercase tracking-widest font-medium">{label}</p>
       <p className={`text-sm text-white ${mono ? 'font-mono' : ''}`}>{value || '—'}</p>
     </div>
   );
-  Field.propTypes = {
-    label: PropTypes.string.isRequired,
-    value: PropTypes.string,
-    mono:  PropTypes.bool,
-  };
+  Field.propTypes = { label: PropTypes.string.isRequired, value: PropTypes.string, mono: PropTypes.bool };
 
   const genderLabel = { male: 'Male', female: 'Female', other: 'Other' };
 
@@ -148,26 +147,26 @@ function ProfileDrawer({ onClose }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex justify-end"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4"
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
-      {/* Panel */}
+      {/* Modal */}
       <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-        className="relative w-full max-w-sm bg-dark-900 border-l border-white/10 h-full overflow-y-auto shadow-2xl"
+        initial={{ scale: 0.93, opacity: 0, y: 16 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.93, opacity: 0, y: 16 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        className="relative w-full max-w-md bg-dark-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-dark-900/95 backdrop-blur border-b border-white/10 px-5 py-4 flex items-center justify-between">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-dark-800/60">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-gold-500/10 border border-gold-500/20 flex items-center justify-center">
-              <FiUser size={15} className="text-gold-400" />
+              <FiUser size={14} className="text-gold-400" />
             </div>
             <span className="text-white font-semibold text-sm">My Profile</span>
           </div>
@@ -180,123 +179,128 @@ function ProfileDrawer({ onClose }) {
                 Edit
               </button>
             )}
-            <button onClick={editing ? cancelEdit : onClose} className="p-1.5 rounded-lg hover:bg-white/5 text-dark-400 hover:text-white transition-colors">
-              <FiX size={16} />
+            <button
+              onClick={editing ? cancelEdit : onClose}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-dark-400 hover:text-white transition-colors"
+            >
+              <FiX size={15} />
             </button>
           </div>
         </div>
 
-        {loading ? (
-          <div className="p-5 space-y-4">
-            {[...new Array(5)].map((_, i) => (
-              <div key={i} className="space-y-1.5">
-                <div className="h-3 w-20 bg-dark-700 rounded animate-pulse" />
-                <div className="h-4 w-36 bg-dark-800 rounded animate-pulse" />
-              </div>
-            ))}
-          </div>
-        ) : profile ? (
-          <div className="p-5 space-y-5">
-            {/* Avatar */}
-            <div className="flex items-center gap-4 pb-4 border-b border-white/10">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gold-500/20 to-gold-700/10 border border-gold-500/20 flex items-center justify-center text-2xl font-bold text-gold-400">
-                {(editing ? form.name : profile.name)?.[0]?.toUpperCase() || '?'}
-              </div>
-              <div>
-                <p className="text-white font-semibold text-base">{editing ? form.name || '—' : profile.name}</p>
-                <p className="text-dark-500 text-xs mt-0.5">{profile.email}</p>
-                <span className="inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                  <FiActivity size={10} /> Active Partner
-                </span>
-              </div>
+        {/* Body — scrollable */}
+        <div className="overflow-y-auto max-h-[70vh]">
+          {loading ? (
+            <div className="p-6 space-y-4">
+              {Array.from({ length: 5 }).map((_, n) => (
+                <div key={n} className="space-y-1.5">
+                  <div className="h-2.5 w-20 bg-dark-700 rounded animate-pulse" />
+                  <div className="h-4 w-36 bg-dark-800 rounded animate-pulse" />
+                </div>
+              ))}
             </div>
-
-            {editing ? (
-              /* ── Edit form ── */
-              <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label htmlFor="dp-edit-name" className="text-xs text-dark-500 uppercase tracking-wide">Name</label>
-                  <input
-                    id="dp-edit-name"
-                    value={form.name}
-                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    maxLength={50}
-                    className="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
-                  />
+          ) : profile ? (
+            <div className="p-5 space-y-5">
+              {/* Avatar + identity */}
+              <div className="flex items-center gap-4 pb-4 border-b border-white/8">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gold-500/20 to-gold-700/10 border border-gold-500/20 flex items-center justify-center text-2xl font-bold text-gold-400 shrink-0">
+                  {(editing ? form.name : profile.name)?.[0]?.toUpperCase() || '?'}
                 </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="dp-edit-gender" className="text-xs text-dark-500 uppercase tracking-wide">Gender</label>
-                  <select
-                    id="dp-edit-gender"
-                    value={form.gender}
-                    onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
-                    className="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
-                  >
-                    <option value="">Not specified</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="dp-edit-phone" className="text-xs text-dark-500 uppercase tracking-wide">Mobile Number</label>
-                  <input
-                    id="dp-edit-phone"
-                    value={form.phone}
-                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    type="tel"
-                    className="w-full bg-dark-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
-                  />
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <button
-                    onClick={cancelEdit}
-                    className="flex-1 py-2 rounded-lg bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors"
-                  >Cancel</button>
-                  <button
-                    onClick={saveEdit}
-                    disabled={saving || !form.name.trim()}
-                    className="flex-1 py-2 rounded-lg bg-gold-600 hover:bg-gold-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
-                  >{saving ? 'Saving…' : 'Save'}</button>
+                <div className="min-w-0">
+                  <p className="text-white font-semibold text-base truncate">{editing ? form.name || '—' : profile.name}</p>
+                  <p className="text-dark-500 text-xs mt-0.5 truncate">{profile.email}</p>
+                  <span className="inline-flex items-center gap-1 mt-1.5 text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <FiActivity size={10} /> Active Partner
+                  </span>
                 </div>
               </div>
-            ) : (
-              /* ── View mode ── */
-              <div className="space-y-4">
-                <Field label="Partner ID" value={profile.partnerId} mono />
-                <Field label="Email Address" value={profile.email} />
-                <Field label="Gender" value={genderLabel[profile.gender] || profile.gender} />
-                <Field label="Mobile Number" value={profile.phone} />
-                <Field label="Vehicle Number" value={profile.vehicleNumber} mono />
-                <Field label="Dispatch Zone" value={profile.dispatchZone} />
-                <div className="space-y-1">
-                  <p className="text-xs text-dark-500 uppercase tracking-wide">Aadhaar Number</p>
-                  <div className="flex items-center gap-2">
-                    <FiCreditCard size={14} className="text-dark-500" />
-                    <p className="text-sm text-white font-mono">{profile.aadhaarMasked || '—'}</p>
+
+              {editing ? (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label htmlFor="dp-edit-name" className="text-[10px] text-dark-500 uppercase tracking-widest font-medium">Name</label>
+                    <input
+                      id="dp-edit-name"
+                      value={form.name}
+                      onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                      maxLength={50}
+                      className="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="dp-edit-gender" className="text-[10px] text-dark-500 uppercase tracking-widest font-medium">Gender</label>
+                    <select
+                      id="dp-edit-gender"
+                      value={form.gender}
+                      onChange={e => setForm(f => ({ ...f, gender: e.target.value }))}
+                      className="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
+                    >
+                      <option value="">Not specified</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="dp-edit-phone" className="text-[10px] text-dark-500 uppercase tracking-widest font-medium">Mobile Number</label>
+                    <input
+                      id="dp-edit-phone"
+                      value={form.phone}
+                      onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                      type="tel"
+                      className="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold-500/40 transition-colors"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={cancelEdit}
+                      className="flex-1 py-2.5 rounded-xl bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors"
+                    >Cancel</button>
+                    <button
+                      onClick={saveEdit}
+                      disabled={saving || !form.name.trim()}
+                      className="flex-1 py-2.5 rounded-xl bg-gold-600 hover:bg-gold-500 disabled:opacity-40 text-white text-sm font-medium transition-colors"
+                    >{saving ? 'Saving…' : 'Save Changes'}</button>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                  <div className="col-span-2">
+                    <Field label="Partner ID" value={profile.partnerId} mono />
+                  </div>
+                  <Field label="Email Address" value={profile.email} />
+                  <Field label="Gender" value={genderLabel[profile.gender] || profile.gender} />
+                  <Field label="Mobile Number" value={profile.phone} />
+                  <Field label="Vehicle Number" value={profile.vehicleNumber} mono />
+                  <Field label="Dispatch Zone" value={profile.dispatchZone} />
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-dark-500 uppercase tracking-widest font-medium">Aadhaar Number</p>
+                    <div className="flex items-center gap-2">
+                      <FiCreditCard size={13} className="text-dark-500 shrink-0" />
+                      <p className="text-sm text-white font-mono">{profile.aadhaarMasked || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-            {/* Member since */}
-            {!editing && (
-              <div className="pt-4 border-t border-white/10">
-                <p className="text-xs text-dark-600">Member since {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : '—'}</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="p-5 text-center text-dark-500 text-sm">Failed to load profile.</div>
-        )}
+              {!editing && (
+                <div className="pt-4 border-t border-white/8">
+                  <p className="text-xs text-dark-600">
+                    Member since {profile.createdAt ? new Date(profile.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }) : '—'}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-6 text-center text-dark-500 text-sm">Failed to load profile.</div>
+          )}
+        </div>
       </motion.div>
     </motion.div>
   );
 }
 
-ProfileDrawer.propTypes = {
-  onClose: PropTypes.func.isRequired,
-};
+ProfileModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── PDF Invoice ─────────────────────────────────────────────────────────────── */
 
@@ -376,12 +380,6 @@ function DeliveryCard({ item, onStatusUpdate, onConfirm }) {
   const [noteInput, setNoteInput]       = useState('');
   const [busy, setBusy]                 = useState(false);
 
-  const handleStatusBtn = async (newStatus) => {
-    setBusy(true);
-    await onStatusUpdate(item._id, item._source, newStatus, '');
-    setBusy(false);
-  };
-
   const handleConfirmClick = () => {
     if (confirmInput.trim() !== 'DELIVERED') return;
     setShowModal(true);
@@ -448,8 +446,8 @@ function DeliveryCard({ item, onStatusUpdate, onConfirm }) {
 
         {/* Items */}
         <div className="bg-dark-900/60 rounded-lg p-2.5 space-y-1">
-          {item.items?.map((it, i) => (
-            <div key={i} className="flex justify-between text-xs">
+          {item.items?.map((it) => (
+            <div key={it.name} className="flex justify-between text-xs">
               <span className="text-dark-300 truncate">{it.name} {it.quantity > 1 ? `×${it.quantity}` : ''}</span>
               <span className="text-dark-500 ml-2 shrink-0">₹{Number(it.price || 0).toLocaleString('en-IN')}</span>
             </div>
@@ -515,26 +513,14 @@ function DeliveryCard({ item, onStatusUpdate, onConfirm }) {
 }
 
 DeliveryCard.propTypes = {
-  item:           PropTypes.shape({
+  item: PropTypes.shape({
     _id:           PropTypes.string.isRequired,
     _source:       PropTypes.string.isRequired,
     rawStatus:     PropTypes.string,
     displayId:     PropTypes.string,
-    customer:      PropTypes.shape({
-      name:  PropTypes.string,
-      phone: PropTypes.string,
-    }),
-    address:       PropTypes.shape({
-      addressLine1: PropTypes.string,
-      city:         PropTypes.string,
-      state:        PropTypes.string,
-      pincode:      PropTypes.string,
-    }),
-    items:         PropTypes.arrayOf(PropTypes.shape({
-      name:     PropTypes.string,
-      quantity: PropTypes.number,
-      price:    PropTypes.number,
-    })),
+    customer:      PropTypes.shape({ name: PropTypes.string, phone: PropTypes.string }),
+    address:       PropTypes.shape({ addressLine1: PropTypes.string, city: PropTypes.string, state: PropTypes.string, pincode: PropTypes.string }),
+    items:         PropTypes.arrayOf(PropTypes.shape({ name: PropTypes.string, quantity: PropTypes.number, price: PropTypes.number })),
     total:         PropTypes.number,
     createdAt:     PropTypes.string,
     dpConfirmedAt: PropTypes.string,
@@ -546,14 +532,17 @@ DeliveryCard.propTypes = {
 /* ── Main Page ───────────────────────────────────────────────────────────────── */
 
 export default function DeliveryPartnerPage() {
-  const user = useSelector(selectUser);
-  const [items, setItems]           = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [search, setSearch]         = useState('');
-  const [filterStatus, setFilter]   = useState('Shipped');
+  const user     = useSelector(selectUser);
+  const dispatch = useDispatch();
+
+  const [items, setItems]             = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [search, setSearch]           = useState('');
+  const [filterStatus, setFilter]     = useState('Shipped');
   const [showProfile, setShowProfile] = useState(false);
-  const intervalRef                 = useRef(null);
+  const [loggingOut, setLoggingOut]   = useState(false);
+  const intervalRef                   = useRef(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -577,22 +566,24 @@ export default function DeliveryPartnerPage() {
     return () => clearInterval(intervalRef.current);
   }, [load]);
 
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    await dispatch(logoutUser());
+    setLoggingOut(false);
+  };
+
   const handleStatusUpdate = async (id, source, status, note) => {
     try {
       await deliveryService.updateStatus(id, { source, status, note });
       await load(true);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleConfirm = async (id, source, note) => {
     try {
       await deliveryService.confirmDelivery(id, { source, note });
       await load(true);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const filtered = items
@@ -607,7 +598,6 @@ export default function DeliveryPartnerPage() {
       return matchStatus && matchSearch;
     })
     .sort((a, b) => {
-      // Within Shipped: dp-confirmed-awaiting-admin sink to bottom
       const aWaiting = !!(a.dpConfirmedAt && (STATUS_DISPLAY[a.rawStatus] || 'In Progress') === 'Shipped');
       const bWaiting = !!(b.dpConfirmedAt && (STATUS_DISPLAY[b.rawStatus] || 'In Progress') === 'Shipped');
       if (aWaiting !== bWaiting) return aWaiting ? 1 : -1;
@@ -626,17 +616,55 @@ export default function DeliveryPartnerPage() {
     ['Delivered',   counts['Delivered'],   'text-emerald-400', 'bg-emerald-500/10 border-emerald-500/20','ring-emerald-500/30'],
   ];
 
+  const renderDeliveryList = () => {
+    if (loading) {
+      return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16 text-dark-500 text-sm">
+          Loading deliveries…
+        </motion.div>
+      );
+    }
+    if (error) {
+      return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 text-red-400 text-sm py-8 justify-center">
+          <FiAlertCircle size={16} /> {error}
+        </motion.div>
+      );
+    }
+    if (filtered.length === 0) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="text-center py-16 text-dark-500 text-sm">
+          {items.length === 0 ? 'No deliveries assigned yet.' : 'No results match your filter.'}
+        </motion.div>
+      );
+    }
+    return (
+      <motion.div layout className="space-y-3">
+        <AnimatePresence mode="popLayout">
+          {filtered.map((item) => (
+            <DeliveryCard
+              key={`${item._source}-${item._id}`}
+              item={item}
+              onStatusUpdate={handleStatusUpdate}
+              onConfirm={handleConfirm}
+            />
+          ))}
+        </AnimatePresence>
+      </motion.div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-dark-950 text-white">
-      {/* Profile Drawer */}
+      {/* Profile Modal */}
       <AnimatePresence>
-        {showProfile && <ProfileDrawer onClose={() => setShowProfile(false)} />}
+        {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
       </AnimatePresence>
 
       {/* Header */}
       <div className="bg-dark-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3 sticky top-0 z-30">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-          {/* Left: icon + title */}
+          {/* Left */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 shrink-0 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center">
               <FiTruck size={18} className="text-gold-400" />
@@ -651,7 +679,7 @@ export default function DeliveryPartnerPage() {
           <LiveClock />
 
           {/* Right: actions */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => setShowProfile(true)}
               title="My Profile"
@@ -665,6 +693,14 @@ export default function DeliveryPartnerPage() {
               className="p-2 rounded-lg hover:bg-white/5 text-dark-400 hover:text-white transition-colors"
             >
               <FiRefreshCw size={16} />
+            </button>
+            <button
+              onClick={handleLogout}
+              disabled={loggingOut}
+              title="Logout"
+              className="p-2 rounded-lg hover:bg-red-500/10 text-dark-400 hover:text-red-400 transition-colors disabled:opacity-50"
+            >
+              <FiLogOut size={16} />
             </button>
           </div>
         </div>
@@ -682,9 +718,7 @@ export default function DeliveryPartnerPage() {
                 border rounded-xl p-3 text-center w-full
                 transition-all duration-200 ease-out
                 ${bgCls}
-                ${filterStatus === label
-                  ? `ring-2 ${ringCls} shadow-lg`
-                  : 'hover:brightness-110'}
+                ${filterStatus === label ? `ring-2 ${ringCls} shadow-lg` : 'hover:brightness-110'}
               `}
             >
               <p className={`text-xl font-bold font-jakarta ${textCls}`}>{count}</p>
@@ -716,48 +750,8 @@ export default function DeliveryPartnerPage() {
           </select>
         </div>
 
-        {/* List */}
-        {loading ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16 text-dark-500 text-sm"
-          >
-            Loading deliveries…
-          </motion.div>
-        ) : error ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex items-center gap-2 text-red-400 text-sm py-8 justify-center"
-          >
-            <FiAlertCircle size={16} /> {error}
-          </motion.div>
-        ) : filtered.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center py-16 text-dark-500 text-sm"
-          >
-            {items.length === 0 ? 'No deliveries assigned yet.' : 'No results match your filter.'}
-          </motion.div>
-        ) : (
-          <motion.div
-            layout
-            className="space-y-3"
-          >
-            <AnimatePresence mode="popLayout">
-              {filtered.map((item) => (
-                <DeliveryCard
-                  key={`${item._source}-${item._id}`}
-                  item={item}
-                  onStatusUpdate={handleStatusUpdate}
-                  onConfirm={handleConfirm}
-                />
-              ))}
-            </AnimatePresence>
-          </motion.div>
-        )}
+        {/* Delivery list */}
+        {renderDeliveryList()}
       </div>
     </div>
   );

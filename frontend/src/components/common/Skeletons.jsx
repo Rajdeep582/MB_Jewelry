@@ -55,8 +55,8 @@ export function OrderCardSkeleton() {
 export function TableRowSkeleton({ cols = 5 }) {
   return (
     <tr>
-      {Array.from({ length: cols }).map((_, i) => (
-        <td key={`skel-col-${i}`} className="px-4 py-3">
+      {Array.from({ length: cols }, (_, n) => n).map((n) => (
+        <td key={n} className="px-4 py-3">
           <div className="skeleton h-4 rounded-lg" />
         </td>
       ))}

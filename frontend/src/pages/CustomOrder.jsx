@@ -221,8 +221,140 @@ export default function CustomOrder() {
     }
   };
 
+  // ── Helpers to replace nested ternaries ─────────────────────────────────────
+  const getSizeLabel = () => {
+    if (form.type === 'Ring') return 'Finger Size';
+    if (form.type === 'Necklace' || form.type === 'Pendant') return 'Neck Size';
+    return 'Size';
+  };
+
+  const getSizeValue = () => {
+    if (form.type === 'Ring') return form.fingerSize;
+    if (form.type === 'Necklace' || form.type === 'Pendant') return form.neckSize;
+    return form.wristSize;
+  };
+
+  const convertSize = (val, toUnit) => {
+    if (!val) return val;
+    return toUnit === 'inch' ? cmToInch(val) : inchToCm(val);
+  };
+
+  const handleSizeUnitChange = (e) => {
+    const next = e.target.value;
+    setForm((f) => ({
+      ...f,
+      wristSize:  convertSize(f.wristSize, next),
+      neckSize:   convertSize(f.neckSize, next),
+      fingerSize: convertSize(f.fingerSize, next),
+    }));
+    setSizeUnit(next);
+  };
+
+  const handleSizeChange = (e) => {
+    const v = e.target.value;
+    if (form.type === 'Ring') setForm((f) => ({ ...f, fingerSize: v }));
+    else if (form.type === 'Necklace' || form.type === 'Pendant') setForm((f) => ({ ...f, neckSize: v }));
+    else setForm((f) => ({ ...f, wristSize: v }));
+  };
+
   // ── Render Steps ────────────────────────────────────────────────────────────
   const addr = getSelectedAddress();
+
+  const renderStep2 = () => (
+    <motion.div key="step2" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="card p-6 space-y-5">
+      <div className="flex items-center gap-2">
+        <FiMapPin className="text-gold-500" size={18} />
+        <h2 className="font-display text-xl text-white">Delivery Details</h2>
+      </div>
+      {addrLoading ? (
+        <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-20 rounded-xl skeleton bg-dark-700/50" />)}</div>
+      ) : (
+        <AddressSelector
+          addresses={addresses}
+          selectedAddrId={selectedAddrId}
+          setSelectedAddrId={setSelectedAddrId}
+          showNewAddr={showNewAddr}
+          setShowNewAddr={setShowNewAddr}
+          newAddr={newAddr}
+          setNewAddr={setNewAddr}
+          addrLoading={addrLoading}
+        />
+      )}
+    </motion.div>
+  );
+
+  const renderStep3 = () => (
+    <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-4">
+      <div className="card p-5">
+        <h3 className="font-display text-lg text-white mb-4 flex items-center gap-2"><FiStar className="text-gold-500" /> Design Summary</h3>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {[
+            ['Type',     form.type],
+            ['Material', form.material],
+            ['Purity',   form.purity],
+            form.fingerSize && ['Finger Size', `${form.fingerSize} ${sizeUnit}`],
+            form.neckSize  && ['Neck Size',   `${form.neckSize} ${sizeUnit}`],
+            form.wristSize && ['Wrist Size',  `${form.wristSize} ${sizeUnit}`],
+            form.weight   && ['Est. Weight', form.weight],
+          ].filter(Boolean).map(([k, v]) => (
+            <div key={k}>
+              <p className="text-dark-500 text-xs">{k}</p>
+              <p className="text-white font-medium">{v}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 pt-4 border-t border-white/10">
+          <p className="text-dark-500 text-xs mb-1">Description</p>
+          <p className="text-dark-300 text-sm leading-relaxed">{form.description}</p>
+        </div>
+      </div>
+      {previews.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-white font-medium mb-3">Reference Images ({previews.length})</h3>
+          <div className="flex gap-2 flex-wrap">
+            {previews.map((src) => (
+              <div key={src.slice(-24)} className="w-16 h-16 rounded-lg overflow-hidden bg-dark-700">
+                <img src={src} alt="ref" className="w-full h-full object-cover" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {addr && (
+        <div className="card p-5">
+          <h3 className="text-white font-medium mb-2 flex items-center gap-2"><FiMapPin size={14} className="text-gold-500" /> Delivery Address</h3>
+          <p className="text-dark-300 text-sm">{addr.fullName}</p>
+          <p className="text-dark-400 text-sm">{addr.addressLine1}{addr.addressLine2 ? `, ${addr.addressLine2}` : ''}</p>
+          <p className="text-dark-400 text-sm">{addr.city}, {addr.state} — {addr.pincode}</p>
+          <p className="text-dark-500 text-sm">{addr.phone}</p>
+        </div>
+      )}
+      <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
+        <FiInfo className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
+        <div>
+          <p className="text-white text-sm font-medium mb-1">What happens next?</p>
+          <p className="text-dark-400 text-xs leading-relaxed">
+            Our artisans will review your request and send a personalised quote within <strong className="text-white">24–48 hours</strong>.
+            You&apos;ll see the quote on your Custom Orders page. Once you accept and pay, we begin crafting your piece.
+            No payment is taken today.
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={handleSubmit}
+        disabled={submitting}
+        className="btn-gold w-full py-4 text-base disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {submitting ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{'Submitting…'}
+          </span>
+        ) : (
+          <>💎 Submit Custom Order Request</>
+        )}
+      </button>
+    </motion.div>
+  );
 
   return (
     <div className="min-h-screen pt-24 pb-20">
@@ -291,20 +423,11 @@ export default function CustomOrder() {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="label-dark mb-0" htmlFor="co-size">
-                      {form.type === 'Ring' ? 'Finger Size' : form.type === 'Necklace' || form.type === 'Pendant' ? 'Neck Size' : 'Size'}
+                      {getSizeLabel()}
                     </label>
                     <select
                       value={sizeUnit}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setForm(f => ({
-                          ...f,
-                          wristSize: f.wristSize ? (next === 'inch' ? cmToInch(f.wristSize) : inchToCm(f.wristSize)) : f.wristSize,
-                          neckSize:  f.neckSize  ? (next === 'inch' ? cmToInch(f.neckSize)  : inchToCm(f.neckSize))  : f.neckSize,
-                          fingerSize: f.fingerSize ? (next === 'inch' ? cmToInch(f.fingerSize) : inchToCm(f.fingerSize)) : f.fingerSize,
-                        }));
-                        setSizeUnit(next);
-                      }}
+                      onChange={handleSizeUnitChange}
                       className="text-xs font-semibold rounded-lg border px-3 py-1 bg-dark-800 border-gold-500/30 text-gold-400 focus:outline-none cursor-pointer"
                     >
                       <option value="cm">cm</option>
@@ -314,13 +437,8 @@ export default function CustomOrder() {
                   </div>
                   <input
                     id="co-size"
-                    value={form.type === 'Ring' ? form.fingerSize : form.type === 'Necklace' || form.type === 'Pendant' ? form.neckSize : form.wristSize}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (form.type === 'Ring') setForm(f => ({ ...f, fingerSize: v }));
-                      else if (form.type === 'Necklace' || form.type === 'Pendant') setForm(f => ({ ...f, neckSize: v }));
-                      else setForm(f => ({ ...f, wristSize: v }));
-                    }}
+                    value={getSizeValue()}
+                    onChange={handleSizeChange}
                     className="input-dark"
                     placeholder={`Optional (${sizeUnit})`}
                   />
@@ -393,12 +511,12 @@ export default function CustomOrder() {
               {/* Previews */}
               {previews.length > 0 && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {previews.map((src, i) => (
-                    <div key={i} className="relative group aspect-square rounded-xl overflow-hidden bg-dark-700">
-                      <img src={src} alt={`ref-${i}`} className="w-full h-full object-cover" />
+                  {previews.map((src, idx) => (
+                    <div key={src.slice(-24)} className="relative group aspect-square rounded-xl overflow-hidden bg-dark-700">
+                      <img src={src} alt={`ref-${idx}`} className="w-full h-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => removeImage(i)}
+                        onClick={() => removeImage(idx)}
                         className="absolute top-1 right-1 w-6 h-6 rounded-full bg-red-500/90 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <FiX size={12} />
@@ -416,126 +534,10 @@ export default function CustomOrder() {
           )}
 
           {/* ── STEP 2: Delivery ───────────────────────────────────────────── */}
-          {step === 2 && (
-            <motion.div key="step2" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="card p-6 space-y-5">
-              <div className="flex items-center gap-2">
-                <FiMapPin className="text-gold-500" size={18} />
-                <h2 className="font-display text-xl text-white">Delivery Details</h2>
-              </div>
-
-              {addrLoading ? (
-                <div className="space-y-3">{[1, 2].map((i) => <div key={i} className="h-20 rounded-xl skeleton bg-dark-700/50" />)}</div>
-              ) : (
-                <AddressSelector
-                  addresses={addresses}
-                  selectedAddrId={selectedAddrId}
-                  setSelectedAddrId={setSelectedAddrId}
-                  showNewAddr={showNewAddr}
-                  setShowNewAddr={setShowNewAddr}
-                  newAddr={newAddr}
-                  setNewAddr={setNewAddr}
-                  addrLoading={addrLoading}
-                />
-              )}
-
-              {/* Preferred delivery date */}
-              <div>
-                <label className="label-dark" htmlFor="co-preferredDate">Preferred Delivery Date <span className="text-dark-500 font-normal">(optional)</span></label>
-                <input
-                  id="co-preferredDate"
-                  type="date"
-                  value={preferredDate}
-                  min={new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0]}
-                  onChange={(e) => setPreferredDate(e.target.value)}
-                  className="input-dark"
-                />
-              </div>
-            </motion.div>
-          )}
+          {step === 2 && renderStep2()}
 
           {/* ── STEP 3: Review & Submit ────────────────────────────────────── */}
-          {step === 3 && (
-            <motion.div key="step3" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="space-y-4">
-              {/* Design Summary */}
-              <div className="card p-5">
-                <h3 className="font-display text-lg text-white mb-4 flex items-center gap-2"><FiStar className="text-gold-500" /> Design Summary</h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  {[
-                    ['Type',     form.type],
-                    ['Material', form.material],
-                    ['Purity',   form.purity],
-                    form.fingerSize && ['Finger Size', `${form.fingerSize} ${sizeUnit}`],
-                    form.neckSize  && ['Neck Size',   `${form.neckSize} ${sizeUnit}`],
-                    form.wristSize && ['Wrist Size',  `${form.wristSize} ${sizeUnit}`],
-                    form.weight   && ['Est. Weight', form.weight],
-                  ].filter(Boolean).map(([k, v]) => (
-                    <div key={k}>
-                      <p className="text-dark-500 text-xs">{k}</p>
-                      <p className="text-white font-medium">{v}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <p className="text-dark-500 text-xs mb-1">Description</p>
-                  <p className="text-dark-300 text-sm leading-relaxed">{form.description}</p>
-                </div>
-              </div>
-
-              {/* Images Summary */}
-              {previews.length > 0 && (
-                <div className="card p-5">
-                  <h3 className="text-white font-medium mb-3">Reference Images ({previews.length})</h3>
-                  <div className="flex gap-2 flex-wrap">
-                    {previews.map((src, i) => (
-                      <div key={i} className="w-16 h-16 rounded-lg overflow-hidden bg-dark-700">
-                        <img src={src} alt={`ref-${i}`} className="w-full h-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Address Summary */}
-              {addr && (
-                <div className="card p-5">
-                  <h3 className="text-white font-medium mb-2 flex items-center gap-2"><FiMapPin size={14} className="text-gold-500" /> Delivery Address</h3>
-                  <p className="text-dark-300 text-sm">{addr.fullName}</p>
-                  <p className="text-dark-400 text-sm">{addr.addressLine1}{addr.addressLine2 ? `, ${addr.addressLine2}` : ''}</p>
-                  <p className="text-dark-400 text-sm">{addr.city}, {addr.state} — {addr.pincode}</p>
-                  <p className="text-dark-500 text-sm">{addr.phone}</p>
-                  {preferredDate && <p className="text-dark-500 text-xs mt-2">Preferred by: {formatDate(preferredDate)}</p>}
-                </div>
-              )}
-
-              {/* Info banner */}
-              <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
-                <FiInfo className="text-gold-500 mt-0.5 flex-shrink-0" size={18} />
-                <div>
-                  <p className="text-white text-sm font-medium mb-1">What happens next?</p>
-                  <p className="text-dark-400 text-xs leading-relaxed">
-                    Our artisans will review your request and send a personalised quote within <strong className="text-white">24–48 hours</strong>.
-                    You'll see the quote on your Custom Orders page. Once you accept and pay, we begin crafting your piece.
-                    No payment is taken today.
-                  </p>
-                </div>
-              </div>
-
-              {/* Submit */}
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="btn-gold w-full py-4 text-base disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {submitting ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{'Submitting…'}
-                  </span>
-                ) : (
-                  <>💎 Submit Custom Order Request</>
-                )}
-              </button>
-            </motion.div>
-          )}
+          {step === 3 && renderStep3()}
         </AnimatePresence>
 
         {/* Navigation Buttons */}

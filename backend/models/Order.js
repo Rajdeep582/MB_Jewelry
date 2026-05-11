@@ -71,6 +71,8 @@ const orderSchema = new mongoose.Schema(
     trackingUrl: { type: String, default: '' },
     courierPartner: { type: String, default: '' },
     deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
+    deliveredByPartnerId:   { type: String, default: '' }, // e.g. "DP-D72BDD25"
+    deliveredByPartnerName: { type: String, default: '' }, // e.g. "Zick Yeager"
     // Delivery partner confirmation (awaits admin final confirmation)
     dpConfirmedAt: { type: Date },
     dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },

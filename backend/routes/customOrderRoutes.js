@@ -15,16 +15,16 @@ const {
   getCustomOrderStats,
 } = require('../controllers/customOrderController');
 
-const { protect, adminOnly }         = require('../middleware/auth');
-const { uploadCustomOrderImages }    = require('../middleware/upload');
+const { protect, adminOnly, userOnly } = require('../middleware/auth');
+const { uploadCustomOrderImages }      = require('../middleware/upload');
 
 // ── User Routes ───────────────────────────────────────────────────────────────
-router.post('/', protect, uploadCustomOrderImages, createCustomOrder);
-router.get('/my-orders',   protect, getMyCustomOrders);
-router.post('/create-payment', protect, createCustomPayment);
-router.post('/verify-payment', protect, verifyCustomPayment);
-router.post('/fail-payment',   protect, failCustomPayment);
-router.put('/:id/cancel',      protect, cancelCustomOrderUser);
+router.post('/', protect, userOnly, uploadCustomOrderImages, createCustomOrder);
+router.get('/my-orders',       protect, userOnly, getMyCustomOrders);
+router.post('/create-payment', protect, userOnly, createCustomPayment);
+router.post('/verify-payment', protect, userOnly, verifyCustomPayment);
+router.post('/fail-payment',   protect, userOnly, failCustomPayment);
+router.put('/:id/cancel',      protect, userOnly, cancelCustomOrderUser);
 
 // ── Admin Routes ──────────────────────────────────────────────────────────────
 router.get('/stats', protect, adminOnly, getCustomOrderStats);

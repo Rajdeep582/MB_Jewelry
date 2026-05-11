@@ -7,6 +7,8 @@ const { verifyRazorpaySignature }        = require('../utils/razorpayHelper');
 const { ORDER_STATUSES } = require('../utils/constants');
 
 const logger = require('../utils/logger');
+const GlobalPricing = require('../models/GlobalPricing');
+const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -100,7 +102,8 @@ const getCustomOrder = async (req, res) => {
   }
 
   // Owner or admin only
-  if (order.user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  const ownerId = order.user?._id ?? order.user;
+  if (ownerId?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorised' });
   }
 
@@ -202,7 +205,9 @@ const createCustomPayment = async (req, res) => {
   // ── Self-heal: legacy orders quoted before two-phase amounts were computed ──
   // If quoteAmount is set but the derived amounts are 0, recompute and persist them.
   if ((!amountToPay || amountToPay <= 0) && order.quoteAmount > 0) {
-    const taxAmount     = Math.round(order.quoteAmount * 0.18);
+    const _shGstEntry = await GlobalPricing.findOne({ material: order.material, purity: order.purity }).lean();
+    const _shGstRate  = _shGstEntry ? (_shGstEntry.gst / 100) : 0.18;
+    const taxAmount     = Math.round(order.quoteAmount * _shGstRate);
     const totalAmount   = order.quoteAmount + taxAmount;
     const advanceAmount = Math.round(totalAmount * 0.7);
     const finalAmount   = totalAmount - advanceAmount;
@@ -512,13 +517,26 @@ const setQuote = async (req, res) => {
   }
 
   order.quoteAmount   = Number(quoteAmount);
-  order.taxAmount     = Math.round(order.quoteAmount * 0.18);
+  // Fetch GST from GlobalPricing for this material/purity, fallback to 18%
+  const _gstEntry = await GlobalPricing.findOne({
+    material: order.material,
+    purity:   order.purity,
+  }).lean();
+  const _gstRate = _gstEntry ? (_gstEntry.gst / 100) : 0.18;
+  order.taxAmount     = Math.round(order.quoteAmount * _gstRate);
   order.totalAmount   = order.quoteAmount + order.taxAmount;
 
   if (order.advancePayment?.status === 'paid') {
     // If advance is already paid, keep the existing advanceAmount
     // and absorb any difference in the finalAmount.
-    order.finalAmount = order.totalAmount - order.advanceAmount;
+    const computedFinal = order.totalAmount - order.advanceAmount;
+    if (computedFinal < 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Re-quote invalid: new total (₹${order.totalAmount}) is less than advance already paid (₹${order.advanceAmount})`,
+      });
+    }
+    order.finalAmount = computedFinal;
   } else {
     order.advanceAmount = Math.round(order.totalAmount * 0.7);
     order.finalAmount   = order.totalAmount - order.advanceAmount;
@@ -535,7 +553,7 @@ const setQuote = async (req, res) => {
 
   order.trackingHistory.push({
     status:    'quoted',
-    comment:   quoteNote || `Quote set: ₹${order.quoteAmount} (+18% GST). Advance: ₹${order.advanceAmount}`,
+    comment:   quoteNote || `Quote set: ₹${order.quoteAmount} (+${Math.round(_gstRate * 100)}% GST). Advance: ₹${order.advanceAmount}`,
     updatedBy: req.user._id,
   });
 
@@ -565,6 +583,11 @@ function applyCustomOrderTransition(order, status) {
   // ── Guard: delivery partner must confirm first ──
   if (status === 'delivered' && !order.dpConfirmedAt) {
     return { error: 'Delivery partner must confirm delivery first before admin can mark as delivered.' };
+  }
+
+  // ── Guard: cannot ship unless advance payment is done ──
+  if (status === 'shipped' && order.advancePayment?.status !== 'paid') {
+    return { error: 'Cannot mark as shipped. Advance payment (70%) has not been received yet.' };
   }
 
   // ── Guard: cannot deliver unless final payment is done ──
@@ -636,6 +659,42 @@ const updateCustomOrderStatus = async (req, res) => {
     `Custom order ${order._id} "${current}" → "${status}" by admin ${req.user._id}` +
     (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : '')
   );
+
+  // ── Persist delivery snapshot ─────────────────────────────────────────────
+  if (status === 'shipped' || status === 'delivered') {
+    const u = order.user;
+    const itemsSummary = `Custom ${order.type} — ${order.material}${order.purity && order.purity !== 'None' ? ` (${order.purity})` : ''}`;
+    let deliveredByPartnerId = '';
+    let deliveredByPartnerName = '';
+    if (status === 'delivered') {
+      const agentRef = order.deliveryAgent || order.dpConfirmedBy;
+      if (agentRef) {
+        const DeliveryPartner = require('../models/DeliveryPartner');
+        const dp = await DeliveryPartner.findById(agentRef).select('partnerId name').lean();
+        if (dp?.partnerId) deliveredByPartnerId   = dp.partnerId;
+        if (dp?.name)      deliveredByPartnerName = dp.name;
+      }
+    }
+    await upsertDeliverySnapshot({
+      sourceType:          'custom_order',
+      sourceId:            order._id,
+      orderId:             order.customOrderId || '',
+      deliveryId:          order.deliveryId    || '',
+      customerName:        u?.name  || '',
+      customerEmail:       u?.email || '',
+      shippingAddress:     order.shippingAddress,
+      itemsSummary,
+      totalAmount:         order.totalAmount || order.quoteAmount || 0,
+      status,
+      dispatchedAt:        order.dispatchedAt,
+      estimatedDelivery:   order.estimatedDelivery,
+      deliveredAt:         order.deliveredAt,
+      deliveryAgent:       order.deliveryAgent,
+      deliveredByPartnerId,
+      deliveredByPartnerName,
+      trackingHistory:     order.trackingHistory,
+    });
+  }
 
   res.json({ success: true, order });
 };

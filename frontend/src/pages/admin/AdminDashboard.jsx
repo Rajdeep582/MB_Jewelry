@@ -106,19 +106,22 @@ function LiveCalendar() {
 
       {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-y-0.5">
-        {cells.map((day, i) => (
-          <div key={i} className="flex items-center justify-center">
-            {day ? (
-              <div className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-medium transition-colors ${
-                isToday(day)
-                  ? 'bg-gold-500 text-dark-900 shadow-[0_0_10px_rgba(212,175,55,0.4)]'
-                  : 'text-dark-300 hover:bg-white/5 hover:text-white cursor-default'
-              }`}>
-                {day}
-              </div>
-            ) : null}
-          </div>
-        ))}
+        {Array.from({ length: cells.length }, (_, n) => n).map((pos) => {
+          const day = cells[pos];
+          return (
+            <div key={pos} className="flex items-center justify-center">
+              {day ? (
+                <div className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                  isToday(day)
+                    ? 'bg-gold-500 text-dark-900 shadow-[0_0_10px_rgba(212,175,55,0.4)]'
+                    : 'text-dark-300 hover:bg-white/5 hover:text-white cursor-default'
+                }`}>
+                  {day}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
       {/* IST badge */}
@@ -168,8 +171,8 @@ export default function AdminDashboard() {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card p-5 space-y-3">
+          {Array.from({ length: 4 }, (_, n) => n).map((n) => (
+            <div key={n} className="card p-5 space-y-3">
               <div className="skeleton w-10 h-10 rounded-xl" />
               <div className="skeleton h-6 rounded w-1/2" />
               <div className="skeleton h-4 rounded w-3/4" />

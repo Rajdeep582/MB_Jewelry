@@ -397,6 +397,25 @@ function AuthPage({ type }) {
     return type === 'login' ? 'Welcome Back' : 'Create Account';
   };
 
+  // ─── Derived labels (replace nested ternaries) ───────────────────────────────
+  const getIdentifierLabel = () => {
+    if (inputType === 'mobile') return 'Mobile Number';
+    if (inputType === 'email') return 'Email Address';
+    return 'Email or Mobile';
+  };
+
+  const getLoadingLabel = () => {
+    if (type === 'login') return 'Signing in…';
+    if (sendingOtp) return 'Sending OTP…';
+    return 'Creating account…';
+  };
+
+  const getSubmitLabel = () => {
+    if (type === 'login') return 'Sign In';
+    if (inputType === 'mobile') return 'Send OTP';
+    return 'Create Account';
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen flex">
@@ -780,7 +799,7 @@ function AuthPage({ type }) {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="label-dark !mb-0">
-                        {inputType === 'mobile' ? 'Mobile Number' : inputType === 'email' ? 'Email Address' : 'Email or Mobile'}
+                        {getIdentifierLabel()}
                       </label>
                       {inputType && (
                         <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${
@@ -885,11 +904,9 @@ function AuthPage({ type }) {
                     {(loading || sendingOtp) ? (
                       <span className="flex items-center justify-center gap-2">
                         <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
-                        {' '}{type === 'login' ? 'Signing in…' : sendingOtp ? 'Sending OTP…' : 'Creating account…'}
+                        {' '}{getLoadingLabel()}
                       </span>
-                    ) : (
-                      type === 'login' ? 'Sign In' : inputType === 'mobile' ? 'Send OTP' : 'Create Account'
-                    )}
+                    ) : getSubmitLabel()}
                   </button>
 
                   <div className="mt-6 flex flex-col gap-3">

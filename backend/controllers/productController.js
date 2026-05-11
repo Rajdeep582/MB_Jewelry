@@ -157,6 +157,41 @@ async function resolvePrice(material, purity, unit, weightValue, makingCharges, 
   return { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, g), error: null };
 }
 
+// Helper: recalculate price if pricing-critical fields changed
+async function recalcPriceIfNeeded(product, updates) {
+  const pricingChanged = updates.weightValue !== undefined ||
+    updates.material !== undefined ||
+    updates.purity !== undefined ||
+    updates.unit !== undefined;
+  if (!pricingChanged) return null;
+
+  const wv = updates.weightValue ?? product.weightValue;
+  if (!wv || wv <= 0) return null;
+
+  const mat = updates.material ?? product.material;
+  const pur = updates.purity ?? product.purity;
+  const u = updates.unit ?? product.unit;
+  const mc = updates.makingCharges ?? product.makingCharges ?? 12;
+  const g = updates.gst ?? product.gst ?? 3;
+  return resolvePrice(mat, pur, u, wv, mc, g);
+}
+
+// Helper: apply image updates to the updates object
+async function applyImageUpdates(product, updates, req) {
+  if (!req.files || req.files.length === 0) return;
+  const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
+  if (req.body.replaceImages === 'true') {
+    for (const img of product.images) {
+      if (img.publicId) {
+        try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
+      }
+    }
+    updates.images = newImages;
+  } else {
+    updates.images = [...product.images, ...newImages];
+  }
+}
+
 // @desc    Create product
 // @route   POST /api/products
 // @access  Admin
@@ -236,46 +271,17 @@ const updateProduct = async (req, res) => {
 
   const updates = parseProductUpdates(req.body);
 
-  // Recalculate price whenever any pricing-critical field changes
-  const pricingChanged = updates.weightValue !== undefined ||
-    updates.material !== undefined ||
-    updates.purity !== undefined ||
-    updates.unit !== undefined;
-
-  if (pricingChanged) {
-    const wv = updates.weightValue ?? product.weightValue;
-    if (wv > 0) {
-      const mat = updates.material ?? product.material;
-      const pur = updates.purity ?? product.purity;
-      const u = updates.unit ?? product.unit;
-      const mc = updates.makingCharges ?? product.makingCharges ?? 12;
-      const g = updates.gst ?? product.gst ?? 3;
-
-      const { price: resolvedPrice, error: priceError } = await resolvePrice(mat, pur, u, wv, mc, g);
-      if (priceError) {
-        return res.status(400).json({ success: false, message: priceError });
-      }
-      updates.price = resolvedPrice;
-      updates.pricingType = 'dynamic';
-      updates.discountedPrice = null;
-    }
+  const priceResult = await recalcPriceIfNeeded(product, updates);
+  if (priceResult?.error) {
+    return res.status(400).json({ success: false, message: priceResult.error });
+  }
+  if (priceResult?.price != null) {
+    updates.price = priceResult.price;
+    updates.pricingType = 'dynamic';
+    updates.discountedPrice = null;
   }
 
-  // Handle new image uploads
-  if (req.files && req.files.length > 0) {
-    const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
-
-    if (req.body.replaceImages === 'true') {
-      for (const img of product.images) {
-        if (img.publicId) {
-          try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
-        }
-      }
-      updates.images = newImages;
-    } else {
-      updates.images = [...product.images, ...newImages];
-    }
-  }
+  await applyImageUpdates(product, updates, req);
 
   const updated = await Product.findByIdAndUpdate(req.params.id, updates, {
     new: true,

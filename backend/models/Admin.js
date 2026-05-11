@@ -37,6 +37,9 @@ const adminSchema = new mongoose.Schema(
       expiresAt: { type: Date, required: true },
       _id: false,
     }],
+    isEmailVerified: { type: Boolean, default: false },
+    emailOtpHash:    { type: String, select: false },
+    emailOtpExpiry:  { type: Date,   select: false },
     adminId: { type: String, unique: true, sparse: true },
     auditLogs: [{
       action: String,

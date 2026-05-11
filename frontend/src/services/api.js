@@ -88,8 +88,8 @@ api.interceptors.response.use(
     // ── JWT access token expired: attempt silent refresh ──────────────────
     if (
       error.response?.status === 401 &&
-      error.response?.data?.code === 'TOKEN_EXPIRED' &&
-      !originalRequest._retry
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/refresh') // don't retry refresh calls
     ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {

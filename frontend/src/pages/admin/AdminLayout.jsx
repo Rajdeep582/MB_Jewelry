@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, Outlet, useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiGrid, FiPackage, FiShoppingBag, FiUsers, FiTrendingUp,
-  FiLogOut, FiMenu, FiTruck, FiEdit2, FiChevronsLeft,
+  FiLogOut, FiMenu, FiTruck, FiEdit2, FiChevronsLeft, FiUser,
 } from 'react-icons/fi';
 import { MdCurrencyRupee } from 'react-icons/md';
 import { logoutUser } from '../../store/authSlice';
@@ -28,7 +28,7 @@ function NavItem({ item, isActive, hasAttention, expanded, onClick }) {
       to={item.to}
       onClick={onClick}
       className={`group relative flex items-center gap-3 rounded-xl transition-all duration-200 ${
-        expanded ? 'px-3 py-2.5 w-full' : 'w-10 h-10 justify-center'
+        expanded ? 'px-3 py-2.5 w-full' : 'w-12 h-12 justify-center'
       } ${
         isActive
           ? 'bg-gold-500/15 text-gold-400 shadow-[0_0_10px_rgba(212,175,55,0.15)]'
@@ -36,7 +36,7 @@ function NavItem({ item, isActive, hasAttention, expanded, onClick }) {
       }`}
     >
       <div className="relative flex-shrink-0 flex items-center justify-center w-5 h-5">
-        <Icon size={18} />
+        <Icon size={20} />
         {hasAttention && (
           <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.9)] animate-pulse" />
         )}
@@ -57,6 +57,7 @@ export default function AdminLayout() {
   const location  = useLocation();
   const dispatch  = useDispatch();
   const navigate  = useNavigate();
+  const admin     = useSelector(s => s.auth.user);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expanded,   setExpanded]   = useState(false);
   const [attention,  setAttention]  = useState({ orders: 0, customOrders: 0, deliveries: 0 });
@@ -125,7 +126,7 @@ export default function AdminLayout() {
       <div className={`h-px bg-white/10 mb-1 ${isExpanded ? 'mx-3' : 'w-6'}`} />
 
       {/* Nav */}
-      <nav className={`flex-1 flex flex-col gap-0.5 ${isExpanded ? 'px-2' : 'w-full items-center'}`}>
+      <nav className={`flex-1 flex flex-col gap-1 ${isExpanded ? 'px-2' : 'w-full items-center'}`}>
         {adminLinks.map((item) => {
           const isActive     = item.end ? location.pathname === item.to : location.pathname.startsWith(item.to);
           const hasAttention = item.attentionKey ? (attention[item.attentionKey] || 0) > 0 : false;
@@ -144,17 +145,35 @@ export default function AdminLayout() {
 
       {/* Bottom */}
       <div className={`flex flex-col gap-0.5 mt-1 pt-2 border-t border-white/8 ${isExpanded ? 'px-2' : 'w-full items-center'}`}>
+
+        {/* Profile widget */}
         <Link
-          to="/"
-          className={`group relative flex items-center gap-3 rounded-xl text-dark-500 hover:text-white hover:bg-white/8 transition-all ${
-            isExpanded ? 'px-3 py-2.5 w-full' : 'w-10 h-10 justify-center'
-          }`}
+          to="/admin/profile"
+          className={`group relative flex items-center gap-3 rounded-xl transition-all duration-200 mb-1
+            bg-gradient-to-r from-gold-500/8 to-transparent
+            border border-gold-500/15 hover:border-gold-500/35
+            hover:from-gold-500/14
+            shadow-[0_0_10px_rgba(212,175,55,0.06)] hover:shadow-[0_0_16px_rgba(212,175,55,0.2)]
+            ${isExpanded ? 'px-3 py-2 w-full' : 'w-10 h-10 justify-center'}`}
         >
-          <FiTrendingUp size={17} className="flex-shrink-0" />
-          {isExpanded && <span className="text-sm">View Store</span>}
+          <div className="relative flex-shrink-0 w-7 h-7 rounded-full
+            bg-gradient-to-br from-gold-400/40 to-gold-600/25
+            border border-gold-500/50
+            shadow-[0_0_10px_rgba(212,175,55,0.4)]
+            group-hover:shadow-[0_0_16px_rgba(212,175,55,0.65)]
+            group-hover:border-gold-400/80
+            flex items-center justify-center transition-all duration-300">
+            <span className="text-gold-200 text-xs font-bold leading-none">{admin?.name?.[0]?.toUpperCase() || 'A'}</span>
+          </div>
+          {isExpanded && (
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-xs font-medium leading-none truncate">{admin?.name || 'Admin'}</p>
+              <p className="text-gold-600 text-[10px] mt-0.5 truncate">{admin?.email || ''}</p>
+            </div>
+          )}
           {!isExpanded && (
             <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-dark-800 border border-white/10 px-2.5 py-1.5 text-xs text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity select-none">
-              View Store
+              My Profile
             </span>
           )}
         </Link>
@@ -162,7 +181,7 @@ export default function AdminLayout() {
         <button
           onClick={handleLogout}
           className={`group relative flex items-center gap-3 rounded-xl text-red-500/50 hover:text-red-400 hover:bg-red-500/10 transition-all ${
-            isExpanded ? 'px-3 py-2.5 w-full' : 'w-10 h-10 justify-center'
+            isExpanded ? 'px-3 py-2.5 w-full' : 'w-12 h-12 justify-center'
           }`}
         >
           <FiLogOut size={17} className="flex-shrink-0" />
@@ -178,7 +197,7 @@ export default function AdminLayout() {
   );
 
   return (
-    <div className="admin-panel min-h-screen flex bg-dark-950">
+    <div className="admin-panel min-h-screen flex bg-dark-950 relative">
 
       {/* Desktop sidebar — animated width */}
       <motion.aside
@@ -218,6 +237,8 @@ export default function AdminLayout() {
 
       {/* Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Mobile top bar */}
         <div className="lg:hidden flex items-center gap-3 p-3 glass border-b border-white/8 sticky top-0 z-30">
           <button
             onClick={() => setMobileOpen(true)}
@@ -232,6 +253,7 @@ export default function AdminLayout() {
             <span className="text-white font-display text-sm">Admin Panel</span>
           </div>
         </div>
+
         <main className="flex-1 p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>

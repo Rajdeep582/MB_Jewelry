@@ -180,7 +180,7 @@ export default function Home() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {loading
-              ? Array.from({ length: 8 }).map((_, i) => <ProductCardSkeleton key={`feat-skel-${i}`} />)
+              ? Array.from({ length: 8 }, (_, n) => n).map((n) => <ProductCardSkeleton key={n} />)
               : featured.map((product) => (
                   <ProductCard key={product._id} product={product} />
                 ))}

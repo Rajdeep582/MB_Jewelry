@@ -121,12 +121,15 @@ app.get('/api/health', (req, res) => {
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
+const adminIpWhitelist = require('./middleware/adminIpWhitelist');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/admin-auth', adminIpWhitelist, require('./routes/adminAuthRoutes'));
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', adminIpWhitelist, adminRoutes);
 app.use('/api/custom-orders', customOrderRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/dp-auth', dpAuthRoutes);

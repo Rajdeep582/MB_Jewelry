@@ -73,6 +73,7 @@ const orderPropType = PropTypes.shape({
   estimatedDelivery: PropTypes.string,
   dispatchedAt: PropTypes.string,
   deliveredAt: PropTypes.string,
+  deliveredByPartnerId: PropTypes.string,
   deliveryId: PropTypes.string,
   payment: PropTypes.shape({
     status: PropTypes.string,
@@ -210,12 +211,20 @@ function UpdateModal({ order, onClose, onSaved }) {
       toast.error('Please type DELIVER to confirm.');
       return;
     }
+    if (form.status === 'shipped' && !form.estimatedDelivery) {
+      toast.error('Set an estimated delivery date before marking as Shipped.');
+      return;
+    }
+    const toISO = (d) => {
+      if (!d) return undefined;
+      return d; // already yyyy-mm-dd from type="date"
+    };
     setSaving(true);
     try {
       await orderService.updateOrderStatus(order._id, {
         status:            form.status,
         comment:           form.comment,
-        estimatedDelivery: form.estimatedDelivery || undefined,
+        estimatedDelivery: toISO(form.estimatedDelivery),
       });
       toast.success('Order updated successfully');
       onSaved();
@@ -285,13 +294,16 @@ function UpdateModal({ order, onClose, onSaved }) {
 
           {['ready_to_ship', 'shipped'].includes(form.status) && (
             <div>
-              <label htmlFor="est-delivery-date" className="label-dark text-xs">Estimated Delivery Date</label>
+              <label htmlFor="est-delivery-date" className="label-dark text-xs">
+                Estimated Delivery Date
+                {form.status === 'shipped' && <span className="text-red-400 ml-1">*</span>}
+              </label>
               <input
                 id="est-delivery-date"
                 type="date"
                 value={form.estimatedDelivery}
                 onChange={(e) => setForm({ ...form, estimatedDelivery: e.target.value })}
-                className="input-dark text-sm"
+                className={`input-dark text-sm ${form.status === 'shipped' && !form.estimatedDelivery ? 'border-red-500/40 focus:border-red-500' : ''}`}
               />
             </div>
           )}
@@ -512,6 +524,12 @@ function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
                   <div>
                     <p className="text-dark-500">Delivered</p>
                     <p className="text-green-400 font-medium">{formatDateTime(order.deliveredAt)}</p>
+                  </div>
+                )}
+                {order.deliveredByPartnerId && (
+                  <div>
+                    <p className="text-dark-500">Delivered By</p>
+                    <p className="text-gold-400 font-mono font-medium">{order.deliveredByPartnerId}</p>
                   </div>
                 )}
               </div>

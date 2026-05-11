@@ -51,6 +51,35 @@ function normaliseOrder(raw, sourceType) {
     estimatedDelivery: raw.estimatedDelivery, deliveredAt: raw.deliveredAt,
     trackingHistory: raw.trackingHistory || [], createdAt: raw.createdAt,
     customOrderId: raw.customOrderId, orderId: raw.orderId,
+    deliveredByPartnerId:   raw.deliveredByPartnerId   || '',
+    deliveredByPartnerName: raw.deliveredByPartnerName || '',
+  };
+}
+
+/* ── Normalise Delivery record (from /admin/deliveries collection) ──────────── */
+function normaliseDeliveryRecord(rec) {
+  return {
+    _id:           rec._id,
+    _sourceType:   rec.sourceType,      // 'order' | 'custom_order'
+    _displayStatus: rec.status,         // 'shipped' | 'delivered'
+    _fromDeliveryCollection: true,
+    orderId:       rec.sourceType === 'order'        ? rec.orderId : undefined,
+    customOrderId: rec.sourceType === 'custom_order' ? rec.orderId : undefined,
+    deliveryId:    rec.deliveryId,
+    deliveredByPartnerId:   rec.deliveredByPartnerId   || '',
+    deliveredByPartnerName: rec.deliveredByPartnerName || '',
+    user:          { name: rec.customerName, email: rec.customerEmail },
+    shippingAddress: rec.shippingAddress || {},
+    totalAmount:   rec.totalAmount || 0,
+    dispatchedAt:  rec.dispatchedAt,
+    estimatedDelivery: rec.estimatedDelivery,
+    deliveredAt:   rec.deliveredAt,
+    trackingHistory: rec.trackingHistory || [],
+    createdAt:     rec.createdAt,
+    items: [{
+      _id: rec._id, product: rec._id,
+      name: rec.itemsSummary || '—', image: '', price: rec.totalAmount || 0, quantity: 1,
+    }],
   };
 }
 
@@ -184,107 +213,94 @@ function DeliveryCard({ item }) {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22 }}
+            transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-white/5 px-4 py-4 space-y-4">
+            <div className="border-t border-white/5 px-4 pt-3 pb-3 space-y-3">
 
-              {/* Items + Customer grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Compact info row: items | customer | address */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+
                 {/* Items */}
-                <div>
-                  <p className="text-xs text-dark-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                    <FiPackage size={10} /> {isCustom ? 'Custom Design' : `Items (${item.items?.length})`}
+                <div className="space-y-1.5">
+                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1">
+                    <FiPackage size={9} /> {isCustom ? 'Custom Design' : `Items (${item.items?.length})`}
                   </p>
-                  <div className="space-y-2 max-h-44 overflow-y-auto scrollbar-hide pr-1">
-                    {item.items?.map((it) => (
-                      <div key={it._id || it.product} className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-dark-800 flex-shrink-0 overflow-hidden border border-white/5">
-                          {it.image && <img src={resolveImageUrl(it.image)} alt={it.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-white truncate">{it.name}</p>
-                          <p className="text-xs text-dark-400">Qty {it.quantity ?? 1} · {formatPrice(it.price)}</p>
-                        </div>
+                  {item.items?.slice(0, 3).map((it) => (
+                    <div key={it._id || it.product} className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-md bg-dark-800 flex-shrink-0 overflow-hidden border border-white/5">
+                        {it.image && <img src={resolveImageUrl(it.image)} alt={it.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />}
                       </div>
-                    ))}
-                  </div>
+                      <div className="min-w-0">
+                        <p className="text-white truncate leading-tight">{it.name}</p>
+                        <p className="text-dark-500">Qty {it.quantity ?? 1} · {formatPrice(it.price)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                {/* Customer + Address */}
-                <div className="space-y-3 md:border-l md:border-white/5 md:pl-5">
-                  <div>
-                    <p className="text-xs text-dark-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"><FiUser size={10} /> Customer</p>
-                    <p className="text-sm text-white font-medium">{item.user?.name || item.shippingAddress?.fullName || '—'}</p>
-                    {item.user?.email && <p className="text-xs text-dark-500">{item.user.email}</p>}
-                    {item.shippingAddress?.phone && (
-                      <p className="text-xs text-dark-400 flex items-center gap-1 mt-0.5"><FiPhone size={10} /> {item.shippingAddress.phone}</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-xs text-dark-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5"><FiMapPin size={10} /> Ship to</p>
-                    <p className="text-sm text-white leading-snug">{item.shippingAddress?.addressLine1 || '—'}</p>
-                    {item.shippingAddress?.addressLine2 && <p className="text-sm text-dark-400">{item.shippingAddress.addressLine2}</p>}
-                    <p className="text-xs text-dark-400 mt-0.5">{item.shippingAddress?.city}, {item.shippingAddress?.state} — {item.shippingAddress?.pincode}</p>
-                  </div>
+                {/* Customer */}
+                <div className="space-y-0.5 md:border-l md:border-white/5 md:pl-3">
+                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1 mb-1"><FiUser size={9} /> Customer</p>
+                  <p className="text-white font-medium">{item.user?.name || item.shippingAddress?.fullName || '—'}</p>
+                  {item.user?.email && <p className="text-dark-500 truncate">{item.user.email}</p>}
+                  {item.shippingAddress?.phone && <p className="text-dark-400 flex items-center gap-1"><FiPhone size={9} /> {item.shippingAddress.phone}</p>}
+                </div>
 
-                  {/* Delivery Reference */}
+                {/* Address + delivery ref */}
+                <div className="space-y-0.5 md:border-l md:border-white/5 md:pl-3">
+                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1 mb-1"><FiMapPin size={9} /> Ship To</p>
+                  <p className="text-white truncate">{item.shippingAddress?.addressLine1 || '—'}</p>
+                  <p className="text-dark-400">{item.shippingAddress?.city}, {item.shippingAddress?.state} {item.shippingAddress?.pincode}</p>
                   {item.deliveryId && (
-                    <div className="bg-dark-800 border border-white/5 rounded-xl px-3 py-2 flex items-center gap-2">
-                      <FiTruck size={12} className="text-gold-400 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-dark-500 mb-0.5">Delivery Reference</p>
-                        <span className="font-mono text-gold-400 text-sm font-semibold">{delivID}</span>
-                      </div>
-                      {item.estimatedDelivery && (
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-dark-500">ETA</p>
-                          <p className="text-xs font-medium text-dark-300">{formatDate(item.estimatedDelivery)}</p>
-                        </div>
-                      )}
+                    <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-white/5">
+                      <FiTruck size={10} className="text-gold-400 flex-shrink-0" />
+                      <span className="font-mono text-gold-400 font-semibold">{delivID}</span>
+                      {item.estimatedDelivery && <span className="text-dark-500 ml-auto">ETA {formatDate(item.estimatedDelivery)}</span>}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Timeline row */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs border-t border-white/5 pt-3">
+              {/* Timeline + partner row */}
+              <div className="flex flex-wrap items-center gap-2 text-xs border-t border-white/5 pt-2.5">
                 {item.dispatchedAt && (
-                  <span className="text-dark-500 flex items-center gap-1"><FiClock size={10} /> Dispatched: <span className="text-dark-300">{formatDate(item.dispatchedAt)}</span></span>
+                  <span className="text-dark-500 flex items-center gap-1"><FiClock size={9} /> {formatDate(item.dispatchedAt)}</span>
                 )}
-                {item.estimatedDelivery && <span className="text-dark-500">ETA: <span className="text-dark-300">{formatDate(item.estimatedDelivery)}</span></span>}
                 {item.deliveredAt && (
-                  <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                    <FiCheck size={10} /> Delivered on {formatDate(item.deliveredAt)}
+                  <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px]">
+                    <FiCheck size={9} /> {formatDate(item.deliveredAt)}
                   </span>
                 )}
+                {item.deliveredByPartnerId && (
+                  <span className="inline-flex items-center gap-1 text-gold-400 bg-gold-500/10 border border-gold-500/20 px-2 py-0.5 rounded-full text-[10px]">
+                    <FiUser size={9} />
+                    {item.deliveredByPartnerName && <span>{item.deliveredByPartnerName}</span>}
+                    <span className="font-mono opacity-70">({item.deliveredByPartnerId})</span>
+                  </span>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); printInvoice(item); }}
+                  className="ml-auto flex items-center gap-1.5 text-[10px] bg-gold-500/10 border border-gold-500/30 text-gold-400 hover:bg-gold-500/20 rounded-lg px-2.5 py-1 transition-colors"
+                >
+                  <FiDownload size={10} /> Invoice PDF
+                </button>
               </div>
 
-              {/* Tracking History */}
+              {/* Tracking — compact, last 4 only */}
               {item.trackingHistory?.length > 0 && (
-                <div className="border-t border-white/5 pt-3">
-                  <p className="text-xs text-dark-500 uppercase tracking-wider mb-2">Tracking</p>
-                  <div className="space-y-1.5 max-h-32 overflow-y-auto scrollbar-hide">
-                    {item.trackingHistory.map((h, i) => (
-                      <div key={i} className="flex items-start gap-2 text-xs">
-                        <span className="text-dark-600 flex-shrink-0 w-20">{formatDate(h.timestamp || h.date)}</span>
-                        <span className="text-dark-300 capitalize">{(h.status || h.note || '').replace(/_/g, ' ')}</span>
-                        {h.note && h.note !== h.status && <span className="text-dark-500">— {h.note}</span>}
-                      </div>
+                <div className="border-t border-white/5 pt-2.5">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {[...item.trackingHistory].slice(-4).map((h, i) => (
+                      <span key={i} className="flex items-center gap-1.5 text-[10px] text-dark-400">
+                        <span className="w-1 h-1 rounded-full bg-dark-600 flex-shrink-0" />
+                        <span className="capitalize text-dark-300">{(h.status || '').replace(/_/g, ' ')}</span>
+                        <span className="text-dark-600">{formatDate(h.timestamp || h.date)}</span>
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* PDF Download */}
-              <div className="border-t border-white/5 pt-3 flex justify-end">
-                <button
-                  onClick={(e) => { e.stopPropagation(); printInvoice(item); }}
-                  className="flex items-center gap-2 text-xs bg-gold-500/10 border border-gold-500/30 text-gold-400 hover:bg-gold-500/20 rounded-lg px-3 py-2 transition-colors"
-                >
-                  <FiDownload size={12} /> Download Invoice PDF
-                </button>
-              </div>
 
             </div>
           </motion.div>
@@ -606,7 +622,7 @@ export default function AdminDelivery() {
       const normCustoms = customResults.flatMap(r => r.data.orders || []).map(o => normaliseOrder(o, 'custom_order'));
 
       const combined = [...normOrders, ...normCustoms];
-      const unique = Array.from(new Map(combined.map(i => [i._id, i])).values());
+      const unique = Array.from(new Map(combined.map(i => [String(i._id), i])).values());
       unique.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       setItems(unique);
@@ -647,6 +663,22 @@ export default function AdminDelivery() {
       resolveOrderId(o).toLowerCase().includes(q)
     );
   });
+
+  const renderDeliveryList = () => {
+    if (loading) {
+      return <div className="flex items-center justify-center py-20 text-dark-400 text-sm">Loading deliveries…</div>;
+    }
+    if (filtered.length === 0) {
+      return <div className="card p-10 text-center text-dark-400 text-sm">No deliveries in this stage</div>;
+    }
+    return (
+      <AnimatePresence initial={false}>
+        {filtered.map(item => (
+          <DeliveryCard key={item._id} item={item} />
+        ))}
+      </AnimatePresence>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -691,17 +723,7 @@ export default function AdminDelivery() {
       {error && <div className="card p-4 border-red-500/20 text-red-400 text-sm">{error}</div>}
 
       {/* List */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-dark-400 text-sm">Loading deliveries…</div>
-      ) : filtered.length === 0 ? (
-        <div className="card p-10 text-center text-dark-400 text-sm">No deliveries in this stage</div>
-      ) : (
-        <AnimatePresence initial={false}>
-          {filtered.map(item => (
-            <DeliveryCard key={item._id} item={item} />
-          ))}
-        </AnimatePresence>
-      )}
+      {renderDeliveryList()}
     </div>
   );
 }

@@ -5,8 +5,8 @@ const DeliveryPartner = require('../models/DeliveryPartner');
 
 // Map userType → model
 const modelMap = {
-  user:     User,
-  admin:    Admin,
+  user: User,
+  admin: Admin,
   delivery: DeliveryPartner,
 };
 
@@ -37,13 +37,16 @@ const protect = async (req, res, next) => {
     }
 
     req.user = entity;
-    // Backward-compat: old tokens (no userType) for users with role='delivery' or 'admin'
-    // treat them as the correct userType so delivery/admin routes still work
-    let resolvedType = userType;
-    if (resolvedType === 'user' && entity.role === 'delivery') resolvedType = 'delivery';
-    if (resolvedType === 'user' && entity.role === 'admin')    resolvedType = 'admin';
+    // Only allow type upgrade from 'user' token if entity is NOT from the User model.
+    // Delivery partners and admins now have their own models and issue typed tokens,
+    // so the backward-compat upgrade is no longer needed and would be a security hole.
+    const resolvedType = userType;
     req.userType = resolvedType;
-    req.user.role = resolvedType === 'admin' ? 'admin' : resolvedType === 'delivery' ? 'delivery' : (entity.role || 'user');
+    let resolvedRole;
+    if (resolvedType === 'admin') resolvedRole = 'admin';
+    else if (resolvedType === 'delivery') resolvedRole = 'delivery';
+    else resolvedRole = entity.role || 'user';
+    req.user.role = resolvedRole;
     next();
   } catch (error) {
     if (error.name === 'TokenExpiredError') {

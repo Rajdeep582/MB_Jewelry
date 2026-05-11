@@ -11,16 +11,48 @@ import { userService } from '../../services/services';
 import toast from 'react-hot-toast';
 import PropTypes from 'prop-types';
 
+function resolveWishlistItemId(item) {
+  if (typeof item === 'object' && item !== null) return item._id;
+  return item;
+}
+
+function getImageWrapperClass(isList) {
+  if (isList) return 'relative overflow-hidden w-32 h-32 sm:w-48 sm:h-48 rounded-xl shrink-0';
+  return 'relative overflow-hidden product-img-wrapper';
+}
+
+function getDiscountBadgeClass(isList) {
+  if (isList) return 'absolute z-10 badge badge-red text-[10px] sm:text-xs font-bold top-2 left-2 sm:top-3 sm:left-3';
+  return 'absolute z-10 badge badge-red text-[10px] sm:text-xs font-bold top-3 left-3';
+}
+
+function getWishlistBtnClass(isList) {
+  const pos = isList ? 'top-2 right-2 sm:top-3 sm:right-3' : 'top-3 right-3';
+  return `absolute z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm flex items-center justify-center text-dark-400 hover:text-velvet-400 transition-all duration-200 opacity-0 group-hover:opacity-100 ${pos}`;
+}
+
+function getInfoClass(isList) {
+  if (isList) return 'flex flex-col flex-1 py-1 sm:py-3 pr-2 sm:pr-4 h-32 sm:h-48';
+  return 'flex flex-col flex-1 p-4';
+}
+
+function getNameClass(isList) {
+  if (isList) return 'text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm sm:text-lg mb-1 sm:mb-2';
+  return 'text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm mb-1';
+}
+
+function getCartBtnClass(isList) {
+  const size = isList ? 'px-4 sm:px-6 py-2 sm:py-2.5 w-max' : 'w-full py-2.5';
+  return `flex items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-medium bg-dark-700 text-dark-300 hover:bg-gold-500 hover:text-dark-900 border border-white/10 hover:border-transparent transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${size}`;
+}
+
 export default function ProductCard({ product, view = 'grid' }) {
   const dispatch = useDispatch();
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const user = useSelector(selectUser);
-  
+
   const wishlist = user?.wishlist || [];
-  const isWishlisted = wishlist.some(item => {
-    const itemId = typeof item === 'object' && item !== null ? item._id : item;
-    return itemId === product._id;
-  });
+  const isWishlisted = wishlist.some(item => resolveWishlistItemId(item) === product._id);
 
   const [wishlisted, setWishlisted] = useState(isWishlisted);
   const [imgError, setImgError] = useState(false);
@@ -75,10 +107,10 @@ export default function ProductCard({ product, view = 'grid' }) {
     >
       <Link to={`/products/${_id}`} id={`product-${_id}`} className={isList ? 'flex flex-row items-center gap-5 sm:gap-6' : 'block'}>
         {/* Image */}
-        <div className={`relative overflow-hidden ${isList ? 'w-32 h-32 sm:w-48 sm:h-48 rounded-xl shrink-0' : 'product-img-wrapper'}`}>
+        <div className={getImageWrapperClass(isList)}>
           {/* Discount badge */}
           {discountedPrice && (
-            <div className={`absolute z-10 badge badge-red text-[10px] sm:text-xs font-bold ${isList ? 'top-2 left-2 sm:top-3 sm:left-3' : 'top-3 left-3'}`}>
+            <div className={getDiscountBadgeClass(isList)}>
               -{discountPercent(price, discountedPrice)}%
             </div>
           )}
@@ -93,7 +125,7 @@ export default function ProductCard({ product, view = 'grid' }) {
           {/* Wishlist */}
           <button
             onClick={handleWishlist}
-            className={`absolute z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm flex items-center justify-center text-dark-400 hover:text-velvet-400 transition-all duration-200 opacity-0 group-hover:opacity-100 ${isList ? 'top-2 right-2 sm:top-3 sm:right-3' : 'top-3 right-3'}`}
+            className={getWishlistBtnClass(isList)}
             aria-label="Add to wishlist"
           >
             <FiHeart size={14} className={wishlisted ? 'fill-velvet-400 text-velvet-400' : ''} />
@@ -119,9 +151,9 @@ export default function ProductCard({ product, view = 'grid' }) {
         </div>
 
         {/* Info */}
-        <div className={`flex flex-col flex-1 ${isList ? 'py-1 sm:py-3 pr-2 sm:pr-4 h-32 sm:h-48' : 'p-4'}`}>
+        <div className={getInfoClass(isList)}>
           <p className="text-dark-400 text-[10px] sm:text-xs mb-1 uppercase tracking-wider">{material}</p>
-          <h3 className={`text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors ${isList ? 'text-sm sm:text-lg mb-1 sm:mb-2' : 'text-sm mb-1'}`}>
+          <h3 className={getNameClass(isList)}>
             {name}
           </h3>
 
@@ -150,7 +182,7 @@ export default function ProductCard({ product, view = 'grid' }) {
               id={`add-to-cart-${_id}`}
               onClick={handleAddToCart}
               disabled={stock === 0}
-              className={`flex items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-medium bg-dark-700 text-dark-300 hover:bg-gold-500 hover:text-dark-900 border border-white/10 hover:border-transparent transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${isList ? 'px-4 sm:px-6 py-2 sm:py-2.5 w-max' : 'w-full py-2.5'}`}
+              className={getCartBtnClass(isList)}
             >
               <FiShoppingBag size={14} />
               {stock === 0 ? 'Out of Stock' : 'Add to Cart'}

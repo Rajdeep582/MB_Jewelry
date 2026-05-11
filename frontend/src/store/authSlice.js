@@ -21,6 +21,24 @@ export const loginUser = createAsyncThunk('auth/login', async (data, { rejectWit
   }
 });
 
+export const loginAdmin = createAsyncThunk('auth/loginAdmin', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/admin-auth/login', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Login failed');
+  }
+});
+
+export const registerAdmin = createAsyncThunk('auth/registerAdmin', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/admin-auth/register', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Registration failed');
+  }
+});
+
 export const loginDP = createAsyncThunk('auth/loginDP', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/dp-auth/login', data);
@@ -51,7 +69,9 @@ export const loginWithGoogle = createAsyncThunk('auth/google', async (idToken, {
 export const logoutUser = createAsyncThunk('auth/logout', async (_, { getState, rejectWithValue }) => {
   try {
     const role = getState().auth.user?.role;
-    const endpoint = role === 'delivery' ? '/dp-auth/logout' : '/auth/logout';
+    const endpoint = role === 'admin' ? '/admin-auth/logout'
+      : role === 'delivery' ? '/dp-auth/logout'
+      : '/auth/logout';
     await api.post(endpoint);
   } catch (err) {
     return rejectWithValue(err.response?.data?.message);
@@ -61,7 +81,9 @@ export const logoutUser = createAsyncThunk('auth/logout', async (_, { getState, 
 export const fetchCurrentUser = createAsyncThunk('auth/me', async (_, { getState, rejectWithValue }) => {
   try {
     const role = getState().auth.user?.role;
-    const endpoint = role === 'delivery' ? '/dp-auth/me' : '/auth/me';
+    const endpoint = role === 'admin' ? '/admin-auth/me'
+      : role === 'delivery' ? '/dp-auth/me'
+      : '/auth/me';
     const res = await api.get(endpoint);
     return res.data;
   } catch (err) {
@@ -72,7 +94,9 @@ export const fetchCurrentUser = createAsyncThunk('auth/me', async (_, { getState
 export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { getState, rejectWithValue }) => {
   try {
     const role = getState().auth.user?.role;
-    const endpoint = role === 'delivery' ? '/dp-auth/refresh' : '/auth/refresh';
+    const endpoint = role === 'admin' ? '/admin-auth/refresh'
+      : role === 'delivery' ? '/dp-auth/refresh'
+      : '/auth/refresh';
     const res = await api.post(endpoint);
     return res.data;
   } catch (err) {
@@ -141,6 +165,11 @@ const authSlice = createSlice({
       state.accessToken = null;
       clearAuth();
     },
+    // Update user profile only — does not touch accessToken
+    setUser: (state, { payload }) => {
+      state.user = payload;
+      try { localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload)); } catch { /* ignore */ }
+    },
   },
   extraReducers: (builder) => {
     const handlePending = (state) => { state.loading = true; state.error = null; };
@@ -164,6 +193,21 @@ const authSlice = createSlice({
         persistAuth(payload.accessToken, payload.user);
       })
       .addCase(loginUser.rejected, handleRejected)
+
+      // Admin Login
+      .addCase(loginAdmin.pending, handlePending)
+      .addCase(loginAdmin.fulfilled, (state, { payload }) => {
+        state.loading = false;
+        state.user = payload.user;
+        state.accessToken = payload.accessToken;
+        persistAuth(payload.accessToken, payload.user);
+      })
+      .addCase(loginAdmin.rejected, handleRejected)
+
+      // Admin Register
+      .addCase(registerAdmin.pending, handlePending)
+      .addCase(registerAdmin.fulfilled, (state) => { state.loading = false; })
+      .addCase(registerAdmin.rejected, handleRejected)
 
       // DP Login
       .addCase(loginDP.pending, handlePending)
@@ -235,7 +279,7 @@ const authSlice = createSlice({
   },
 });
 
-export const { clearError, setCredentials, clearCredentials } = authSlice.actions;
+export const { clearError, setCredentials, clearCredentials, setUser } = authSlice.actions;
 
 // ─── Selectors ───────────────────────────────────────────────────────────────
 export const selectUser = (state) => state.auth.user;

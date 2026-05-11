@@ -60,6 +60,9 @@ export const adminService = {
   deleteDeliveryPartner:    (userId)            => api.delete(`/admin/delivery-partners/${userId}`),
   assignDeliveryAgent:      (orderId, data)     => api.patch(`/admin/orders/${orderId}/assign-delivery`, data),
   adminConfirmDelivery:     (orderId, data)     => api.post(`/admin/orders/${orderId}/admin-confirm-delivery`, data),
+  // Delivery records (independent collection)
+  getDeliveryRecords:       (params)            => api.get('/admin/deliveries', { params }),
+  getDeliveryRecordStats:   ()                  => api.get('/admin/deliveries/stats'),
 };
 
 export const deliveryService = {

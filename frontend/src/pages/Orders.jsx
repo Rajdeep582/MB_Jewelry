@@ -263,6 +263,17 @@ function OrderDetailView({ id }) {
         {/* Progress stepper */}
         <OrderProgressStepper order={order} />
 
+        {/* Admin note — latest tracking comment (hidden when delivered) */}
+        {order.orderStatus !== 'delivered' && (() => {
+          const latest = [...(order.trackingHistory || [])].reverse().find(e => e.comment?.trim());
+          return latest ? (
+            <div className="mt-3 flex items-start gap-2 text-sm bg-gold-500/5 border border-gold-500/15 rounded-xl px-4 py-3">
+              <span className="text-gold-400 flex-shrink-0 mt-0.5">📝</span>
+              <span className="text-dark-300 leading-snug">{latest.comment}</span>
+            </div>
+          ) : null;
+        })()}
+
         {/* Invoice download */}
         {order.payment?.status === 'paid' && (
           <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
@@ -354,8 +365,8 @@ function OrderDetailView({ id }) {
           Order Items
         </h3>
         <div className="space-y-4">
-          {order.items.map((item, i) => (
-            <div key={i} className="flex gap-4">
+          {order.items.map((item) => (
+            <div key={item._id || item.name} className="flex gap-4">
               <div className="w-16 h-16 rounded-xl overflow-hidden bg-dark-700 flex-shrink-0 border border-white/5">
                 <img
                   src={resolveImageUrl(item.image) || ''}
@@ -474,7 +485,7 @@ function OrderDetailView({ id }) {
             <div className="mt-4">
               {reversed.map((entry, i) => (
                 <TimelineEntry
-                  key={i}
+                  key={entry.status + (entry.timestamp || entry.createdAt || i)}
                   entry={entry}
                   isFirst={i === 0}
                   isLast={i === reversed.length - 1}
@@ -656,6 +667,41 @@ function OrdersListView() {
     return c;
   }, [allOrders]);
 
+  const renderOrderList = () => {
+    if (loading) {
+      return (
+        <div className="space-y-4">
+          {Array.from({ length: 3 }, (_, n) => n).map((n) => <OrderCardSkeleton key={n} />)}
+        </div>
+      );
+    }
+    if (allOrders.length === 0) {
+      return (
+        <div className="text-center py-20">
+          <div className="text-6xl mb-4">📦</div>
+          <h3 className="font-display text-2xl text-white mb-3">No orders yet</h3>
+          <p className="text-dark-400 mb-6">Shop our luxury collection and your orders will appear here</p>
+          <Link to="/shop" className="btn-gold">Start Shopping</Link>
+        </div>
+      );
+    }
+    if (filtered.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <p className="text-dark-400 text-sm">No orders with status &quot;{FILTER_OPTIONS.find(f => f.value === filter)?.label}&quot;</p>
+          <button onClick={() => setFilter('all')} className="text-gold-400 text-sm mt-2 hover:text-gold-300">
+            Clear filter →
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2.5">
+        {filtered.map(order => <OrderCard key={order._id} order={order} />)}
+      </div>
+    );
+  };
+
   return (
     <>
       {/* Filter bar */}
@@ -692,29 +738,7 @@ function OrdersListView() {
         </div>
       )}
 
-      {loading ? (
-        <div className="space-y-4">
-          {Array.from({ length: 3 }).map((_, i) => <OrderCardSkeleton key={i} />)}
-        </div>
-      ) : allOrders.length === 0 ? (
-        <div className="text-center py-20">
-          <div className="text-6xl mb-4">📦</div>
-          <h3 className="font-display text-2xl text-white mb-3">No orders yet</h3>
-          <p className="text-dark-400 mb-6">Shop our luxury collection and your orders will appear here</p>
-          <Link to="/shop" className="btn-gold">Start Shopping</Link>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="text-dark-400 text-sm">No orders with status "{FILTER_OPTIONS.find(f => f.value === filter)?.label}"</p>
-          <button onClick={() => setFilter('all')} className="text-gold-400 text-sm mt-2 hover:text-gold-300">
-            Clear filter →
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map(order => <OrderCard key={order._id} order={order} />)}
-        </div>
-      )}
+      {renderOrderList()}
     </>
   );
 }

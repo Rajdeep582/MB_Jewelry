@@ -38,6 +38,18 @@ function QuoteModal({ order, onClose, onSaved }) {
     adminNotes:  order.adminNotes  || '',
   });
   const [saving, setSaving] = useState(false);
+  const [gstRate, setGstRate] = useState(0.18); // default fallback
+
+  useEffect(() => {
+    adminService.getGlobalPricing()
+      .then(res => {
+        const match = (res.data.pricing || []).find(
+          p => p.material === order.material && (p.purity === order.purity || order.purity === 'None')
+        ) || (res.data.pricing || []).find(p => p.material === order.material);
+        if (match) setGstRate(match.gst / 100);
+      })
+      .catch(() => {/* keep default */});
+  }, []);
 
   const handleDownloadPDF = () => {
     const printWindow = window.open('', '', 'width=800,height=800');
@@ -238,7 +250,7 @@ function QuoteModal({ order, onClose, onSaved }) {
             />
             {form.quoteAmount > 0 && (
               <p className="text-dark-500 text-xs mt-1">
-                Customer pays: {formatPrice(Math.round(Number(form.quoteAmount) * 1.18))} (incl. 18% GST)
+                Customer pays: {formatPrice(Math.round(Number(form.quoteAmount) * (1 + gstRate)))} (incl. {Math.round(gstRate * 100)}% GST)
               </p>
             )}
           </div>
@@ -336,7 +348,9 @@ function StatusModal({ order, onClose, onSaved }) {
   const availableStages = ADMIN_STAGE_OPTIONS.filter((opt) => {
     // Cannot cancel after advance payment is received
     if (opt.value === 'cancelled') return advanceStatus !== 'paid';
-    // Guard: cannot select "delivered" unless final payment is done
+    // Guard: cannot ship unless advance payment is done
+    if (opt.value === 'shipped' && advanceStatus !== 'paid') return false;
+    // Guard: cannot deliver unless final payment is done
     if (opt.value === 'delivered' && !isFinalPaid) return false;
     const optIdx = allStatuses.indexOf(opt.value);
     return optIdx > currentIdx;
@@ -379,6 +393,13 @@ function StatusModal({ order, onClose, onSaved }) {
             </div>
           </div>
         </div>
+
+        {/* Shipped guard warning */}
+        {advanceStatus !== 'paid' && order.status !== 'shipped' && order.status !== 'delivered' && (
+          <div className="mb-4 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+            ⚠ Cannot mark as Shipped until the 70% advance payment is received.
+          </div>
+        )}
 
         {/* Delivered guard warning */}
         {!isFinalPaid && order.status === 'shipped' && (
@@ -437,8 +458,8 @@ function ImagesModal({ images, onClose }) {
           <button onClick={onClose} className="p-1 text-dark-400 hover:text-white"><FiX /></button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {images.map((img, i) => (
-            <a key={i} href={img.url} target="_blank" rel="noopener noreferrer">
+          {images.map((img) => (
+            <a key={img.url} href={img.url} target="_blank" rel="noopener noreferrer">
               <div className="aspect-square rounded-xl overflow-hidden bg-dark-700 hover:ring-2 ring-gold-500 transition-all">
                 <img src={img.url} alt={`ref-${i}`} className="w-full h-full object-cover" />
               </div>
@@ -448,6 +469,26 @@ function ImagesModal({ images, onClose }) {
       </motion.div>
     </div>
   );
+}
+
+function getPaymentAmountCell(order) {
+  if (order.finalPayment?.status === 'paid') {
+    return <span className="text-green-400 font-medium">{formatPrice(order.quoteAmount || (order.advanceAmount + order.finalAmount))}</span>;
+  }
+  if (order.advancePayment?.status === 'paid') {
+    return <span className="text-blue-400 font-medium">{formatPrice(order.advanceAmount)}</span>;
+  }
+  return <span className="text-dark-400 text-xs">—</span>;
+}
+
+function getPaymentStatusCell(order) {
+  if (order.finalPayment?.status === 'paid') {
+    return <span className="text-green-400 text-xs font-medium">Fully Paid</span>;
+  }
+  if (order.advancePayment?.status === 'paid') {
+    return <span className="text-blue-400 text-xs font-medium">Advance Paid</span>;
+  }
+  return <span className="text-dark-400 text-xs">Pending</span>;
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -552,7 +593,6 @@ export default function AdminCustomOrders() {
                 <th className="text-left py-2 pr-4">ID</th>
                 <th className="text-left py-2 pr-4">Customer</th>
                 <th className="text-left py-2 pr-4">Type / Material</th>
-                <th className="text-left py-2 pr-4">Budget</th>
                 <th className="text-left py-2 pr-4">Total Amount</th>
                 <th className="text-left py-2 pr-4">Paid Amount</th>
                 <th className="text-left py-2 pr-4">Payment</th>
@@ -563,8 +603,8 @@ export default function AdminCustomOrders() {
             </thead>
             <tbody className="divide-y divide-white/5">
               {loading ? (
-                Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}><td colSpan={10} className="py-3"><div className="skeleton h-8 rounded-lg" /></td></tr>
+                Array.from({ length: 8 }, (_, i) => i).map((n) => (
+                  <tr key={n}><td colSpan={10} className="py-3"><div className="skeleton h-8 rounded-lg" /></td></tr>
                 ))
               ) : orders.map((order) => (
                 <tr key={order._id} className="hover:bg-white/2 transition-colors">
@@ -579,30 +619,13 @@ export default function AdminCustomOrders() {
                     <p className="text-white text-xs">{order.type}</p>
                     <p className="text-dark-500 text-xs">{order.material} {order.purity !== 'None' ? `· ${order.purity}` : ''}</p>
                   </td>
-                  <td className="py-3 pr-4 text-dark-400 text-xs">{order.budget || '—'}</td>
                   <td className="py-3 pr-4">
                     {order.quoteAmount
                       ? <span className="text-gold-500 font-medium">{formatPrice(order.quoteAmount)}</span>
                       : <span className="text-dark-600 text-xs italic">Not set</span>}
                   </td>
-                  <td className="py-3 pr-4">
-                    {order.finalPayment?.status === 'paid' ? (
-                      <span className="text-green-400 font-medium">{formatPrice(order.quoteAmount || (order.advanceAmount + order.finalAmount))}</span>
-                    ) : order.advancePayment?.status === 'paid' ? (
-                      <span className="text-blue-400 font-medium">{formatPrice(order.advanceAmount)}</span>
-                    ) : (
-                      <span className="text-dark-400 text-xs">—</span>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4">
-                    {order.finalPayment?.status === 'paid' ? (
-                      <span className="text-green-400 text-xs font-medium">Fully Paid</span>
-                    ) : order.advancePayment?.status === 'paid' ? (
-                      <span className="text-blue-400 text-xs font-medium">Advance Paid</span>
-                    ) : (
-                      <span className="text-dark-400 text-xs">Pending</span>
-                    )}
-                  </td>
+                  <td className="py-3 pr-4">{getPaymentAmountCell(order)}</td>
+                  <td className="py-3 pr-4">{getPaymentStatusCell(order)}</td>
                   <td className="py-3 pr-4">
                     <span className={getCustomOrderStatusColor(order.status)}>{STAGE_LABELS[order.status] || order.status.replace(/_/g, ' ')}</span>
                     {order.dpConfirmedAt && order.status !== 'delivered' && (
@@ -710,9 +733,9 @@ export default function AdminCustomOrders() {
                     }
                     setDpBusy(false);
                   }}
-                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
                 >
-                  Confirm Delivered
+                  {dpBusy ? 'Confirming…' : 'Confirm Delivered'}
                 </button>
               </div>
             </motion.div>

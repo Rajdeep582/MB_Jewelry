@@ -168,7 +168,7 @@ export default function Shop() {
             {/* Product Grid */}
             {loading ? (
               <div className={`grid gap-5 ${view === 'grid' ? 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}>
-                {Array.from({ length: 9 }).map((_, i) => <ProductCardSkeleton key={i} />)}
+                {Array.from({ length: 9 }, (_, n) => n).map((n) => <ProductCardSkeleton key={n} />)}
               </div>
             ) : products.length === 0 ? (
               <div className="text-center py-24">
