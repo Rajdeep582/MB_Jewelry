@@ -17,6 +17,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 // ─── Constants ──────────────────────────────────────────────────────────────────
 const DELIVERY_STATUSES = ['ready_to_ship', 'shipped', 'delivered'];
 
+// Forward-only transitions (mirrors backend DELIVERY_TRANSITIONS, happy-path only)
+const STATUS_FORWARD = {
+  confirmed:     ['ready_to_ship'],
+  ready_to_ship: ['shipped'],
+  shipped:       ['delivered'],
+  delivered:     [],
+};
+
 const STATUS_LABELS = {
   confirmed:        'Confirmed & Processing',
   ready_to_ship:    'Ready to Ship',
@@ -192,9 +200,15 @@ DpConfirmBlock.propTypes = {
 // ─── Update Status Modal ────────────────────────────────────────────────────────
 function UpdateModal({ order, onClose, onSaved }) {
   const isPaid = order.payment?.status === 'paid';
+
+  // Forward statuses reachable from current
+  const forwardStatuses = (STATUS_FORWARD[order.orderStatus] || []).filter(s =>
+    DELIVERY_STATUSES.includes(s)
+  );
+
   const [form, setForm] = useState({
-    status:        order.orderStatus === 'confirmed' ? 'ready_to_ship' : order.orderStatus,
-    comment:       '',
+    status: order.orderStatus,   // starts at current (disabled option) for date-only; user must pick forward status
+    comment: '',
     estimatedDelivery: order.estimatedDelivery
       ? new Date(order.estimatedDelivery).toISOString().slice(0, 10)
       : '',
@@ -202,8 +216,16 @@ function UpdateModal({ order, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [confirmText, setConfirmText] = useState('');
 
-  const isDeliverSelected = form.status === 'delivered';
-  const confirmValid = !isDeliverSelected || confirmText.trim().toUpperCase() === 'DELIVER';
+  const isStatusChanged     = form.status !== order.orderStatus;
+  const isDeliverSelected   = form.status === 'delivered';
+  const isShippedCurrent    = order.orderStatus === 'shipped';
+  const confirmValid        = !isDeliverSelected || confirmText.trim().toUpperCase() === 'DELIVER';
+
+  // Date-only update: order is shipped, status unchanged, estimatedDelivery changed
+  const originalDate = order.estimatedDelivery
+    ? new Date(order.estimatedDelivery).toISOString().slice(0, 10)
+    : '';
+  const isDateOnlyUpdate = isShippedCurrent && !isStatusChanged && form.estimatedDelivery !== originalDate;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -211,22 +233,22 @@ function UpdateModal({ order, onClose, onSaved }) {
       toast.error('Please type DELIVER to confirm.');
       return;
     }
-    if (form.status === 'shipped' && !form.estimatedDelivery) {
+    if (!isStatusChanged && !isDateOnlyUpdate) {
+      toast.error('Nothing changed — select a new status or update the delivery date.');
+      return;
+    }
+    if (form.status === 'shipped' && isStatusChanged && !form.estimatedDelivery) {
       toast.error('Set an estimated delivery date before marking as Shipped.');
       return;
     }
-    const toISO = (d) => {
-      if (!d) return undefined;
-      return d; // already yyyy-mm-dd from type="date"
-    };
     setSaving(true);
     try {
       await orderService.updateOrderStatus(order._id, {
         status:            form.status,
-        comment:           form.comment,
-        estimatedDelivery: toISO(form.estimatedDelivery),
+        comment:           form.comment || undefined,
+        estimatedDelivery: form.estimatedDelivery || undefined,
       });
-      toast.success('Order updated successfully');
+      toast.success(isDateOnlyUpdate ? 'Delivery date updated' : 'Order updated successfully');
       onSaved();
       onClose();
     } catch (err) {
@@ -281,29 +303,42 @@ function UpdateModal({ order, onClose, onSaved }) {
             <select
               id="delivery-status"
               value={form.status}
-              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              onChange={(e) => { setForm({ ...form, status: e.target.value }); setConfirmText(''); }}
               className="input-dark text-sm"
+              disabled={forwardStatuses.length === 0}
             >
-              {DELIVERY_STATUSES.map((s) => (
+              {/* Current status as disabled placeholder */}
+              <option value={order.orderStatus} disabled>
+                {STATUS_LABELS[order.orderStatus] || order.orderStatus.replaceAll('_', ' ')} (current)
+              </option>
+              {forwardStatuses.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABELS[s] || s.replaceAll('_', ' ')}
                 </option>
               ))}
             </select>
+            {forwardStatuses.length === 0 && (
+              <p className="text-dark-500 text-xs mt-1">No further status updates available.</p>
+            )}
           </div>
 
-          {['ready_to_ship', 'shipped'].includes(form.status) && (
+          {/* Estimated delivery: show when advancing to shipped, or when current is shipped (date edit) */}
+          {(form.status === 'shipped' || isShippedCurrent) && (
             <div>
               <label htmlFor="est-delivery-date" className="label-dark text-xs">
                 Estimated Delivery Date
-                {form.status === 'shipped' && <span className="text-red-400 ml-1">*</span>}
+                {form.status === 'shipped' && isStatusChanged && <span className="text-red-400 ml-1">*</span>}
+                {isShippedCurrent && !isStatusChanged && (
+                  <span className="text-dark-500 font-normal ml-1">(editable — updates customer view)</span>
+                )}
               </label>
               <input
                 id="est-delivery-date"
                 type="date"
                 value={form.estimatedDelivery}
                 onChange={(e) => setForm({ ...form, estimatedDelivery: e.target.value })}
-                className={`input-dark text-sm ${form.status === 'shipped' && !form.estimatedDelivery ? 'border-red-500/40 focus:border-red-500' : ''}`}
+                className={`input-dark text-sm ${form.status === 'shipped' && isStatusChanged && !form.estimatedDelivery ? 'border-red-500/40 focus:border-red-500' : ''}`}
+                min={new Date().toISOString().split('T')[0]}
               />
             </div>
           )}
@@ -335,13 +370,17 @@ function UpdateModal({ order, onClose, onSaved }) {
           )}
 
           <div className="flex gap-3 pt-1">
-            <button type="submit" disabled={saving || !confirmValid} className="btn-gold flex-1 py-2.5 text-sm disabled:opacity-60 disabled:cursor-not-allowed">
+            <button
+              type="submit"
+              disabled={saving || !confirmValid || (!isStatusChanged && !isDateOnlyUpdate)}
+              className="btn-gold flex-1 py-2.5 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               {saving ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-3.5 h-3.5 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />{' '}
                   Saving…
                 </span>
-              ) : 'Update'}
+              ) : isDateOnlyUpdate ? 'Update Date' : 'Update Status'}
             </button>
             <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5 text-sm">
               Cancel

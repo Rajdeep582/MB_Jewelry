@@ -210,12 +210,6 @@ const createPayment = async (req, res) => {
         taxPrice: pricing.taxPrice,
         totalAmount: pricing.totalAmount,
         orderStatus: 'confirmed',
-        // Seed initial tracking history so admin always has a full audit trail
-        trackingHistory: [{
-          status: 'confirmed',
-          comment: 'Order created. Awaiting payment confirmation.',
-          timestamp: new Date(),
-        }],
       }],
       { session }
     );
@@ -658,6 +652,10 @@ const getAllOrders = async (req, res) => {
       query['payment.status'] = 'pending';
     } else if (paymentStatus === 'failed') {
       query['payment.status'] = 'failed';
+    } else {
+      // Default: exclude in-flight pending-payment orders — only show confirmed (paid) orders.
+      // Pending orders are transient records created during Razorpay checkout flow.
+      query['payment.status'] = 'paid';
     }
   }
 
@@ -696,7 +694,7 @@ const DELIVERY_TRANSITIONS = {
   confirmed:         ['ready_to_ship', 'failed'],
   ready_to_ship:     ['shipped', 'failed'],
   shipped:           ['delivered', 'failed', 'returned_refunded'],
-  delivered:         ['returned_refunded'],
+  delivered:         [],                       // terminal — no further updates
   returned_refunded: [],
   failed:            ['returned_refunded'],
 };
@@ -749,10 +747,16 @@ const updateOrderStatus = async (req, res) => {
   const current = order.orderStatus;
   const currentPaymentStatus = order.payment.status;
 
-  // ── Idempotency: already in the target state ──
-  if (current === status && (!paymentStatus || paymentStatus === currentPaymentStatus) && !comment) {
-    logger.info(`Order ${order._id} already in status "${status}" — idempotent response`);
-    return res.json({ success: true, order, message: 'Order is already up to date' });
+  // ── Same-status guard ─────────────────────────────────────────────────────
+  if (current === status) {
+    // Exception: allow estimatedDelivery-only update when order is shipped
+    if (status === 'shipped' && estimatedDelivery) {
+      order.estimatedDelivery = new Date(estimatedDelivery);
+      await order.save();
+      logger.info(`Order ${order._id} estimatedDelivery updated (status unchanged: shipped)`);
+      return res.json({ success: true, order, message: 'Estimated delivery date updated' });
+    }
+    return res.status(400).json({ success: false, message: `Order is already in "${status}" status. Cannot update to the same status.` });
   }
 
   // ── State machine: validate transition ────────────────────────────────────
@@ -825,7 +829,8 @@ const updateOrderStatus = async (req, res) => {
 // @route   GET /api/orders/stats
 // @access  Admin
 const getStats = async (req, res) => {
-  const validOrderQuery = { orderStatus: { $nin: ['failed', 'returned_refunded'] } };
+  // Only count orders with successful payment — exclude transient pending-payment records
+  const validOrderQuery = { 'payment.status': 'paid', orderStatus: { $nin: ['failed', 'returned_refunded'] } };
 
   const [totalOrders, revenueAgg, statusCounts, recentOrders, pendingCount] = await Promise.all([
     Order.countDocuments(validOrderQuery),

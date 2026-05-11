@@ -468,7 +468,15 @@ const failCustomPayment = async (req, res) => {
 const getAllCustomOrders = async (req, res) => {
   const { page = 1, limit = 20, status } = req.query;
   const query = {};
-  if (status) query.status = String(status);
+  if (status) {
+    // 'in_production' filter covers both advance_paid and in_production statuses —
+    // both display as "Confirmed & In Production" in the UI
+    if (String(status) === 'in_production') {
+      query.status = { $in: ['advance_paid', 'in_production'] };
+    } else {
+      query.status = String(status);
+    }
+  }
 
   const skip = (Number(page) - 1) * Number(limit);
 
@@ -508,11 +516,19 @@ const setQuote = async (req, res) => {
   const order = await CustomOrder.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: 'Custom order not found' });
 
-  // Can only update quote if not delivered or cancelled
+  // Cannot re-quote once a quote has been set (quotedAt is set on first quote)
+  if (order.quotedAt) {
+    return res.status(409).json({
+      success: false,
+      message: 'Quote is already set and locked. No changes allowed after the initial quote.',
+    });
+  }
+
+  // Can only set quote if not delivered or cancelled
   if (['delivered', 'cancelled'].includes(order.status)) {
     return res.status(400).json({
       success: false,
-      message: `Cannot update quote on order with status "${order.status}"`,
+      message: `Cannot set quote on order with status "${order.status}"`,
     });
   }
 
@@ -568,9 +584,20 @@ function applyCustomOrderTransition(order, status) {
   const current = order.status;
   const validStatuses = Object.values(ORDER_STATUSES);
 
-  // ── Regression guard ──
   const currentIdx = validStatuses.indexOf(current);
   const newIdx     = validStatuses.indexOf(status);
+
+  // ── Terminal guard: no update after delivered ──
+  if (current === 'delivered') {
+    return { error: 'Order has been delivered and cannot be updated further.' };
+  }
+
+  // ── Same-status guard ──
+  if (newIdx === currentIdx) {
+    return { error: `Order is already in "${status}" status. Cannot update to the same status.` };
+  }
+
+  // ── Regression guard ──
   if (newIdx < currentIdx && status !== 'cancelled') {
     return { error: `Cannot revert status from "${current}" to "${status}"` };
   }
@@ -632,9 +659,15 @@ const updateCustomOrderStatus = async (req, res) => {
 
   const current = order.status;
 
-  // ── Idempotency ──
+  // ── Same-status guard ─────────────────────────────────────────────────────
   if (current === status) {
-    return res.json({ success: true, order, message: 'Order is already in this status' });
+    // Exception: allow estimatedDelivery-only update when shipped
+    if (status === 'shipped' && estimatedDelivery) {
+      order.estimatedDelivery = new Date(estimatedDelivery);
+      await order.save();
+      return res.json({ success: true, order, message: 'Estimated delivery date updated' });
+    }
+    return res.status(400).json({ success: false, message: `Order is already in "${status}" status. Cannot update to the same status.` });
   }
 
   // Delegate validation and field updates to helper
@@ -646,7 +679,10 @@ const updateCustomOrderStatus = async (req, res) => {
   // ── Apply fields ──
   order.status = status;
   if (estimatedDelivery) order.estimatedDelivery = new Date(estimatedDelivery);
-  if (status === 'delivered') order.deliveredAt   = new Date();
+  if (status === 'delivered') {
+    order.deliveredAt = new Date();
+    order.estimatedDelivery = undefined; // clear — actual date now known
+  }
 
   order.trackingHistory.push({
     status,
@@ -723,7 +759,12 @@ const getCustomOrderStats = async (req, res) => {
       total,
       pendingCount,
       totalRevenue: (revenueAgg[0]?.total || 0) + (revenueAggFinal[0]?.total || 0),
-      statusCounts: statusCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {}),
+      // Merge advance_paid into in_production — both display as "In Production" in admin UI
+      statusCounts: statusCounts.reduce((acc, s) => {
+        const key = s._id === 'advance_paid' ? 'in_production' : s._id;
+        acc[key] = (acc[key] || 0) + s.count;
+        return acc;
+      }, {}),
     },
   });
 };

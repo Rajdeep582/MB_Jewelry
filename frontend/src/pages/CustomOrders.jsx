@@ -578,8 +578,8 @@ function CustomOrderDetail({ id }) {
         </div>
       )}
 
-      {/* Tracking */}
-      {order.trackingNumber && (
+      {/* Tracking — only show when not yet delivered */}
+      {order.status !== 'delivered' && (order.trackingNumber || order.estimatedDelivery) && (
         <div className="rounded-2xl border border-white/5 bg-dark-800 p-6">
           <div className="flex items-center gap-2 mb-3">
             <FiTruck size={14} className="text-gold-500" />
@@ -587,8 +587,18 @@ function CustomOrderDetail({ id }) {
               Tracking
             </p>
           </div>
-          <p className="font-jakarta text-dark-300 text-sm font-medium">{order.courierPartner}</p>
-          <p className="font-jakarta text-dark-400 text-sm">{order.trackingNumber}</p>
+          {order.estimatedDelivery && (
+            <p className="font-jakarta text-gold-400 text-sm font-semibold mb-3 flex items-center gap-1.5">
+              <FiTruck size={13} />
+              Estimated Delivery: {new Date(order.estimatedDelivery).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          )}
+          {order.courierPartner && (
+            <p className="font-jakarta text-dark-300 text-sm font-medium">{order.courierPartner}</p>
+          )}
+          {order.trackingNumber && (
+            <p className="font-jakarta text-dark-400 text-sm">{order.trackingNumber}</p>
+          )}
           {order.trackingUrl && (
             <a
               href={order.trackingUrl}
@@ -612,9 +622,10 @@ function CustomOrderDetail({ id }) {
             <div>
               <p className="font-jakarta text-white font-bold">Delivered Successfully</p>
               <p className="font-jakarta text-dark-400 text-xs mt-0.5">
-                Confirmed on {order.deliveredAt
+                Delivered on{' '}
+                {order.deliveredAt
                   ? new Date(order.deliveredAt).toLocaleString('en-IN', {
-                      day: 'numeric', month: 'short', year: 'numeric',
+                      day: 'numeric', month: 'long', year: 'numeric',
                       hour: 'numeric', minute: '2-digit', hour12: true,
                     })
                   : formatDate(order.updatedAt)}

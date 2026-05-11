@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiX, FiChevronDown, FiImage, FiRadio, FiDownload } from 'react-icons/fi';
+import { FiX, FiChevronDown, FiImage, FiRadio, FiDownload, FiLock, FiAlertTriangle } from 'react-icons/fi';
 import { customOrderService, adminService } from '../../services/services';
 import { formatPrice, formatDate, getCustomOrderStatusColor } from '../../utils/helpers';
 import toast from 'react-hot-toast';
@@ -29,16 +29,150 @@ const STAGE_LABELS = {
   cancelled:              'Cancelled',
 };
 
+// ─── Quote Confirm Modal ──────────────────────────────────────────────────────
+function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) {
+  const quoteAmt   = Number(form.quoteAmount);
+  const taxAmt     = Math.round(quoteAmt * gstRate);
+  const totalAmt   = quoteAmt + taxAmt;
+  const advanceAmt = Math.round(totalAmt * 0.70);
+  const finalAmt   = totalAmt - advanceAmt;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 16 }}
+        className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-red-500/30 bg-dark-800 shadow-[0_0_60px_rgba(200,30,30,0.18)]"
+      >
+        {/* Header */}
+        <div className="p-6 pb-0">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+              <FiAlertTriangle size={18} className="text-red-400" />
+            </div>
+            <div>
+              <h2 className="font-display text-xl text-white font-bold">Confirm Quote — Final</h2>
+              <p className="text-red-400 text-xs font-medium mt-0.5">This action is irreversible. Price cannot be changed after confirmation.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Warning Banner */}
+        <div className="mx-6 mt-4 bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3">
+          <p className="text-red-300 text-sm font-semibold flex items-center gap-2">
+            <FiLock size={13} /> Once confirmed, the quote is permanently locked
+          </p>
+          <p className="text-red-400/70 text-xs mt-1">The customer will be notified and can proceed with payment. No edits allowed after this point.</p>
+        </div>
+
+        {/* Order Info */}
+        <div className="mx-6 mt-4 bg-dark-900/70 border border-white/8 rounded-xl p-4">
+          <p className="text-dark-500 text-[10px] uppercase tracking-wider font-semibold mb-3">Order Details</p>
+          <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+            <div>
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Order ID</p>
+              <p className="text-gold-400 font-mono font-semibold">{order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Customer</p>
+              <p className="text-white font-medium">{order.user?.name || 'N/A'}</p>
+              <p className="text-dark-500 text-xs">{order.user?.email}</p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Product</p>
+              <p className="text-white font-medium">{order.type} — {order.material}</p>
+            </div>
+            <div>
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Purity</p>
+              <p className="text-white font-medium">{order.purity !== 'None' ? order.purity : 'N/A'}</p>
+            </div>
+            {form.expectedDeliveryDate && (
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Expected Delivery</p>
+                <p className="text-emerald-400 font-medium">{new Date(form.expectedDeliveryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              </div>
+            )}
+            {form.quoteNote && (
+              <div className="col-span-2">
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Quote Note</p>
+                <p className="text-dark-300 text-xs italic mt-0.5">{form.quoteNote}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pricing Breakdown */}
+        <div className="mx-6 mt-4 rounded-xl border border-gold-500/20 bg-gradient-to-br from-gold-500/8 to-dark-900/60 p-4">
+          <p className="text-dark-500 text-[10px] uppercase tracking-wider font-semibold mb-3">Pricing Breakdown</p>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-dark-400">Base Quote</span>
+              <span className="text-white font-semibold">{formatPrice(quoteAmt)}</span>
+            </div>
+            <div className="flex justify-between items-center pb-2 border-b border-white/8">
+              <span className="text-dark-500">{Math.round(gstRate * 100)}% GST</span>
+              <span className="text-dark-400">{formatPrice(taxAmt)}</span>
+            </div>
+            <div className="flex justify-between items-center text-base pt-1">
+              <span className="text-white font-bold">Grand Total</span>
+              <span className="text-gold-400 font-bold text-xl">{formatPrice(totalAmt)}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/8">
+            <div className="bg-dark-800/60 rounded-lg p-3">
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-1">70% Advance</p>
+              <p className="text-white font-bold text-base">{formatPrice(advanceAmt)}</p>
+              <p className="text-dark-600 text-[10px] mt-0.5">Customer pays first</p>
+            </div>
+            <div className="bg-dark-800/60 rounded-lg p-3">
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-1">30% Balance</p>
+              <p className="text-dark-300 font-bold text-base">{formatPrice(finalAmt)}</p>
+              <p className="text-dark-600 text-[10px] mt-0.5">After delivery</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="p-6 pt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={saving}
+            className="btn-dark flex-1 py-3 disabled:opacity-50"
+          >
+            ← Go Back & Edit
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className="flex-1 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 transition-all disabled:opacity-60 disabled:cursor-not-allowed shadow-[0_4px_20px_rgba(200,30,30,0.3)] hover:shadow-[0_4px_24px_rgba(200,30,30,0.45)] flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Locking Quote…</>
+            ) : (
+              <><FiLock size={14} /> Confirm & Lock Quote</>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Quote Modal ──────────────────────────────────────────────────────────────
 function QuoteModal({ order, onClose, onSaved }) {
   const [form, setForm] = useState({
-    quoteAmount: order.quoteAmount || '',
+    quoteAmount: '',
     quoteNote:   order.quoteNote   || '',
     expectedDeliveryDate: order.expectedDeliveryDate ? new Date(order.expectedDeliveryDate).toISOString().split('T')[0] : '',
     adminNotes:  order.adminNotes  || '',
   });
-  const [saving, setSaving] = useState(false);
-  const [gstRate, setGstRate] = useState(0.18); // default fallback
+  const [saving,       setSaving]       = useState(false);
+  const [gstRate,      setGstRate]      = useState(0.18);
+  const [showConfirm,  setShowConfirm]  = useState(false);
 
   useEffect(() => {
     adminService.getGlobalPricing()
@@ -54,7 +188,6 @@ function QuoteModal({ order, onClose, onSaved }) {
   const handleDownloadPDF = () => {
     const printWindow = window.open('', '', 'width=800,height=800');
     if (!printWindow) return toast.error('Popup blocked. Please allow popups to download PDF.');
-    
     const html = `
       <html>
         <head>
@@ -73,58 +206,36 @@ function QuoteModal({ order, onClose, onSaved }) {
         <body>
           <h1>Custom Order Request</h1>
           <div class="grid">
-            <div class="field">
-              <div class="label">Order ID</div>
-              <div class="value">${order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</div>
-            </div>
-            <div class="field">
-              <div class="label">Date Created</div>
-              <div class="value">${new Date(order.createdAt).toLocaleDateString()}</div>
-            </div>
-            <div class="field">
-              <div class="label">Customer Name</div>
-              <div class="value">${order.user?.name || 'N/A'}</div>
-            </div>
-            <div class="field">
-              <div class="label">Customer Email</div>
-              <div class="value">${order.user?.email || 'N/A'}</div>
-            </div>
-            <div class="field">
-              <div class="label">Product Type</div>
-              <div class="value">${order.type} — ${order.material}</div>
-            </div>
-            <div class="field">
-              <div class="label">Purity</div>
-              <div class="value">${order.purity !== 'None' ? order.purity : 'N/A'}</div>
-            </div>
+            <div class="field"><div class="label">Order ID</div><div class="value">${order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</div></div>
+            <div class="field"><div class="label">Date Created</div><div class="value">${new Date(order.createdAt).toLocaleDateString()}</div></div>
+            <div class="field"><div class="label">Customer Name</div><div class="value">${order.user?.name || 'N/A'}</div></div>
+            <div class="field"><div class="label">Customer Email</div><div class="value">${order.user?.email || 'N/A'}</div></div>
+            <div class="field"><div class="label">Product Type</div><div class="value">${order.type} — ${order.material}</div></div>
+            <div class="field"><div class="label">Purity</div><div class="value">${order.purity !== 'None' ? order.purity : 'N/A'}</div></div>
             ${order.budget ? `<div class="field"><div class="label">Budget</div><div class="value">${order.budget}</div></div>` : ''}
             ${order.weight ? `<div class="field"><div class="label">Expected Weight</div><div class="value">${order.weight}</div></div>` : ''}
             ${order.fingerSize ? `<div class="field"><div class="label">Finger Size</div><div class="value">${order.fingerSize}</div></div>` : ''}
             ${order.neckSize ? `<div class="field"><div class="label">Neck Size</div><div class="value">${order.neckSize}</div></div>` : ''}
             ${order.wristSize ? `<div class="field"><div class="label">Wrist Size</div><div class="value">${order.wristSize}</div></div>` : ''}
-            ${order.preferredDeliveryDate ? `<div class="field"><div class="label">Customer's Expected Date</div><div class="value">${new Date(order.preferredDeliveryDate).toLocaleDateString()}</div></div>` : ''}
-            
-            <div class="field full-width">
-              <div class="label">Design Description</div>
-              <div class="value desc">${order.description}</div>
-            </div>
+            <div class="field full-width"><div class="label">Design Description</div><div class="value desc">${order.description}</div></div>
           </div>
         </body>
       </html>
     `;
     printWindow.document.write(html);
     printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.quoteAmount || Number(form.quoteAmount) <= 0) {
       toast.error('Please enter a valid quote amount'); return;
     }
+    setShowConfirm(true);
+  };
+
+  const handleConfirm = async () => {
     setSaving(true);
     try {
       await customOrderService.setQuote(order._id, {
@@ -133,166 +244,137 @@ function QuoteModal({ order, onClose, onSaved }) {
         expectedDeliveryDate: form.expectedDeliveryDate,
         adminNotes:  form.adminNotes,
       });
-      toast.success('Quote set successfully');
+      toast.success('Quote locked successfully');
       onSaved();
       onClose();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to set quote');
+      setShowConfirm(false);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto glass rounded-2xl p-6"
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-xl text-white">Set Quote</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={handleDownloadPDF} className="btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 hover:text-white" title="Download Request as PDF">
-              <FiDownload size={12} /> Download PDF
-            </button>
-            <button onClick={onClose} className="p-1 text-dark-400 hover:text-white ml-2"><FiX /></button>
-          </div>
-        </div>
-
-        <div className="mb-4 text-sm text-dark-300 bg-dark-900 border border-white/10 p-4 rounded-lg space-y-3 max-h-[40vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3 pb-3 border-b border-white/10">
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          className="w-full max-w-md max-h-[90vh] overflow-y-auto glass rounded-2xl p-6"
+        >
+          <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Order ID</p>
-              <p className="text-gold-400 font-mono">{order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</p>
-            </div>
-            <div>
-              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Customer</p>
-              <p className="text-white truncate" title={`${order.user?.name} (${order.user?.email})`}>{order.user?.name}</p>
-            </div>
-            <div>
-              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Product</p>
-              <p className="text-white">{order.type} — {order.material}</p>
-            </div>
-            <div>
-              <p className="text-dark-500 text-[10px] uppercase tracking-wider">Purity</p>
-              <p className="text-white">{order.purity !== 'None' ? order.purity : 'N/A'}</p>
-            </div>
-            {order.budget && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Budget</p>
-                <p className="text-gold-400 font-medium">{order.budget}</p>
-              </div>
-            )}
-            {order.weight && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Exp. Weight</p>
-                <p className="text-white">{order.weight}</p>
-              </div>
-            )}
-            {order.fingerSize && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Finger Size</p>
-                <p className="text-white">{order.fingerSize}</p>
-              </div>
-            )}
-            {order.neckSize && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Neck Size</p>
-                <p className="text-white">{order.neckSize}</p>
-              </div>
-            )}
-            {order.wristSize && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Wrist Size</p>
-                <p className="text-white">{order.wristSize}</p>
-              </div>
-            )}
-            {order.preferredDeliveryDate && (
-              <div>
-                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Customer Exp. Date</p>
-                <p className="text-emerald-400 font-medium">{formatDate(order.preferredDeliveryDate)}</p>
-              </div>
-            )}
-          </div>
-          
-          <div>
-            <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-1">Customer Description</p>
-            <p className="text-dark-300 italic text-xs bg-dark-800/50 p-2.5 rounded border border-white/5 whitespace-pre-wrap">{order.description}</p>
-          </div>
-
-          {order.referenceImages?.length > 0 && (
-            <div>
-              <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-2">Reference Images</p>
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                {order.referenceImages.map((img, idx) => (
-                  <a key={idx} href={img.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden border border-white/10 hover:border-gold-500 transition-colors block">
-                    <img src={img.url} alt={`Ref ${idx}`} className="w-full h-full object-cover" />
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="label-dark">Quote Amount (₹) <span className="text-red-400">*</span></label>
-            <input
-              type="number"
-              min="1"
-              value={form.quoteAmount}
-              onChange={(e) => setForm({ ...form, quoteAmount: e.target.value })}
-              className="input-dark"
-              placeholder="Enter amount in INR (excl. GST)"
-              required
-            />
-            {form.quoteAmount > 0 && (
-              <p className="text-dark-500 text-xs mt-1">
-                Customer pays: {formatPrice(Math.round(Number(form.quoteAmount) * (1 + gstRate)))} (incl. {Math.round(gstRate * 100)}% GST)
+              <h2 className="font-display text-xl text-white">Set Quote</h2>
+              <p className="text-amber-400 text-xs mt-0.5 flex items-center gap-1">
+                <FiLock size={10} /> Price will be locked permanently after confirmation
               </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleDownloadPDF} className="btn-dark px-3 py-1.5 text-xs inline-flex items-center gap-1.5 hover:text-white" title="Download Request as PDF">
+                <FiDownload size={12} /> Download PDF
+              </button>
+              <button onClick={onClose} className="p-1 text-dark-400 hover:text-white ml-2"><FiX /></button>
+            </div>
+          </div>
+
+          <div className="mb-4 text-sm text-dark-300 bg-dark-900 border border-white/10 p-4 rounded-lg space-y-3 max-h-[40vh] overflow-y-auto">
+            <div className="grid grid-cols-2 gap-3 pb-3 border-b border-white/10">
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Order ID</p>
+                <p className="text-gold-400 font-mono">{order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</p>
+              </div>
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Customer</p>
+                <p className="text-white truncate" title={`${order.user?.name} (${order.user?.email})`}>{order.user?.name}</p>
+              </div>
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Product</p>
+                <p className="text-white">{order.type} — {order.material}</p>
+              </div>
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider">Purity</p>
+                <p className="text-white">{order.purity !== 'None' ? order.purity : 'N/A'}</p>
+              </div>
+              {order.budget && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Budget</p><p className="text-gold-400 font-medium">{order.budget}</p></div>}
+              {order.weight && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Exp. Weight</p><p className="text-white">{order.weight}</p></div>}
+              {order.fingerSize && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Finger Size</p><p className="text-white">{order.fingerSize}</p></div>}
+              {order.neckSize && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Neck Size</p><p className="text-white">{order.neckSize}</p></div>}
+              {order.wristSize && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Wrist Size</p><p className="text-white">{order.wristSize}</p></div>}
+              {order.preferredDeliveryDate && <div><p className="text-dark-500 text-[10px] uppercase tracking-wider">Customer Exp. Date</p><p className="text-emerald-400 font-medium">{formatDate(order.preferredDeliveryDate)}</p></div>}
+            </div>
+            <div>
+              <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-1">Customer Description</p>
+              <p className="text-dark-300 italic text-xs bg-dark-800/50 p-2.5 rounded border border-white/5 whitespace-pre-wrap">{order.description}</p>
+            </div>
+            {order.referenceImages?.length > 0 && (
+              <div>
+                <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-2">Reference Images</p>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  {order.referenceImages.map((img, idx) => (
+                    <a key={idx} href={img.url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0 w-16 h-16 rounded-md overflow-hidden border border-white/10 hover:border-gold-500 transition-colors block">
+                      <img src={img.url} alt={`Ref ${idx}`} className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-          <div>
-            <label className="label-dark">Quote Note <span className="text-dark-500 font-normal">(visible to customer)</span></label>
-            <textarea
-              value={form.quoteNote}
-              onChange={(e) => setForm({ ...form, quoteNote: e.target.value })}
-              className="input-dark resize-none"
-              rows={2}
-              placeholder="e.g. Includes hallmark charges."
-            />
-          </div>
-          <div>
-            <label className="label-dark">Expected Delivery Date <span className="text-dark-500 font-normal">(visible to customer)</span></label>
-            <input
-              type="date"
-              value={form.expectedDeliveryDate}
-              onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })}
-              className="input-dark"
-              min={new Date().toISOString().split('T')[0]}
-            />
-          </div>
-          <div>
-            <label className="label-dark">Admin Notes <span className="text-dark-500 font-normal">(internal only)</span></label>
-            <textarea
-              value={form.adminNotes}
-              onChange={(e) => setForm({ ...form, adminNotes: e.target.value })}
-              className="input-dark resize-none"
-              rows={2}
-              placeholder="Internal notes for tracking / production team"
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={saving} className="btn-gold flex-1 py-2.5">
-              {saving ? 'Saving…' : 'Set Quote'}
-            </button>
-            <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5">Cancel</button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="label-dark">Quote Amount (₹) <span className="text-red-400">*</span></label>
+              <input
+                type="number"
+                min="1"
+                value={form.quoteAmount}
+                onChange={(e) => setForm({ ...form, quoteAmount: e.target.value })}
+                className="input-dark"
+                placeholder="Enter amount in INR (excl. GST)"
+                required
+              />
+              {form.quoteAmount > 0 && (
+                <p className="text-dark-500 text-xs mt-1">
+                  Customer pays: {formatPrice(Math.round(Number(form.quoteAmount) * (1 + gstRate)))} (incl. {Math.round(gstRate * 100)}% GST)
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="label-dark">Quote Note <span className="text-dark-500 font-normal">(visible to customer)</span></label>
+              <textarea value={form.quoteNote} onChange={(e) => setForm({ ...form, quoteNote: e.target.value })} className="input-dark resize-none" rows={2} placeholder="e.g. Includes hallmark charges." />
+            </div>
+            <div>
+              <label className="label-dark">Expected Delivery Date <span className="text-dark-500 font-normal">(visible to customer)</span></label>
+              <input type="date" value={form.expectedDeliveryDate} onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })} className="input-dark" min={new Date().toISOString().split('T')[0]} />
+            </div>
+            <div>
+              <label className="label-dark">Admin Notes <span className="text-dark-500 font-normal">(internal only)</span></label>
+              <textarea value={form.adminNotes} onChange={(e) => setForm({ ...form, adminNotes: e.target.value })} className="input-dark resize-none" rows={2} placeholder="Internal notes for tracking / production team" />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button type="submit" className="btn-gold flex-1 py-2.5">
+                Review & Confirm Quote →
+              </button>
+              <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5">Cancel</button>
+            </div>
+          </form>
+        </motion.div>
+      </div>
+
+      <AnimatePresence>
+        {showConfirm && (
+          <QuoteConfirmModal
+            order={order}
+            form={form}
+            gstRate={gstRate}
+            saving={saving}
+            onConfirm={handleConfirm}
+            onBack={() => setShowConfirm(false)}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -307,8 +389,11 @@ const ADMIN_STAGE_OPTIONS = [
 
 function StatusModal({ order, onClose, onSaved }) {
   const [form, setForm] = useState({
-    status:  order.status,
-    comment: '',
+    status:            order.status,
+    comment:           '',
+    estimatedDelivery: order.estimatedDelivery
+      ? new Date(order.estimatedDelivery).toISOString().split('T')[0]
+      : '',
   });
   const [saving, setSaving] = useState(false);
   const [confirmText, setConfirmText] = useState('');
@@ -316,8 +401,14 @@ function StatusModal({ order, onClose, onSaved }) {
   const isDeliverSelected = form.status === 'delivered';
   const confirmValid = !isDeliverSelected || confirmText.trim().toUpperCase() === 'DELIVER';
 
+  const isShippedContext = form.status === 'shipped' || order.status === 'shipped';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.status === 'shipped' && !form.estimatedDelivery) {
+      toast.error('Please set an estimated delivery date before marking as shipped.');
+      return;
+    }
     if (isDeliverSelected && !confirmValid) {
       toast.error('Please type DELIVER to confirm.');
       return;
@@ -417,6 +508,26 @@ function StatusModal({ order, onClose, onSaved }) {
             </select>
           </div>
 
+          {isShippedContext && (
+            <div>
+              <label className="label-dark">
+                Estimated Delivery Date
+                {form.status === 'shipped' && <span className="text-red-400 ml-1">*</span>}
+                {order.status === 'shipped' && form.status === order.status && (
+                  <span className="text-dark-500 font-normal ml-1">(editable — updates customer view)</span>
+                )}
+              </label>
+              <input
+                type="date"
+                value={form.estimatedDelivery}
+                onChange={(e) => setForm({ ...form, estimatedDelivery: e.target.value })}
+                className="input-dark"
+                min={new Date().toISOString().split('T')[0]}
+              />
+              <p className="text-dark-500 text-xs mt-1">Shown to customer as estimated delivery date</p>
+            </div>
+          )}
+
           <div>
             <label className="label-dark">Comment <span className="text-dark-500 font-normal">(optional)</span></label>
             <input value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} placeholder="e.g. Confirmed by artisan team" className="input-dark" />
@@ -439,7 +550,17 @@ function StatusModal({ order, onClose, onSaved }) {
           )}
 
           <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={saving || form.status === order.status || !confirmValid} className="btn-gold flex-1 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed">{saving ? 'Updating…' : 'Update Stage'}</button>
+            <button
+              type="submit"
+              disabled={
+                saving ||
+                !confirmValid ||
+                (form.status === order.status && form.estimatedDelivery === (order.estimatedDelivery ? new Date(order.estimatedDelivery).toISOString().split('T')[0] : ''))
+              }
+              className="btn-gold flex-1 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Updating…' : form.status === order.status ? 'Update Date' : 'Update Stage'}
+            </button>
             <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5">Cancel</button>
           </div>
         </form>
@@ -645,9 +766,15 @@ export default function AdminCustomOrders() {
                         </button>
                       )}
                       {!['delivered', 'cancelled'].includes(order.status) && (
-                        <button onClick={() => setQuoteModal(order)} className="btn-outline-gold px-3 py-1.5 text-xs">
-                          {order.quoteAmount ? 'Edit Quote' : 'Set Quote'}
-                        </button>
+                        order.quotedAt ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-dark-500 text-xs cursor-default" title="Quote is locked — cannot be edited">
+                            <FiLock size={10} /> Quote Locked
+                          </span>
+                        ) : (
+                          <button onClick={() => setQuoteModal(order)} className="btn-outline-gold px-3 py-1.5 text-xs">
+                            Set Quote
+                          </button>
+                        )
                       )}
                       {!['delivered', 'cancelled'].includes(order.status) && (
                         <button onClick={() => setStatusModal(order)} className="btn-gold px-3 py-1.5 text-xs inline-flex items-center gap-1">
