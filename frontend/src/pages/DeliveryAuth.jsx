@@ -114,6 +114,8 @@ function DeliveryAuthPage({ type }) {
       if (result.meta.requestStatus === 'fulfilled') {
         toast.success('Welcome back!');
         navigate('/delivery', { replace: true });
+      } else if (result.meta.requestStatus === 'rejected') {
+        toast.error(result.payload || 'Login failed');
       }
       return;
     }

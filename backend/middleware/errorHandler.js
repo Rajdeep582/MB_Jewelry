@@ -39,7 +39,7 @@ const errorHandler = (err, req, res, next) => {
     message = 'Token expired';
   }
 
-  logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+  logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip} - correlationId=${req.correlationId || 'none'}`);
 
   res.status(statusCode).json({
     success: false,

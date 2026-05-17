@@ -1,5 +1,9 @@
 import api from './api';
 
+export const reviewService = {
+  getFeatured: () => api.get('/products/reviews/featured'),
+};
+
 export const orderService = {
   createPayment: (data) => api.post('/orders/create-payment', data),
   verifyPayment: (data) => api.post('/orders/verify-payment', data),

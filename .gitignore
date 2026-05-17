@@ -24,6 +24,9 @@ frontend/lint.txt
 frontend/lint.json
 frontend/lint-results.txt
 
+# Claude / AI agent files
+CLAUDE.md
+
 # Editor/Temp
 .vscode/
 .idea/
@@ -42,3 +45,30 @@ backend/uploads/products/*
 backend/uploads/custom_orders/*
 !backend/uploads/products/.gitkeep
 !backend/uploads/custom_orders/.gitkeep
+
+# Testing Files and Folders
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+
+# Frontend E2E / Playwright
+frontend/e2e/
+frontend/playwright.config.js
+frontend/playwright-report/
+frontend/test-results/
+
+# Frontend unit tests
+frontend/src/__tests__/
+frontend/vitest.config.js
+frontend/vitest.config.ts
+**/*.spec.js
+**/*.test.js
+!node_modules/**
+
+# Backend tests
+backend/tests/
+backend/run_tests.js
+backend/jest.config.js
+backend/jest.config.ts
+backend/.mocharc*

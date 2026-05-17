@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { FiX, FiChevronDown, FiImage, FiRadio, FiDownload, FiLock, FiAlertTriangle } from 'react-icons/fi';
+import { FiX, FiChevronDown, FiChevronUp, FiImage, FiRadio, FiDownload, FiLock, FiAlertTriangle, FiUser, FiMail, FiPhone, FiMapPin, FiTruck, FiClock, FiPackage, FiCreditCard } from 'react-icons/fi';
 import { customOrderService, adminService } from '../../services/services';
-import { formatPrice, formatDate, getCustomOrderStatusColor } from '../../utils/helpers';
+import { formatPrice, formatDate, formatDateTime, getCustomOrderStatusColor } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -612,12 +612,214 @@ function getPaymentStatusCell(order) {
   return <span className="text-dark-400 text-xs">Pending</span>;
 }
 
+// ─── Custom Order Detail Drawer ───────────────────────────────────────────────
+function CustomOrderDetailDrawer({ order, onQuote, onStatus, onImage }) {
+  const [showTimeline, setShowTimeline] = useState(true);
+  const reversed = [...(order.trackingHistory || [])].reverse();
+
+  return (
+    <motion.tr
+      key={`drawer-${order._id}`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <td colSpan={9} className="p-0">
+        <div className="bg-dark-900/60 border-t border-white/5 p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+          {/* LEFT — Design Info + Payment Breakdown */}
+          <div className="lg:col-span-2 space-y-4">
+
+            {/* Design Details */}
+            <div>
+              <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <FiPackage size={11} /> Design Request
+              </h4>
+              <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                <div><p className="text-dark-500 mb-0.5">Type</p><p className="text-white font-medium">{order.type}</p></div>
+                <div><p className="text-dark-500 mb-0.5">Material</p><p className="text-white font-medium">{order.material} {order.purity !== 'None' ? `· ${order.purity}` : ''}</p></div>
+                {order.size && <div><p className="text-dark-500 mb-0.5">Size</p><p className="text-dark-300">{order.size}</p></div>}
+                {order.weight && <div><p className="text-dark-500 mb-0.5">Weight</p><p className="text-dark-300">{order.weight}g</p></div>}
+                {order.engraving && <div className="col-span-2"><p className="text-dark-500 mb-0.5">Engraving</p><p className="text-dark-300">{order.engraving}</p></div>}
+              </div>
+              {order.description && (
+                <div className="bg-dark-800/60 rounded-xl p-3 text-xs text-dark-300 leading-relaxed">
+                  {order.description}
+                </div>
+              )}
+              {order.referenceImages?.length > 0 && (
+                <button
+                  onClick={() => onImage(order.referenceImages)}
+                  className="mt-2 text-xs text-gold-400 hover:text-gold-300 flex items-center gap-1.5 transition-colors"
+                >
+                  <FiImage size={12} /> View {order.referenceImages.length} reference image{order.referenceImages.length > 1 ? 's' : ''}
+                </button>
+              )}
+            </div>
+
+            {/* Payment Breakdown */}
+            {order.quoteAmount && (
+              <div>
+                <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <FiCreditCard size={11} /> Payment Breakdown
+                </h4>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-dark-500">
+                    <span>Quote (excl. GST)</span><span className="text-dark-300">{formatPrice(order.quoteAmount)}</span>
+                  </div>
+                  {order.taxAmount > 0 && (
+                    <div className="flex justify-between text-dark-500">
+                      <span>Tax (GST)</span><span className="text-dark-300">{formatPrice(order.taxAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold border-t border-white/8 pt-2 mt-1 text-sm">
+                    <span className="text-white">Total</span><span className="text-gold-500">{formatPrice(order.totalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-dark-500 pt-1">
+                    <span>Advance (70%)</span><span className={order.advancePayment?.status === 'paid' ? 'text-green-400' : 'text-dark-300'}>{formatPrice(order.advanceAmount)}</span>
+                  </div>
+                  <div className="flex justify-between text-dark-500">
+                    <span>Final (30%)</span><span className={order.finalPayment?.status === 'paid' ? 'text-green-400' : 'text-dark-300'}>{formatPrice(order.finalAmount)}</span>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  {order.advancePayment?.paidAt && (
+                    <div>
+                      <p className="text-dark-500 mb-0.5">Advance Paid At</p>
+                      <p className="text-dark-300">{formatDateTime(order.advancePayment.paidAt)}</p>
+                      {order.advancePayment.razorpayPaymentId && (
+                        <p className="text-dark-600 font-mono text-[10px] mt-0.5 break-all">{order.advancePayment.razorpayPaymentId}</p>
+                      )}
+                    </div>
+                  )}
+                  {order.finalPayment?.paidAt && (
+                    <div>
+                      <p className="text-dark-500 mb-0.5">Final Paid At</p>
+                      <p className="text-dark-300">{formatDateTime(order.finalPayment.paidAt)}</p>
+                      {order.finalPayment.razorpayPaymentId && (
+                        <p className="text-dark-600 font-mono text-[10px] mt-0.5 break-all">{order.finalPayment.razorpayPaymentId}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT — Customer, Shipping, Delivery, Timeline, Actions */}
+          <div className="space-y-4">
+
+            <div>
+              <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <FiUser size={11} /> Customer
+              </h4>
+              <div className="text-xs space-y-1.5">
+                <p className="text-white font-medium flex items-center gap-1.5"><FiUser size={10} className="text-dark-500" />{order.user?.name || 'N/A'}</p>
+                <a href={`mailto:${order.user?.email}`} className="text-dark-400 hover:text-gold-400 transition-colors flex items-center gap-1.5">
+                  <FiMail size={10} className="text-dark-500" />{order.user?.email}
+                </a>
+                {order.shippingAddress?.phone && (
+                  <p className="text-dark-400 flex items-center gap-1.5"><FiPhone size={10} className="text-dark-500" />{order.shippingAddress.phone}</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <FiMapPin size={11} /> Shipping Address
+              </h4>
+              <div className="text-xs text-dark-400 space-y-0.5">
+                <p className="text-white font-medium">{order.shippingAddress?.fullName}</p>
+                <p>{order.shippingAddress?.addressLine1}</p>
+                {order.shippingAddress?.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
+                <p>{order.shippingAddress?.city}, {order.shippingAddress?.state} — {order.shippingAddress?.pincode}</p>
+                <p>{order.shippingAddress?.country}</p>
+              </div>
+            </div>
+
+            {(order.dispatchedAt || order.deliveredAt || order.deliveryId) && (
+              <div>
+                <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <FiTruck size={11} /> Delivery Info
+                </h4>
+                <div className="text-xs space-y-1.5">
+                  {order.deliveryId && (
+                    <div><p className="text-dark-500">Tracking No.</p><p className="text-white font-mono">MB-{order.deliveryId.replaceAll('-', '').slice(-8).toUpperCase()}</p></div>
+                  )}
+                  {order.dispatchedAt && (
+                    <div><p className="text-dark-500">Dispatched</p><p className="text-dark-300">{formatDateTime(order.dispatchedAt)}</p></div>
+                  )}
+                  {order.estimatedDelivery && (
+                    <div><p className="text-dark-500">Est. Delivery</p><p className="text-dark-300">{formatDateTime(order.estimatedDelivery)}</p></div>
+                  )}
+                  {order.deliveredAt && (
+                    <div><p className="text-dark-500">Delivered</p><p className="text-green-400 font-medium">{formatDateTime(order.deliveredAt)}</p></div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {reversed.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowTimeline(v => !v)}
+                  className="flex items-center justify-between w-full text-dark-400 text-xs uppercase tracking-wider mb-2 hover:text-white transition-colors"
+                >
+                  <span className="flex items-center gap-1.5"><FiClock size={11} /> Timeline ({reversed.length})</span>
+                  {showTimeline ? <FiChevronUp size={12} /> : <FiChevronDown size={12} />}
+                </button>
+                {showTimeline && (
+                  <div className="space-y-0">
+                    {reversed.map((entry, idx) => (
+                      <div key={entry.timestamp || idx} className="flex gap-3">
+                        <div className="flex flex-col items-center w-4 flex-shrink-0">
+                          <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${idx === 0 ? 'bg-gold-500' : 'bg-dark-600'}`} />
+                          {idx !== reversed.length - 1 && <div className="flex-1 w-px bg-dark-700 my-0.5" />}
+                        </div>
+                        <div className="pb-3 flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-1 flex-wrap">
+                            <p className={`text-xs font-medium capitalize ${idx === 0 ? 'text-white' : 'text-dark-400'}`}>
+                              {STAGE_LABELS[entry.status] || entry.status?.replaceAll('_', ' ')}
+                            </p>
+                            <time className="text-dark-600 text-[10px] flex-shrink-0">{formatDateTime(entry.timestamp || entry.createdAt)}</time>
+                          </div>
+                          {entry.comment && <p className="text-dark-500 text-[11px] mt-0.5 leading-snug">{entry.comment}</p>}
+                          {entry.updatedBy?.name && <p className="text-dark-600 text-[10px] mt-0.5">by {entry.updatedBy.name}</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex flex-col gap-2 pt-1">
+              {!['delivered', 'cancelled'].includes(order.status) && (
+                !order.quotedAt ? (
+                  <button onClick={() => onQuote(order)} className="btn-outline-gold w-full py-2 text-xs">Set Quote</button>
+                ) : null
+              )}
+              {!['delivered', 'cancelled'].includes(order.status) && (
+                <button onClick={() => onStatus(order)} className="btn-gold w-full py-2 text-xs flex items-center justify-center gap-1.5">
+                  Update Status
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+    </motion.tr>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminCustomOrders() {
   const [orders,      setOrders]      = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState('');
-  const [filter,      setFilter]      = useState(''); // Default to All
+  const [filter,      setFilter]      = useState('');
   const [page,        setPage]        = useState(1);
   const [total,       setTotal]       = useState(0);
   const [pages,       setPages]       = useState(1);
@@ -629,16 +831,13 @@ export default function AdminCustomOrders() {
   const [dpConfirmModal, setDpConfirmModal] = useState(null);
   const [dpInput, setDpInput]   = useState('');
   const [dpBusy,  setDpBusy]    = useState(false);
+  const [expandedRow, setExpandedRow] = useState(null);
 
   useEffect(() => { document.title = 'Custom Orders — Admin'; }, []);
 
-  // Mark the currently active filter as "seen" whenever stats update or filter changes
   useEffect(() => {
     if (stats?.statusCounts && filter) {
-      setSeenCounts(prev => ({
-        ...prev,
-        [filter]: stats.statusCounts[filter]
-      }));
+      setSeenCounts(prev => ({ ...prev, [filter]: stats.statusCounts[filter] }));
     }
   }, [stats, filter]);
 
@@ -659,17 +858,12 @@ export default function AdminCustomOrders() {
     }
   };
 
-  // Load orders when filter/page changes
   useEffect(() => { loadOrders(); }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Pass true to indicate a background refresh (won't show loading spinner)
-      loadOrders(true);
-    }, 30000);
+    const interval = setInterval(() => { loadOrders(true); }, 30000);
     return () => clearInterval(interval);
-  }, [filter, page]); // re-bind interval if filter/page changes so it uses current state
+  }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">
@@ -681,12 +875,11 @@ export default function AdminCustomOrders() {
       </div>
 
       <div className="card p-4">
-        {/* Filter Tabs */}
         <div className="flex flex-wrap gap-2 mb-3">
           {FILTER_OPTIONS.map(({ value, label }) => (
             <button
               key={value || 'all'}
-              onClick={() => { setFilter(value); setPage(1); }}
+              onClick={() => { setFilter(value); setPage(1); setExpandedRow(null); }}
               className={`px-4 py-1.5 rounded-full text-xs transition-all border flex items-center gap-1.5 ${
                 filter === value
                   ? 'bg-gold-500/15 border-gold-500/50 text-gold-400'
@@ -702,9 +895,7 @@ export default function AdminCustomOrders() {
         </div>
 
         {error && (
-          <div className="text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4 text-sm">
-            {error}
-          </div>
+          <div className="text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>
         )}
 
         <div className="overflow-x-auto">
@@ -725,76 +916,71 @@ export default function AdminCustomOrders() {
             <tbody className="divide-y divide-white/5">
               {loading ? (
                 Array.from({ length: 8 }, (_, i) => i).map((n) => (
-                  <tr key={n}><td colSpan={10} className="py-3"><div className="skeleton h-8 rounded-lg" /></td></tr>
+                  <tr key={n}><td colSpan={9} className="py-3"><div className="skeleton h-8 rounded-lg" /></td></tr>
                 ))
-              ) : orders.map((order) => (
-                <tr key={order._id} className="hover:bg-white/2 transition-colors">
-                  <td className="py-3 pr-4">
-                    <span className="text-gold-400 font-mono text-xs">{order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</span>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <p className="text-dark-300 text-xs">{order.user?.name || 'N/A'}</p>
-                    <a href={`mailto:${order.user?.email}`} className="text-dark-500 hover:text-gold-400 text-xs transition-colors">{order.user?.email}</a>
-                  </td>
-                  <td className="py-3 pr-4">
-                    <p className="text-white text-xs">{order.type}</p>
-                    <p className="text-dark-500 text-xs">{order.material} {order.purity !== 'None' ? `· ${order.purity}` : ''}</p>
-                  </td>
-                  <td className="py-3 pr-4">
-                    {order.quoteAmount
-                      ? <span className="text-gold-500 font-medium">{formatPrice(order.quoteAmount)}</span>
-                      : <span className="text-dark-600 text-xs italic">Not set</span>}
-                  </td>
-                  <td className="py-3 pr-4">{getPaymentAmountCell(order)}</td>
-                  <td className="py-3 pr-4">{getPaymentStatusCell(order)}</td>
-                  <td className="py-3 pr-4">
-                    <span className={getCustomOrderStatusColor(order.status)}>{STAGE_LABELS[order.status] || order.status.replace(/_/g, ' ')}</span>
-                    {order.dpConfirmedAt && order.status !== 'delivered' && (
-                      <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Delivery partner confirmed — awaiting admin" />
-                    )}
-                  </td>
-                  <td className="py-3 pr-4 text-dark-500 text-xs">{formatDate(order.createdAt)}</td>
-                  <td className="py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {order.referenceImages?.length > 0 && (
-                        <button
-                          onClick={() => setImgModal(order.referenceImages)}
-                          className="p-1.5 text-dark-400 hover:text-gold-400 transition-colors"
-                          title="View reference images"
-                        >
-                          <FiImage size={14} />
-                        </button>
+              ) : orders.flatMap((order) => {
+                const isExpanded = expandedRow === order._id;
+                return [
+                  <tr
+                    key={order._id}
+                    onClick={() => setExpandedRow(prev => prev === order._id ? null : order._id)}
+                    className={`cursor-pointer transition-colors ${isExpanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}
+                  >
+                    <td className="py-3 pr-4">
+                      <span className="text-gold-400 font-mono text-xs">{order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-dark-300 text-xs">{order.user?.name || 'N/A'}</p>
+                      <a href={`mailto:${order.user?.email}`} onClick={e => e.stopPropagation()} className="text-dark-500 hover:text-gold-400 text-xs transition-colors">{order.user?.email}</a>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-white text-xs">{order.type}</p>
+                      <p className="text-dark-500 text-xs">{order.material} {order.purity !== 'None' ? `· ${order.purity}` : ''}</p>
+                    </td>
+                    <td className="py-3 pr-4">
+                      {order.quoteAmount
+                        ? <span className="text-gold-500 font-medium">{formatPrice(order.quoteAmount)}</span>
+                        : <span className="text-dark-600 text-xs italic">Not set</span>}
+                    </td>
+                    <td className="py-3 pr-4">{getPaymentAmountCell(order)}</td>
+                    <td className="py-3 pr-4">{getPaymentStatusCell(order)}</td>
+                    <td className="py-3 pr-4">
+                      <span className={getCustomOrderStatusColor(order.status)}>{STAGE_LABELS[order.status] || order.status.replace(/_/g, ' ')}</span>
+                      {order.dpConfirmedAt && order.status !== 'delivered' && (
+                        <span className="ml-1.5 inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Delivery partner confirmed — awaiting admin" />
                       )}
-                      {!['delivered', 'cancelled'].includes(order.status) && (
-                        order.quotedAt ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-dark-500 text-xs cursor-default" title="Quote is locked — cannot be edited">
-                            <FiLock size={10} /> Quote Locked
-                          </span>
-                        ) : (
-                          <button onClick={() => setQuoteModal(order)} className="btn-outline-gold px-3 py-1.5 text-xs">
-                            Set Quote
+                    </td>
+                    <td className="py-3 pr-4 text-dark-500 text-xs">{formatDate(order.createdAt)}</td>
+                    <td className="py-3 text-right">
+                      <div className="flex items-center justify-end gap-1" onClick={e => e.stopPropagation()}>
+                        {order.referenceImages?.length > 0 && (
+                          <button onClick={() => setImgModal(order.referenceImages)} className="p-1.5 text-dark-400 hover:text-gold-400 transition-colors" title="View reference images">
+                            <FiImage size={14} />
                           </button>
-                        )
-                      )}
-                      {!['delivered', 'cancelled'].includes(order.status) && (
-                        <button onClick={() => setStatusModal(order)} className="btn-gold px-3 py-1.5 text-xs inline-flex items-center gap-1">
-                          Update <FiChevronDown size={12} />
-                        </button>
-                      )}
-
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        )}
+                        {isExpanded ? <FiChevronUp size={14} className="text-dark-500 ml-1" /> : <FiChevronDown size={14} className="text-dark-500 ml-1" />}
+                      </div>
+                    </td>
+                  </tr>,
+                  isExpanded && (
+                    <CustomOrderDetailDrawer
+                      key={`drawer-${order._id}`}
+                      order={order}
+                      onQuote={(o) => setQuoteModal(o)}
+                      onStatus={(o) => setStatusModal(o)}
+                      onImage={(imgs) => setImgModal(imgs)}
+                    />
+                  ),
+                ].filter(Boolean);
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination */}
         {pages > 1 && (
           <div className="flex justify-center gap-2 mt-5">
             {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
-              <button key={p} onClick={() => setPage(p)}
+              <button key={p} onClick={() => { setPage(p); setExpandedRow(null); }}
                 className={`w-8 h-8 rounded-lg text-xs ${p === page ? 'bg-gold-500 text-dark-900' : 'bg-dark-800 text-dark-400 hover:text-white border border-white/10'}`}>
                 {p}
               </button>
@@ -804,9 +990,9 @@ export default function AdminCustomOrders() {
       </div>
 
       <AnimatePresence>
-        {quoteModal  && <QuoteModal  order={quoteModal}               onClose={() => setQuoteModal(null)}  onSaved={loadOrders} />}
-        {statusModal && <StatusModal order={statusModal}              onClose={() => setStatusModal(null)} onSaved={loadOrders} />}
-        {imgModal    && <ImagesModal images={imgModal}                onClose={() => setImgModal(null)} />}
+        {quoteModal  && <QuoteModal  order={quoteModal}  onClose={() => setQuoteModal(null)}  onSaved={loadOrders} />}
+        {statusModal && <StatusModal order={statusModal} onClose={() => setStatusModal(null)} onSaved={loadOrders} />}
+        {imgModal    && <ImagesModal images={imgModal}   onClose={() => setImgModal(null)} />}
         {dpConfirmModal && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -839,12 +1025,7 @@ export default function AdminCustomOrders() {
                 />
               </div>
               <div className="flex gap-3">
-                <button
-                  onClick={() => { setDpConfirmModal(null); setDpInput(''); }}
-                  className="flex-1 py-2.5 rounded-xl bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors"
-                >
-                  Cancel
-                </button>
+                <button onClick={() => { setDpConfirmModal(null); setDpInput(''); }} className="flex-1 py-2.5 rounded-xl bg-dark-700 text-dark-300 text-sm hover:bg-dark-600 transition-colors">Cancel</button>
                 <button
                   disabled={dpBusy || dpInput.trim() !== 'DELIVERED'}
                   onClick={async () => {
@@ -860,10 +1041,8 @@ export default function AdminCustomOrders() {
                     }
                     setDpBusy(false);
                   }}
-                                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
-                >
-                  {dpBusy ? 'Confirming…' : 'Confirm Delivered'}
-                </button>
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+                >{dpBusy ? 'Confirming…' : 'Confirm Delivered'}</button>
               </div>
             </motion.div>
           </motion.div>

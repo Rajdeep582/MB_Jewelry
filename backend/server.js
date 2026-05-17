@@ -1,6 +1,25 @@
 require('dotenv').config();
 require('express-async-errors');
 
+// ─── Sentry (must init before all other requires that touch Express) ──────────
+const Sentry = require('@sentry/node');
+
+// Optional profiling — only load if package is present
+let profilingIntegrations = [];
+try {
+  const { nodeProfilingIntegration } = require('@sentry/profiling-node');
+  profilingIntegrations = [nodeProfilingIntegration()];
+} catch { /* profiling package not installed — skip */ }
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || 'development',
+  integrations: profilingIntegrations,
+  tracesSampleRate: 0.2,
+  profilesSampleRate: 0.1,
+  enabled: !!process.env.SENTRY_DSN,
+});
+
 // Force Google DNS for Node.js DNS resolver (fixes MongoDB Atlas SRV lookup issues)
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -17,6 +36,8 @@ const xss = require('xss-clean');
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
 const { errorHandler, notFound } = require('./middleware/errorHandler');
+const { correlationId } = require('./middleware/correlationId');
+const mongoose = require('mongoose');
 const path = require('node:path');
 
 // Route imports
@@ -48,6 +69,9 @@ if (process.env.NODE_ENV !== 'test') {
 
 const app = express();
 app.disable('x-powered-by');
+
+// ─── Correlation ID ───────────────────────────────────────────────────────────
+app.use(correlationId);
 
 // ─── Webhook Route (must be BEFORE body parsers — needs raw body for HMAC) ───
 app.use(
@@ -120,6 +144,14 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/ready', async (req, res) => {
+  const dbState = mongoose.connection.readyState; // 1 = connected
+  if (dbState !== 1) {
+    return res.status(503).json({ success: false, message: 'Database not ready', dbState });
+  }
+  res.json({ success: true, message: 'Ready', dbState });
+});
+
 // ─── API Routes ───────────────────────────────────────────────────────────────
 const adminIpWhitelist = require('./middleware/adminIpWhitelist');
 
@@ -135,6 +167,7 @@ app.use('/api/delivery', deliveryRoutes);
 app.use('/api/dp-auth', dpAuthRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
+Sentry.setupExpressErrorHandler(app);
 app.use(notFound);
 app.use(errorHandler);
 
@@ -161,3 +194,4 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 module.exports = app;
+

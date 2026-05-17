@@ -72,7 +72,7 @@ export default function Navbar() {
             <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center shadow-gold group-hover:shadow-gold-lg transition-shadow duration-300">
               <span className="text-dark-900 font-bold text-[10px] font-serif tracking-tight">MB</span>
             </div>
-            <span className="font-display font-medium text-white tracking-wide">
+            <span className="font-jakarta font-bold text-white tracking-widest text-sm uppercase">
               M.B.<span className="text-gradient-gold"> JEWELLERS</span>
             </span>
           </Link>

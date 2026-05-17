@@ -165,21 +165,10 @@ const toggleUserActive = async (req, res) => {
 // @desc    Update user role (Admin)
 // @route   PUT /api/users/:id/role
 // @access  Admin
+// Role change on User collection is intentionally disabled.
+// Users are always 'user'. Admins live in Admin collection, DPs in DeliveryPartner collection.
 const updateUserRole = async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
-  }
-  const { role } = req.body;
-  if (!['user', 'admin', 'delivery'].includes(role)) {
-    return res.status(400).json({ success: false, message: 'Invalid role provided' });
-  }
-
-  const user = await User.findById(req.params.id);
-  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-  
-  user.role = role;
-  await user.save();
-  res.json({ success: true, user });
+  return res.status(403).json({ success: false, message: 'Role assignment not permitted on user accounts.' });
 };
 
 // @desc    Toggle item in wishlist

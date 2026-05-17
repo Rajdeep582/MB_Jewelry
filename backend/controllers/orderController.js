@@ -77,18 +77,19 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
   session.startTransaction();
 
   try {
-    // 1. Decrement stock for each item
+    // 1. Decrement stock atomically — single findOneAndUpdate with stock >= quantity guard
+    //    Prevents TOCTOU race condition where two concurrent payments both pass the read check
     for (const item of pendingOrder.items) {
-      const product = await Product.findById(item.product).session(session);
-      if (!product) throw new Error(`Product ${item.product} no longer exists`);
-      if (product.stock < item.quantity) {
-        throw new Error(`Insufficient stock for "${product.name}" (available: ${product.stock})`);
-      }
-      await Product.findByIdAndUpdate(
-        item.product,
+      const updated = await Product.findOneAndUpdate(
+        { _id: item.product, stock: { $gte: item.quantity } },
         { $inc: { stock: -item.quantity, sold: item.quantity } },
-        { session }
+        { new: true, session }
       );
+      if (!updated) {
+        const p = await Product.findById(item.product).session(session).lean();
+        if (!p) throw new Error(`Product ${item.product} no longer exists`);
+        throw new Error(`Insufficient stock for "${p.name}" (available: ${p.stock})`);
+      }
     }
 
     // 2. Confirm the order
@@ -301,18 +302,7 @@ const verifyPayment = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid pending order ID' });
   }
 
-  // --- Verify HMAC signature ---
-  const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
-  if (!isValid) {
-    logger.warn(`Signature verification FAILED for razorpayOrder=${razorpayOrderId}, user=${req.user._id}`);
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId: String(razorpayOrderId) },
-      { status: 'failed', failReason: 'Signature verification failed' }
-    );
-    return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
-  }
-
-  // --- Load the pending order ---
+  // --- Load the pending order first (ownership + idempotency before signature work) ---
   const pendingOrder = await Order.findById(pendingOrderId);
   if (!pendingOrder) {
     return res.status(404).json({ success: false, message: 'Pending order not found' });
@@ -323,10 +313,27 @@ const verifyPayment = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not authorized for this order' });
   }
 
-  // --- Idempotency: already confirmed? ---
+  // --- Idempotency: already confirmed? (short-circuit before signature verification) ---
   if (pendingOrder.payment.status === 'paid') {
     logger.warn(`Duplicate verify-payment attempt for order=${pendingOrderId}`);
     return res.json({ success: true, message: 'Order already confirmed', order: pendingOrder });
+  }
+
+  // --- Cross-validate razorpayOrderId against stored value (prevents payment swap attack) ---
+  if (pendingOrder.payment.razorpayOrderId !== razorpayOrderId) {
+    logger.warn(`razorpayOrderId mismatch for order=${pendingOrderId}: submitted=${razorpayOrderId}, stored=${pendingOrder.payment.razorpayOrderId}`);
+    return res.status(400).json({ success: false, message: 'Payment ID mismatch for this order.' });
+  }
+
+  // --- Verify HMAC signature ---
+  const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+  if (!isValid) {
+    logger.warn(`Signature verification FAILED for razorpayOrder=${razorpayOrderId}, user=${req.user._id}`);
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId: String(razorpayOrderId) },
+      { status: 'failed', failReason: 'Signature verification failed' }
+    );
+    return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
   }
 
   const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId);
@@ -595,7 +602,7 @@ const getMyOrders = async (req, res) => {
       { 'payment.status': 'failed', 'payment.razorpayOrderId': { $exists: true, $ne: '' } },
     ],
   })
-    .select('-payment.razorpaySignature -payment.razorpaySignature')
+    .select('-payment.razorpaySignature')
     .populate('items.product', 'name images price')
     .sort({ createdAt: -1 })
     .lean();
@@ -891,7 +898,7 @@ const getDeliveryStats = async (req, res) => {
     customCounts, customOverdue,
   ] = await Promise.all([
     Order.aggregate([
-      { $match: { orderStatus: { $in: ['confirmed', 'ready_to_ship', 'shipped', 'delivered'] } } },
+      { $match: { 'payment.status': 'paid', orderStatus: { $in: ['confirmed', 'ready_to_ship', 'shipped', 'delivered'] } } },
       { $group: { _id: '$orderStatus', count: { $sum: 1 } } },
     ]),
     Order.countDocuments({ orderStatus: 'shipped', estimatedDelivery: { $lt: now } }),

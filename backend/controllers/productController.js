@@ -370,4 +370,24 @@ const addReview = async (req, res) => {
   });
 };
 
-module.exports = { getProducts, getProduct, createProduct, updateProduct, deleteProduct, addReview };
+// GET /api/products/reviews/featured — 3 random 5-star reviews with user name
+const getFeaturedReviews = async (req, res) => {
+  const reviews = await Review.aggregate([
+    { $match: { rating: 5, comment: { $exists: true, $ne: '' } } },
+    { $sample: { size: 3 } },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'user',
+        foreignField: '_id',
+        as: 'user',
+        pipeline: [{ $project: { name: 1, _id: 0 } }],
+      },
+    },
+    { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
+    { $project: { rating: 1, comment: 1, title: 1, 'user.name': 1, createdAt: 1 } },
+  ]);
+  res.json({ success: true, reviews });
+};
+
+module.exports = { getProducts, getProduct, createProduct, updateProduct, deleteProduct, addReview, getFeaturedReviews };

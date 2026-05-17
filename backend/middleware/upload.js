@@ -1,6 +1,6 @@
 const multer = require('multer');
 const cloudinary = require('../config/cloudinary');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const multerCloudinary = require('multer-storage-cloudinary'); // v2: factory fn, not constructor
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -17,31 +17,25 @@ if (!hasCloudinaryAuth) {
 let productStorage, categoryStorage, customOrderStorage;
 
 if (hasCloudinaryAuth) {
-  productStorage = new CloudinaryStorage({
+  productStorage = multerCloudinary({
     cloudinary,
-    params: {
-      folder: 'mb_jewelry/products',
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-      transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto' }],
-    },
+    folder: 'mb_jewelry/products',
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 800, height: 800, crop: 'limit', quality: 'auto' }],
   });
 
-  categoryStorage = new CloudinaryStorage({
+  categoryStorage = multerCloudinary({
     cloudinary,
-    params: {
-      folder: 'mb_jewelry/categories',
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-      transformation: [{ width: 400, height: 400, crop: 'fill', quality: 'auto' }],
-    },
+    folder: 'mb_jewelry/categories',
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 400, height: 400, crop: 'fill', quality: 'auto' }],
   });
 
-  customOrderStorage = new CloudinaryStorage({
+  customOrderStorage = multerCloudinary({
     cloudinary,
-    params: {
-      folder: 'mb_jewelry/custom_orders',
-      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-      transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }],
-    },
+    folder: 'mb_jewelry/custom_orders',
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 1200, height: 1200, crop: 'limit', quality: 'auto' }],
   });
 } else {
   // Graceful fallback to local disk storage
@@ -52,7 +46,9 @@ if (hasCloudinaryAuth) {
       cb(null, dir);
     },
     filename: (req, file, cb) => {
-      cb(null, `${Date.now()}-${file.originalname}`);
+      // Use random hex + extension only — never trust originalname (path traversal risk)
+      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '');
+      cb(null, `${Date.now()}-${require('node:crypto').randomBytes(8).toString('hex')}${ext}`);
     }
   });
   productStorage  = createDiskStorage('products');

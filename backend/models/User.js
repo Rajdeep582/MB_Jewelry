@@ -76,8 +76,6 @@ const userSchema = new mongoose.Schema(
     },
     wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
     avatar: { type: String, default: '' },
-    vehicleNumber: { type: String, default: '' },
-    dispatchZone: { type: String, default: '' },
     addresses: [addressSchema],
     sessions: [{
       sessionId: { type: String, required: true },
@@ -134,7 +132,6 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 // Index for faster lookups
 userSchema.index({ role: 1 });
 userSchema.index({ otpHash: 1 });
-userSchema.index({ mobile: 1 });
 
 
 // Instance method to check if user is locked out

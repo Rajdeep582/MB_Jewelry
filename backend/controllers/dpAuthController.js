@@ -1,4 +1,6 @@
 const DeliveryPartner = require('../models/DeliveryPartner');
+const User = require('../models/User');
+const Admin = require('../models/Admin');
 const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const {
@@ -21,6 +23,15 @@ const registerDP = async (req, res) => {
   const existing = await DeliveryPartner.findOne({ email: email.toLowerCase() });
   if (existing) {
     return res.status(400).json({ success: false, message: 'Email already registered.' });
+  }
+
+  // Block if email belongs to another portal
+  const emailLower = email.toLowerCase();
+  if (await User.findOne({ email: emailLower }).lean()) {
+    return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
+  }
+  if (await Admin.findOne({ email: emailLower }).lean()) {
+    return res.status(403).json({ success: false, message: 'You are registered as Admin. Please login through the Admin portal.', code: 'WRONG_PORTAL' });
   }
 
   try {
@@ -58,6 +69,15 @@ const loginDP = async (req, res) => {
 
   const dp = await DeliveryPartner.findOne({ email: email.toLowerCase() }).select('+password +sessions');
   if (!dp || dp.isLocked()) {
+    if (!dp) {
+      const emailLower = email.toLowerCase();
+      if (await User.findOne({ email: emailLower }).lean()) {
+        return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
+      }
+      if (await Admin.findOne({ email: emailLower }).lean()) {
+        return res.status(403).json({ success: false, message: 'You are registered as Admin. Please login through the Admin portal.', code: 'WRONG_PORTAL' });
+      }
+    }
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
   }
 
@@ -186,8 +206,6 @@ const refreshDP = async (req, res) => {
   res.json({ success: true, accessToken: newAccessToken });
 };
 
-module.exports = { registerDP, loginDP, getMeDP, logoutDP, refreshDP };
-
 // @desc  Get DP profile (includes aadhaar masked)
 // @route GET /api/dp-auth/profile
 const getProfileDP = async (req, res) => {
@@ -230,4 +248,4 @@ const updateProfileDP = async (req, res) => {
   res.json({ success: true, message: 'Profile updated.' });
 };
 
-module.exports = { ...module.exports, getProfileDP, updateProfileDP };
+module.exports = { registerDP, loginDP, getMeDP, logoutDP, refreshDP, getProfileDP, updateProfileDP };

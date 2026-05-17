@@ -70,11 +70,6 @@ const updateDeliveryStatus = async (req, res) => {
     const co = await CustomOrder.findById(id);
     if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
 
-    // Ownership: must be assigned to this agent
-    if (co.deliveryAgent && co.deliveryAgent.toString() !== agentId.toString()) {
-      return res.status(403).json({ success: false, message: 'Not assigned to this order' });
-    }
-
     // Payment guard: cannot ship unpaid custom orders
     if (status === 'shipped') {
       const paidStatuses = ['final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'];
@@ -94,11 +89,6 @@ const updateDeliveryStatus = async (req, res) => {
   const STATUS_MAP = { in_progress: 'in_production', shipped: 'shipped' };
   const order = await Order.findById(id);
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-
-  // Ownership: must be assigned to this agent
-  if (order.deliveryAgent && order.deliveryAgent.toString() !== agentId.toString()) {
-    return res.status(403).json({ success: false, message: 'Not assigned to this order' });
-  }
 
   // Payment guard: cannot ship unpaid orders
   if (status === 'shipped' && order.payment?.status !== 'paid') {

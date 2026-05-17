@@ -37,8 +37,8 @@ function getInfoClass(isList) {
 }
 
 function getNameClass(isList) {
-  if (isList) return 'text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm sm:text-lg mb-1 sm:mb-2';
-  return 'text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm mb-1';
+  if (isList) return 'font-sans text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm sm:text-lg mb-1 sm:mb-2';
+  return 'font-sans text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm mb-1 min-h-[2.5rem]';
 }
 
 function getCartBtnClass(isList) {
@@ -166,7 +166,7 @@ export default function ProductCard({ product, view = 'grid' }) {
             </div>
           )}
 
-          <div className={isList ? 'mt-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3' : ''}>
+          <div className={isList ? 'mt-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3' : 'mt-auto'}>
             {/* Price */}
             <div className={`flex items-center gap-2 ${isList ? '' : 'mb-3'}`}>
               <span className="price-tag text-sm sm:text-base">

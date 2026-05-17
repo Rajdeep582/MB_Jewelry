@@ -36,8 +36,8 @@ export default function About() {
           className="relative z-10 text-center px-4"
         >
           <p className="section-subtitle mb-3">Our Heritage</p>
-          <h1 className="font-display text-4xl md:text-6xl text-white font-light">
-            The M.B. JEWELLERS <span className="text-gradient-gold italic">Story</span>
+          <h1 className="section-title text-4xl md:text-6xl">
+            The M.B. JEWELLERS <span className="text-gradient-gold">Story</span>
           </h1>
         </motion.div>
       </section>

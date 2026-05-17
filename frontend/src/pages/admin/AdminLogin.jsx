@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { loginAdmin, selectAuthLoading, selectAuthError, clearError, selectIsAdmin } from '../../store/authSlice';
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 
 export default function AdminLogin() {
   const dispatch  = useDispatch();
@@ -26,6 +27,8 @@ export default function AdminLogin() {
     const result = await dispatch(loginAdmin({ email: form.email, password: form.password }));
     if (loginAdmin.fulfilled.match(result)) {
       navigate('/admin', { replace: true });
+    } else if (loginAdmin.rejected.match(result)) {
+      toast.error(result.payload || 'Login failed');
     }
   };
 

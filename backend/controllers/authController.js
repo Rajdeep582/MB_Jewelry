@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Admin = require('../models/Admin');
+const DeliveryPartner = require('../models/DeliveryPartner');
 const PendingMobileOtp = require('../models/PendingMobileOtp');
 const jwt = require('jsonwebtoken');
 const {
@@ -20,9 +21,26 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
+// Check if an email belongs to another portal — returns specific error message or null
+const crossPortalCheck = async (email) => {
+  if (!email) return null;
+  const e = email.toLowerCase().trim();
+  if (await Admin.findOne({ email: e }).lean()) {
+    return 'You are registered as Admin. Please login through the Admin portal.';
+  }
+  if (await DeliveryPartner.findOne({ email: e }).lean()) {
+    return 'You are registered as Delivery Partner. Please login through the Delivery Partner portal.';
+  }
+  return null;
+};
+
+const MAX_AUDIT_LOGS = 50;
 const addAuditLog = (user, action, details, ipAddress) => {
   user.auditLogs ??= [];
   user.auditLogs.push({ action, details, ipAddress });
+  if (user.auditLogs.length > MAX_AUDIT_LOGS) {
+    user.auditLogs = user.auditLogs.slice(-MAX_AUDIT_LOGS);
+  }
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -41,20 +59,9 @@ const buildSessionEntry = (req, refreshToken) => ({
 const pruneExpiredSessions = (sessions) =>
   (sessions || []).filter((s) => s.expiresAt > new Date());
 
-async function loginAdmin(adminRecord, req, res) {
-  const accessToken = generateAccessToken(adminRecord._id, 'admin', 'admin');
-  const refreshToken = generateRefreshToken(adminRecord._id, 'admin');
-  adminRecord.sessions = pruneExpiredSessions(adminRecord.sessions);
-  adminRecord.sessions.push(buildSessionEntry(req, refreshToken));
-  adminRecord.lastLogin = new Date();
-  await adminRecord.save({ validateBeforeSave: false });
-  sendRefreshTokenCookie(res, refreshToken);
-  return res.json({
-    success: true,
-    accessToken,
-    user: { _id: adminRecord._id, name: adminRecord.name, email: adminRecord.email, role: 'admin', avatar: adminRecord.avatar },
-  });
-}
+const MAX_SESSIONS = 10;
+const capSessions = (sessions) =>
+  sessions.length >= MAX_SESSIONS ? sessions.slice(-(MAX_SESSIONS - 1)) : sessions;
 
 // @desc    Send OTP to mobile (pre-registration)
 // @route   POST /api/auth/send-mobile-otp
@@ -124,7 +131,12 @@ const register = async (req, res) => {
   const existingUser = await User.findOne({ email });
   if (existingUser) return res.status(400).json({ success: false, message: 'Email already registered' });
 
+  // Block registration if email belongs to another portal
+  const portalMsg = await crossPortalCheck(email);
+  if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+
   const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     const rawOtp = crypto.randomInt(100000, 999999).toString();
     const otpHash = hashToken(rawOtp);
@@ -140,11 +152,11 @@ const register = async (req, res) => {
     );
 
     await sendVerificationEmail(email, name, rawOtp);
+    await session.commitTransaction();
     res.status(201).json({ success: true, message: 'Account created! Please check your email for the verification code.' });
   } catch (error) {
+    await session.abortTransaction(); // rolls back User.create atomically if email send fails
     logger.error(`Registration error for ${email}: ${error.message} | stack: ${error.stack}`);
-    // Clean up orphaned user if email send failed
-    await User.deleteOne({ email }, { session }).catch(() => {});
     return res.status(500).json({ success: false, message: process.env.NODE_ENV === 'development' ? `Registration failed: ${error.message}` : 'Registration failed. Please try again.' });
   } finally {
     session.endSession();
@@ -193,6 +205,11 @@ const login = async (req, res) => {
   const user = await User.findOne(query).select('+password +sessions');
 
   if (!user || user.isLocked()) {
+    // If email-based lookup failed, check other portals for a helpful message
+    if (!user && isEmail(identifier)) {
+      const portalMsg = await crossPortalCheck(identifier);
+      if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+    }
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
   }
 
@@ -215,44 +232,10 @@ const login = async (req, res) => {
   user.loginAttempts = 0;
   user.lockUntil = undefined;
 
-  // Admin: look up or auto-create in Admin collection to get correct _id for token
-  if (user.role === 'admin') {
-    let adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
-    if (!adminRecord) {
-      // Auto-create Admin record from User data (handles migration from before role separation)
-      // Use insertOne to bypass Mongoose pre-save hook which would double-hash the password
-      const AdminModel = mongoose.connection.collection('admins');
-      const now = new Date();
-      const adminId = `ADM-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-      await AdminModel.insertOne({
-        name: user.name,
-        email: user.email,
-        password: user.password, // already hashed from User model
-        avatar: user.avatar || '',
-        isActive: true,
-        loginAttempts: 0,
-        sessions: [],
-        auditLogs: [],
-        adminId,
-        createdAt: now,
-        updatedAt: now,
-      });
-      adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
-      logger.info(`Auto-created Admin record for ${user.email} from User collection`);
-    }
-    if (!adminRecord.isActive) {
-      return res.status(403).json({ success: false, message: 'Admin account deactivated. Contact support.' });
-    }
-    return loginAdmin(adminRecord, req, res);
-  }
-
-  // Delivery partners in User collection: login as regular user (they can also use /dp-auth/login for DP-specific features)
-  // Don't block them — they still have a valid User account
-
   const accessToken = generateAccessToken(user._id, user.role, 'user');
   const refreshToken = generateRefreshToken(user._id, 'user');
 
-  user.sessions = pruneExpiredSessions(user.sessions);
+  user.sessions = capSessions(pruneExpiredSessions(user.sessions));
   user.sessions.push(buildSessionEntry(req, refreshToken));
   user.lastLogin = new Date();
   addAuditLog(user, 'LOGGED_IN', 'Local login', ipAddress);
@@ -381,6 +364,10 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
         addAuditLog(user, 'OAUTH_LINKED', `Linked ${providerName}`, req.ip);
       }
     } else {
+      // Before creating, ensure email not registered in another portal
+      const portalMsg = await crossPortalCheck(email);
+      if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+
       user = await User.create({
         name, email, avatar, isVerified: true,
         providers: [{ providerType: providerName, providerId }],
@@ -390,31 +377,10 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
 
     if (!user.isActive) return res.status(403).json({ success: false, message: 'Account deactivated' });
 
-    // Admin: route to Admin collection for correct _id + userType
-    if (user.role === 'admin') {
-      let adminRecord = await Admin.findOne({ email: user.email }).select('+sessions');
-      if (!adminRecord) {
-        // Auto-create Admin record for OAuth admin users
-        adminRecord = await Admin.create({
-          name: user.name,
-          email: user.email,
-          password: require('node:crypto').randomBytes(32).toString('hex'), // random password (OAuth only)
-          avatar: user.avatar || '',
-          isActive: true,
-        });
-        adminRecord = await Admin.findById(adminRecord._id).select('+sessions');
-        logger.info(`Auto-created Admin record for OAuth admin ${user.email}`);
-      }
-      if (!adminRecord.isActive) {
-        return res.status(403).json({ success: false, message: 'Admin account deactivated. Contact support.' });
-      }
-      return loginAdmin(adminRecord, req, res);
-    }
-
     const accessToken = generateAccessToken(user._id, user.role, 'user');
     const splitRToken = generateRefreshToken(user._id, 'user');
 
-    user.sessions = pruneExpiredSessions(user.sessions);
+    user.sessions = capSessions(pruneExpiredSessions(user.sessions));
     user.sessions.push(buildSessionEntry(req, splitRToken));
     user.lastLogin = new Date();
     await user.save({ validateBeforeSave: false });
@@ -496,7 +462,7 @@ const resetPassword = async (req, res) => {
   }
 
   if (hashToken(resetToken) !== user.pwdResetTokenHash) {
-    return res.status(400).json({ success: false, message: 'Rest token mismatch.' });
+    return res.status(400).json({ success: false, message: 'Reset token mismatch.' });
   }
 
   const isSamePassword = await user.comparePassword(newPassword);

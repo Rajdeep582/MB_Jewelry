@@ -11,6 +11,7 @@ import { downloadInvoice } from '../utils/invoice';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectUser, logoutUser } from '../store/authSlice';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
 
@@ -34,6 +35,7 @@ function normalise(raw, type) {
       items:    raw.items,
       total:    raw.totalAmount,
       rawStatus: raw.orderStatus,
+      deliveryAgent: raw.deliveryAgent,
       dpConfirmedAt: raw.dpConfirmedAt,
       dpNote: raw.dpNote,
       createdAt: raw.createdAt,
@@ -47,6 +49,7 @@ function normalise(raw, type) {
     items:    [{ name: `Custom ${raw.type} — ${raw.material}${raw.purity && raw.purity !== 'None' ? ` (${raw.purity})` : ''}`, quantity: 1, price: raw.totalAmount }],
     total:    raw.totalAmount,
     rawStatus: raw.status,
+    deliveryAgent: raw.deliveryAgent,
     dpConfirmedAt: raw.dpConfirmedAt,
     dpNote: raw.dpNote,
     createdAt: raw.createdAt,
@@ -372,7 +375,7 @@ ConfirmModal.propTypes = {
 
 /* ── Delivery Card ───────────────────────────────────────────────────────────── */
 
-function DeliveryCard({ item, onStatusUpdate, onConfirm }) {
+function DeliveryCard({ item, onStatusUpdate, onConfirm, currentUserId }) {
   const status = STATUS_DISPLAY[item.rawStatus] || 'In Progress';
   const meta   = STAGE_META[status];
   const [confirmInput, setConfirmInput] = useState('');
@@ -518,6 +521,7 @@ DeliveryCard.propTypes = {
     _source:       PropTypes.string.isRequired,
     rawStatus:     PropTypes.string,
     displayId:     PropTypes.string,
+    deliveryAgent: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
     customer:      PropTypes.shape({ name: PropTypes.string, phone: PropTypes.string }),
     address:       PropTypes.shape({ addressLine1: PropTypes.string, city: PropTypes.string, state: PropTypes.string, pincode: PropTypes.string }),
     items:         PropTypes.arrayOf(PropTypes.shape({ name: PropTypes.string, quantity: PropTypes.number, price: PropTypes.number })),
@@ -527,6 +531,7 @@ DeliveryCard.propTypes = {
   }).isRequired,
   onStatusUpdate: PropTypes.func.isRequired,
   onConfirm:      PropTypes.func.isRequired,
+  currentUserId:  PropTypes.string,
 };
 
 /* ── Main Page ───────────────────────────────────────────────────────────────── */
@@ -576,14 +581,22 @@ export default function DeliveryPartnerPage() {
     try {
       await deliveryService.updateStatus(id, { source, status, note });
       await load(true);
-    } catch (err) { console.error(err); }
+      toast.success('Status updated');
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Status update failed';
+      toast.error(msg);
+    }
   };
 
   const handleConfirm = async (id, source, note) => {
     try {
       await deliveryService.confirmDelivery(id, { source, note });
       await load(true);
-    } catch (err) { console.error(err); }
+      toast.success('Delivery confirmed — awaiting admin approval');
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Confirmation failed';
+      toast.error(msg);
+    }
   };
 
   const filtered = items
@@ -647,6 +660,7 @@ export default function DeliveryPartnerPage() {
               item={item}
               onStatusUpdate={handleStatusUpdate}
               onConfirm={handleConfirm}
+              currentUserId={user?._id}
             />
           ))}
         </AnimatePresence>

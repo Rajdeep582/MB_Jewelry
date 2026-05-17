@@ -1,4 +1,6 @@
 const Admin = require('../models/Admin');
+const User = require('../models/User');
+const DeliveryPartner = require('../models/DeliveryPartner');
 const jwt = require('jsonwebtoken');
 const crypto = require('node:crypto');
 const {
@@ -13,6 +15,10 @@ const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 const pruneExpiredSessions = (sessions) =>
   (sessions || []).filter((s) => s.expiresAt > new Date());
+
+const MAX_SESSIONS = 10;
+const capSessions = (sessions) =>
+  sessions.length >= MAX_SESSIONS ? sessions.slice(-(MAX_SESSIONS - 1)) : sessions;
 
 const buildSession = (req, refreshToken) => ({
   sessionId: crypto.randomUUID(),
@@ -32,7 +38,7 @@ const adminPayload = (admin) => ({
 
 // Generate 6-digit OTP, store hashed, return plaintext for email
 const generateOtp = () => {
-  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  const otp = crypto.randomInt(100000, 1000000).toString(); // cryptographically secure PRNG
   return { otp, hash: hashToken(otp) };
 };
 
@@ -45,7 +51,11 @@ const register = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Name, email, password, and secret required.' });
   }
 
-  if (secret !== process.env.ADMIN_REGISTER_SECRET) {
+  // Timing-safe comparison — prevents side-channel attacks leaking secret bytes
+  const expectedSecret = process.env.ADMIN_REGISTER_SECRET || '';
+  const secretsMatch = expectedSecret.length === secret.length &&
+    crypto.timingSafeEqual(Buffer.from(expectedSecret), Buffer.from(secret));
+  if (!secretsMatch) {
     logger.warn(`Admin register attempt with invalid secret from IP ${req.ip}`);
     return res.status(403).json({ success: false, message: 'Invalid registration secret.' });
   }
@@ -53,6 +63,15 @@ const register = async (req, res) => {
   const existing = await Admin.findOne({ email: email.toLowerCase() });
   if (existing) {
     return res.status(400).json({ success: false, message: 'Email already registered.' });
+  }
+
+  // Block if email belongs to another portal
+  const emailLower = email.toLowerCase();
+  if (await User.findOne({ email: emailLower }).lean()) {
+    return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
+  }
+  if (await DeliveryPartner.findOne({ email: emailLower }).lean()) {
+    return res.status(403).json({ success: false, message: 'You are registered as Delivery Partner. Please login through the Delivery Partner portal.', code: 'WRONG_PORTAL' });
   }
 
   const { otp, hash } = generateOtp();
@@ -153,6 +172,15 @@ const login = async (req, res) => {
 
   const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password +sessions');
   if (!admin || admin.isLocked()) {
+    if (!admin) {
+      const emailLower = email.toLowerCase();
+      if (await User.findOne({ email: emailLower }).lean()) {
+        return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
+      }
+      if (await DeliveryPartner.findOne({ email: emailLower }).lean()) {
+        return res.status(403).json({ success: false, message: 'You are registered as Delivery Partner. Please login through the Delivery Partner portal.', code: 'WRONG_PORTAL' });
+      }
+    }
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
   }
 
@@ -184,7 +212,7 @@ const login = async (req, res) => {
   const accessToken  = generateAccessToken(admin._id, 'admin', 'admin');
   const refreshToken = generateRefreshToken(admin._id, 'admin');
 
-  admin.sessions = pruneExpiredSessions(admin.sessions);
+  admin.sessions = capSessions(pruneExpiredSessions(admin.sessions));
   admin.sessions.push(buildSession(req, refreshToken));
   admin.lastLogin = new Date();
   admin.markModified('sessions');

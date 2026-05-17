@@ -106,38 +106,36 @@ export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { g
 
 // ─── Helpers (single source of truth for localStorage) ───────────────────────
 
-const STORAGE_KEYS = {
-  token: 'mb_access_token',
-  user: 'mb_user',
-};
+const USER_KEY = 'mb_user';
 
-const persistAuth = (accessToken, user) => {
+// Access token is NEVER persisted to localStorage (XSS risk).
+// Only user metadata is stored for UI persistence across reloads.
+// The real access token lives in Redux memory only; a silent /refresh
+// call on first 401 restores it from the httpOnly refresh cookie.
+const persistUser = (user) => {
   try {
-    localStorage.setItem(STORAGE_KEYS.token, accessToken);
-    localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch {
     // Storage quota exceeded or private mode — silently ignore
   }
 };
 
 const clearAuth = () => {
-  localStorage.removeItem(STORAGE_KEYS.token);
-  localStorage.removeItem(STORAGE_KEYS.user);
+  localStorage.removeItem(USER_KEY);
 };
 
-const loadAuthFromStorage = () => {
+const loadUserFromStorage = () => {
   try {
-    const token = localStorage.getItem(STORAGE_KEYS.token);
-    const user = localStorage.getItem(STORAGE_KEYS.user);
-    if (token && user) return { accessToken: token, user: JSON.parse(user) };
+    const raw = localStorage.getItem(USER_KEY);
+    if (raw) return JSON.parse(raw);
   } catch {
-    // Corrupt storage — clear it
-    clearAuth();
+    localStorage.removeItem(USER_KEY);
   }
-  return { accessToken: null, user: null };
+  return null;
 };
 
-const { accessToken, user } = loadAuthFromStorage();
+const user = loadUserFromStorage();
+const accessToken = null; // always null on page load; restored via silent refresh
 
 // ─── Slice ───────────────────────────────────────────────────────────────────
 
@@ -158,7 +156,7 @@ const authSlice = createSlice({
     setCredentials: (state, { payload }) => {
       state.user = payload.user;
       state.accessToken = payload.accessToken;
-      persistAuth(payload.accessToken, payload.user);
+      persistUser(payload.user);
     },
     clearCredentials: (state) => {
       state.user = null;
@@ -168,7 +166,10 @@ const authSlice = createSlice({
     // Update user profile only — does not touch accessToken
     setUser: (state, { payload }) => {
       state.user = payload;
-      try { localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload)); } catch { /* ignore */ }
+      try { localStorage.setItem(USER_KEY, JSON.stringify(payload)); } catch { /* ignore */ }
+    },
+    setInitialized: (state) => {
+      state.initialized = true;
     },
   },
   extraReducers: (builder) => {
@@ -190,7 +191,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        persistAuth(payload.accessToken, payload.user);
+        persistUser(payload.user);
       })
       .addCase(loginUser.rejected, handleRejected)
 
@@ -200,7 +201,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        persistAuth(payload.accessToken, payload.user);
+        persistUser(payload.user);
       })
       .addCase(loginAdmin.rejected, handleRejected)
 
@@ -215,7 +216,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        persistAuth(payload.accessToken, payload.user);
+        persistUser(payload.user);
       })
       .addCase(loginDP.rejected, handleRejected)
 
@@ -230,7 +231,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
-        persistAuth(payload.accessToken, payload.user);
+        persistUser(payload.user);
       })
       .addCase(loginWithGoogle.rejected, handleRejected)
 
@@ -252,7 +253,7 @@ const authSlice = createSlice({
         state.user = payload.user;
         state.initialized = true;
         try {
-          localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(payload.user));
+          localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
         } catch {
           // Storage quota — silently ignore
         }
@@ -264,26 +265,24 @@ const authSlice = createSlice({
       // Refresh token
       .addCase(refreshAccessToken.fulfilled, (state, { payload }) => {
         state.accessToken = payload.accessToken;
-        try {
-          localStorage.setItem(STORAGE_KEYS.token, payload.accessToken);
-        } catch {
-          // Storage quota — silently ignore
-        }
+        state.initialized = true;
       })
       .addCase(refreshAccessToken.rejected, (state) => {
         // Refresh failed — session truly expired, force logout
         state.user = null;
         state.accessToken = null;
+        state.initialized = true;
         clearAuth();
       });
   },
 });
 
-export const { clearError, setCredentials, clearCredentials, setUser } = authSlice.actions;
+export const { clearError, setCredentials, clearCredentials, setUser, setInitialized } = authSlice.actions;
 
 // ─── Selectors ───────────────────────────────────────────────────────────────
 export const selectUser = (state) => state.auth.user;
 export const selectToken = (state) => state.auth.accessToken;
+export const selectInitialized = (state) => state.auth.initialized;
 export const selectIsAuthenticated = (state) => !!state.auth.user && !!state.auth.accessToken;
 export const selectIsAdmin    = (state) => state.auth.user?.role === 'admin';
 export const selectIsDelivery = (state) => state.auth.user?.role === 'delivery';

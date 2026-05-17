@@ -369,6 +369,10 @@ const adminConfirmDelivery = async (req, res) => {
     const co = await CustomOrder.findById(req.params.id);
     if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
     if (!co.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
+    if (co.finalPayment?.status !== 'paid') {
+      return res.status(400).json({ success: false, message: 'Cannot mark as delivered. Final payment (30%) has not been received yet.' });
+    }
+    if (co.status === 'delivered') return res.json({ success: true, order: co, message: 'Order already delivered' });
     co.status = 'delivered';
     co.deliveredAt = new Date();
     co.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });
@@ -378,6 +382,10 @@ const adminConfirmDelivery = async (req, res) => {
   const order = await Order.findById(req.params.id);
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
   if (!order.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
+  if (order.payment?.status !== 'paid') {
+    return res.status(400).json({ success: false, message: 'Cannot mark as delivered. Payment has not been received.' });
+  }
+  if (order.orderStatus === 'delivered') return res.json({ success: true, order, message: 'Order already delivered' });
   order.orderStatus = 'delivered';
   order.deliveredAt = new Date();
   order.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });

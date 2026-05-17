@@ -78,6 +78,15 @@ const schemas = {
     })
   }),
 
+  verifyResetOtp: Joi.object({
+    email: Joi.string().email().lowercase().trim().required().messages({
+      'string.email': 'Valid email required'
+    }),
+    otp: Joi.string().required().messages({
+      'string.empty': 'OTP is required'
+    }),
+  }),
+
   resetPassword: Joi.object({
     email: Joi.string().email().lowercase().trim().required().messages({
       'string.email': 'Valid email required'
@@ -155,6 +164,54 @@ const schemas = {
     }),
     country: Joi.string().trim().max(50).default('India'),
     isDefault: Joi.boolean().default(false),
+  }),
+
+
+  // Admin Auth Schemas
+  adminRegister: Joi.object({
+    name:     Joi.string().trim().max(50).required().messages({ 'string.empty': 'Name is required' }),
+    email:    Joi.string().email().lowercase().trim().required().messages({ 'string.email': 'Valid email required' }),
+    password: Joi.string().min(8).pattern(PWD_RE).required().messages({
+      'string.min': 'Password must be at least 8 characters',
+      'string.pattern.base': 'Password must contain a letter, a number, and a special character',
+    }),
+    secret: Joi.string().required().messages({ 'string.empty': 'Register secret is required' }),
+  }),
+
+  adminVerifyEmail: Joi.object({
+    email: Joi.string().email().lowercase().trim().required(),
+    otp:   Joi.string().length(6).required().messages({ 'string.length': 'OTP must be 6 digits' }),
+  }),
+
+  adminResendOtp: Joi.object({
+    email: Joi.string().email().lowercase().trim().required(),
+  }),
+
+  adminLogin: Joi.object({
+    email:    Joi.string().email().lowercase().trim().required().messages({ 'string.email': 'Valid email required' }),
+    password: Joi.string().required().messages({ 'string.empty': 'Password is required' }),
+  }),
+
+  // Delivery Partner Auth Schemas
+  dpRegister: Joi.object({
+    name:          Joi.string().trim().max(50).required().messages({ 'string.empty': 'Name is required' }),
+    email:         Joi.string().email().lowercase().trim().required().messages({ 'string.email': 'Valid email required' }),
+    password:      Joi.string().min(8)
+      .pattern(/^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/)
+      .required().messages({
+        'string.min': 'Password must be at least 8 characters',
+        'string.pattern.base': 'Password must contain a letter, a number, and a special character',
+      }),
+    phone:         Joi.string().trim().pattern(/^(\+91[-\s]?)?[6-9]\d{9}$/).allow('').optional(),
+    vehicleNumber: Joi.string().trim().max(20).allow('').optional(),
+    dispatchZone:  Joi.string().trim().max(100).allow('').optional(),
+    gender:        Joi.string().valid('male', 'female', 'other', '').optional(),
+    aadhaarNumber: Joi.string().trim().max(12).allow('').optional(),
+  }),
+
+  dpLogin: Joi.object({
+    email:    Joi.string().email().lowercase().trim().required().messages({ 'string.email': 'Valid email required' }),
+    password: Joi.string().required().messages({ 'string.empty': 'Password is required' }),
   }),
 };
 

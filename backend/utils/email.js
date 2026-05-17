@@ -1,6 +1,11 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
 
+// Escape user-controlled strings before inserting into HTML email body
+const escapeHtml = (str) => String(str)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+
 const getTransporter = () => {
   if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     throw new Error('CRITICAL: SMTP credentials missing from environment variables.');
@@ -14,7 +19,7 @@ const getTransporter = () => {
       pass: process.env.SMTP_PASS,
     },
     tls: {
-      rejectUnauthorized: false, // allow self-signed certs in Brevo chain (dev)
+      rejectUnauthorized: process.env.NODE_ENV === 'production', // verify TLS cert in prod; allow self-signed in dev
     },
   });
 };
@@ -35,7 +40,7 @@ const sendVerificationEmail = async (userEmail, userName, otpCode) => {
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
           <h2 style="color: #B8860B; text-align: center;">Welcome to M&B Jewelry!</h2>
-          <p style="font-size: 16px; color: #333;">Hi ${userName},</p>
+          <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(userName)},</p>
           <p style="font-size: 16px; color: #333;">Please use the following 6-digit code to verify your email address. This code is valid for <strong>10 minutes</strong>.</p>
           <div style="text-align: center; margin: 30px 0;">
             <span style="display: inline-block; background-color: #B8860B; color: #fff; padding: 15px 30px; font-size: 24px; font-weight: bold; border-radius: 6px; letter-spacing: 4px;">
@@ -68,7 +73,7 @@ const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
           <h2 style="color: #B8860B; text-align: center;">Password Reset Request</h2>
-          <p style="font-size: 16px; color: #333;">Hi ${userName},</p>
+          <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(userName)},</p>
           <p style="font-size: 16px; color: #333;">
             We received a request to reset the password for your M&B Jewelry account.
             Use the code below to proceed. It is valid for <strong>10 minutes</strong>.

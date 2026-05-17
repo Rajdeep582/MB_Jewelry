@@ -86,6 +86,7 @@ const orderSchema = new mongoose.Schema(
 orderSchema.index({ user: 1 });
 orderSchema.index({ 'payment.status': 1 });
 orderSchema.index({ 'payment.razorpayOrderId': 1 }); // webhook lookup — prevents full collection scan
+orderSchema.index({ 'payment.status': 1, orderStatus: 1, createdAt: 1 }); // stale order cleanup compound
 orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ createdAt: -1 });
 

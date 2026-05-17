@@ -9,8 +9,10 @@
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {
+    "@sentry/node": "^10.53.1",
+    "@sentry/profiling-node": "^10.53.1",
     "bcryptjs": "^2.4.3",
-    "cloudinary": "^1.41.0",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -27,7 +29,7 @@
     "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "multer-storage-cloudinary": "^4.0.0",
+    "multer-storage-cloudinary": "^2.2.1",
     "nodemailer": "^8.0.5",
     "razorpay": "^2.9.2",
     "winston": "^3.11.0",
@@ -47,8 +49,6 @@
   "jest": {
     "testEnvironment": "node",
     "testTimeout": 30000,
-    "testPathIgnorePatterns": [
-      "/node_modules/"
-    ]
+    "testMatch": ["**/tests/**/*.test.js"]
   }
 }

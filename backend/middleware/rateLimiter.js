@@ -34,4 +34,11 @@ const otpLimiter = rateLimit({
   message: { success: false, message: 'Too many OTP requests from this IP. Please try again in an hour.' },
 });
 
-module.exports = { authLimiter, loginLimiter, otpLimiter };
+// Payment limiter — prevents double-click order creation and brute-force verify
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: IS_TEST ? 10000 : 10,
+  message: { success: false, message: 'Too many payment requests. Please wait a moment.' },
+});
+
+module.exports = { authLimiter, loginLimiter, otpLimiter, paymentLimiter };

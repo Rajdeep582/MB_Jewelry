@@ -13,10 +13,11 @@ const {
   getDeliveryStats,
 } = require('../controllers/orderController');
 const { protect, adminOnly, userOnly } = require('../middleware/auth');
+const { paymentLimiter } = require('../middleware/rateLimiter');
 
 // Payment flow (3-phase) — users only
-router.post('/create-payment',   protect, userOnly, createPayment);
-router.post('/verify-payment',   protect, userOnly, verifyPayment);
+router.post('/create-payment',   paymentLimiter, protect, userOnly, createPayment);
+router.post('/verify-payment',   paymentLimiter, protect, userOnly, verifyPayment);
 router.post('/fail-payment',     protect, userOnly, failPayment);
 
 // Recovery — users only

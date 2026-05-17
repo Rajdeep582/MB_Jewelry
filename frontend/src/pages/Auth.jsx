@@ -203,10 +203,9 @@ function AuthPage({ type }) {
       const result = await dispatch(loginUser({ identifier: form.identifier.trim(), password: form.password }));
       if (result.meta.requestStatus === 'fulfilled') {
         toast.success('Welcome back! 💎');
-        const role = result.payload?.user?.role;
-        if (role === 'delivery') navigate('/delivery', { replace: true });
-        else if (role === 'admin') navigate('/admin', { replace: true });
-        else navigate(from === '/login' ? '/' : from, { replace: true });
+        navigate(from === '/login' ? '/' : from, { replace: true });
+      } else if (result.meta.requestStatus === 'rejected') {
+        toast.error(result.payload || 'Login failed');
       }
       return;
     }
@@ -423,8 +422,9 @@ function AuthPage({ type }) {
       <div className="hidden lg:flex flex-1 relative items-center justify-center overflow-hidden">
         <img
           src="https://images.unsplash.com/photo-1601121141418-d26ce1810f9d?w=1200&q=80"
-          alt="Luxury jewelry"
+          alt=""
           className="absolute inset-0 w-full h-full object-cover"
+          onError={(e) => { e.target.style.display = 'none'; }}
         />
         <div className="absolute inset-0 bg-gradient-to-r from-dark-900/60 to-dark-900/80" />
         <div className="relative z-10 text-center px-12">

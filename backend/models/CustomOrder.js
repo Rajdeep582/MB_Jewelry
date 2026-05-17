@@ -154,6 +154,8 @@ customOrderSchema.index({ status:    1 });
 customOrderSchema.index({ createdAt: -1 });
 customOrderSchema.index({ 'advancePayment.status': 1 });
 customOrderSchema.index({ 'finalPayment.status':   1 });
+customOrderSchema.index({ 'advancePayment.status': 1, status: 1, createdAt: 1 }); // stale advance cleanup
+customOrderSchema.index({ 'finalPayment.status': 1,   status: 1, createdAt: 1 }); // stale final cleanup
 
 
 // Auto-generate customOrderId

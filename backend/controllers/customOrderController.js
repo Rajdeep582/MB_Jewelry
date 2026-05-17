@@ -344,6 +344,15 @@ const verifyCustomPayment = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not authorised' });
   }
 
+  // --- Cross-validate razorpayOrderId against stored value (prevents payment swap attack) ---
+  const storedRzpId = phase === 'advance'
+    ? order.advancePayment?.razorpayOrderId
+    : order.finalPayment?.razorpayOrderId;
+  if (storedRzpId !== razorpayOrderId) {
+    logger.warn(`razorpayOrderId mismatch for custom order=${customOrderId} phase=${phase}: submitted=${razorpayOrderId}, stored=${storedRzpId}`);
+    return res.status(400).json({ success: false, message: 'Payment ID mismatch for this order.' });
+  }
+
   // Check idempotency
   if (phase === 'advance' && order.advancePayment.status === 'paid') return res.json({ success: true, message: 'Advance already paid', order });
   if (phase === 'final'   && order.finalPayment.status === 'paid')   return res.json({ success: true, message: 'Final already paid', order });

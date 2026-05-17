@@ -21,8 +21,8 @@ router.get('/me',               protect,                                        
 
 // Forgot password
 router.post('/forgot-password',   otpLimiter, validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
-router.post('/verify-reset-otp',  otpLimiter, validateSchema(schemas.verifyOtp),      ctrl.verifyResetOtp);
-router.post('/reset-password',               validateSchema(schemas.resetPassword),   ctrl.resetPassword);
+router.post('/verify-reset-otp',  otpLimiter, validateSchema(schemas.verifyResetOtp), ctrl.verifyResetOtp);
+router.post('/reset-password',  authLimiter, validateSchema(schemas.resetPassword),   ctrl.resetPassword);
 
 // Profile: add email (mobile-registered users)
 router.post('/add-email',        protect, validateSchema(schemas.addEmail),        ctrl.addEmail);
