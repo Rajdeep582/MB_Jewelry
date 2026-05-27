@@ -319,11 +319,41 @@ const createCustomPayment = async (req, res) => {
 };
 
 // ─── Phase 2: Verify Payment ──────────────────────────────────────────────────
-// @route   POST /api/custom-orders/verify-payment
-// @access  Private
+/**
+ * verifyCustomPayment
+ * @route  POST /api/custom-orders/verify-payment
+ * @access Private (authenticated user)
+ *
+ * Confirms a Razorpay payment for a custom order (advance or final phase).
+ *
+ * CHECK ORDER — fail-fast, cheapest first, signature last:
+ *   1. Input presence + ObjectId format (no DB)
+ *   2. Load order → 404 if not found
+ *   3. Ownership → 403 if not requester's order
+ *   4. Cross-validate razorpayOrderId against stored value → 400 on mismatch
+ *      Prevents payment-swap attack: user reusing another payment's ID on this order.
+ *   5. Idempotency → 200 if already paid (no double-write)
+ *   6. Razorpay HMAC signature verification → 400 on mismatch
+ *
+ * WHY SIGNATURE IS LAST (not first):
+ *   Checking signature before ownership leaks order existence via timing:
+ *   a valid signature from the user's own payment passes crypto, then hits the DB —
+ *   the response time difference between 404 and 403 reveals whether the target
+ *   customOrderId exists. Loading the order first and checking ownership collapses
+ *   both into a consistent code path before signature crypto runs.
+ *
+ * TRANSACTION:
+ *   Mongoose session wraps CustomOrder update + Transaction update + tracking history.
+ *   Rolled back atomically on any failure.
+ *
+ * SIGNATURE HELPER:
+ *   verifyRazorpaySignature (utils/razorpayHelper.js) uses crypto.timingSafeEqual
+ *   internally — not vulnerable to timing side-channel on the signature bytes.
+ */
 const verifyCustomPayment = async (req, res) => {
   const { razorpayOrderId, razorpayPaymentId, razorpaySignature, customOrderId, phase } = req.body;
 
+  // 1. Input presence + format
   if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature || !customOrderId || !phase) {
     return res.status(400).json({ success: false, message: 'Missing payment verification fields' });
   }
@@ -331,20 +361,16 @@ const verifyCustomPayment = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid custom order ID' });
   }
 
-  const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
-  if (!isValid) {
-    await Transaction.findOneAndUpdate({ razorpayOrderId: String(razorpayOrderId) }, { status: 'failed', failReason: 'Signature mismatch' });
-    return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
-  }
-
+  // 2. Load order
   const order = await CustomOrder.findById(customOrderId);
   if (!order) return res.status(404).json({ success: false, message: 'Custom order not found' });
 
+  // 3. Ownership — must be the requesting user's order
   if (order.user.toString() !== req.user._id.toString()) {
     return res.status(403).json({ success: false, message: 'Not authorised' });
   }
 
-  // --- Cross-validate razorpayOrderId against stored value (prevents payment swap attack) ---
+  // 4. Cross-validate razorpayOrderId against stored value (prevents payment-swap attack)
   const storedRzpId = phase === 'advance'
     ? order.advancePayment?.razorpayOrderId
     : order.finalPayment?.razorpayOrderId;
@@ -353,9 +379,16 @@ const verifyCustomPayment = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Payment ID mismatch for this order.' });
   }
 
-  // Check idempotency
+  // 5. Idempotency — return success if already confirmed, no double-write
   if (phase === 'advance' && order.advancePayment.status === 'paid') return res.json({ success: true, message: 'Advance already paid', order });
   if (phase === 'final'   && order.finalPayment.status === 'paid')   return res.json({ success: true, message: 'Final already paid', order });
+
+  // 6. Razorpay HMAC signature verification (crypto — most expensive check, runs last)
+  const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
+  if (!isValid) {
+    await Transaction.findOneAndUpdate({ razorpayOrderId: String(razorpayOrderId) }, { status: 'failed', failReason: 'Signature mismatch' });
+    return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
+  }
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -480,8 +513,8 @@ const getAllCustomOrders = async (req, res) => {
   if (status) {
     // 'in_production' filter covers both advance_paid and in_production statuses —
     // both display as "Confirmed & In Production" in the UI
-    if (String(status) === 'in_production') {
-      query.status = { $in: ['advance_paid', 'in_production'] };
+    if (String(status) === 'confirmed') {
+      query.status = { $in: ['advance_paid', 'confirmed'] };
     } else {
       query.status = String(status);
     }
@@ -626,11 +659,6 @@ function applyCustomOrderTransition(order, status) {
     return { error: 'Cannot mark as shipped. Advance payment (70%) has not been received yet.' };
   }
 
-  // ── Guard: cannot deliver unless final payment is done ──
-  if (status === 'delivered' && order.finalPayment?.status !== 'paid') {
-    return { error: 'Cannot mark as delivered. Final payment (30%) has not been received yet.' };
-  }
-
   // ── Dispatch: auto-generate deliveryId + set internal tracking ref ──
   if (status === 'shipped') {
     if (order.deliveryId) {
@@ -768,9 +796,9 @@ const getCustomOrderStats = async (req, res) => {
       total,
       pendingCount,
       totalRevenue: (revenueAgg[0]?.total || 0) + (revenueAggFinal[0]?.total || 0),
-      // Merge advance_paid into in_production — both display as "In Production" in admin UI
+      // Merge advance_paid into confirmed — both display as "In Production" in admin UI
       statusCounts: statusCounts.reduce((acc, s) => {
-        const key = s._id === 'advance_paid' ? 'in_production' : s._id;
+        const key = s._id === 'advance_paid' ? 'confirmed' : s._id;
         acc[key] = (acc[key] || 0) + s.count;
         return acc;
       }, {}),

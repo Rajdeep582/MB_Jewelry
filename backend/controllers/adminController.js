@@ -15,15 +15,40 @@ const VALID_PURITIES = {
   Diamond: ['22K', '18K', '14K'],
 };
 
-// @route   GET /api/admin/global-pricing
-// @access  Admin
+/**
+ * getGlobalPricing
+ * @route  GET /api/admin/global-pricing
+ * @access Admin
+ *
+ * Returns all GlobalPricing entries sorted by material → purity → unit.
+ * Used to populate the pricing management table in admin panel.
+ */
 const getGlobalPricing = async (req, res) => {
   const pricing = await GlobalPricing.find({}).sort({ material: 1, purity: 1, unit: 1 }).lean();
   res.json({ success: true, pricing });
 };
 
-// @route   POST /api/admin/global-pricing
-// @access  Admin
+/**
+ * setGlobalPricing
+ * @route  POST /api/admin/global-pricing
+ * @access Admin
+ *
+ * Upserts a GlobalPricing entry for a material/purity/unit combination,
+ * then immediately recalculates and bulk-writes prices for all dynamic
+ * products that match that material/purity/unit.
+ *
+ * FLOW:
+ *   1. Validate purity is allowed for the given material (VALID_PURITIES guard)
+ *   2. Validate livePrice is a non-negative number
+ *   3. Upsert GlobalPricing document (findOneAndUpdate with upsert)
+ *   4. Find all dynamic products matching material/purity/unit
+ *   5. bulkWrite price updates using calcDynamicPrice → one DB round-trip
+ *   6. Return saved entry + count of updated products
+ *
+ * SIDE EFFECTS:
+ *   - Writes/updates one GlobalPricing document
+ *   - Updates price field on N dynamic Product documents (bulkWrite)
+ */
 const setGlobalPricing = async (req, res) => {
   const { material, purity, unit, livePrice, makingCharges, gst } = req.body;
 
@@ -91,8 +116,25 @@ const setGlobalPricing = async (req, res) => {
   });
 };
 
-// @route   POST /api/admin/bulk-pricing
-// @access  Admin
+/**
+ * bulkUpdatePricing
+ * @route  POST /api/admin/bulk-pricing
+ * @access Admin
+ *
+ * Applies a percentage or flat price adjustment across all non-dynamic products
+ * matching a given material and/or category filter.
+ *
+ * FLOW:
+ *   1. Validate amount (number) and operation ('percentage' | 'flat')
+ *   2. Require at least one of: material, category
+ *   3. Exclude dynamic products (their price is governed by GlobalPricing live rates)
+ *   4. Build bulkWrite ops — recalculate price + discountedPrice per product
+ *   5. Execute bulkWrite → one DB round-trip, ordered=false (parallel)
+ *
+ * DELIBERATELY EXCLUDES dynamic products:
+ *   Dynamic product prices are controlled by GlobalPricing → setGlobalPricing/resyncDynamicPrices.
+ *   Manually adjusting them here would create inconsistency with the live rate.
+ */
 const bulkUpdatePricing = async (req, res) => {
   const { material, category, operation, amount } = req.body;
 
@@ -163,8 +205,25 @@ const bulkUpdatePricing = async (req, res) => {
   });
 };
 
-// @route   POST /api/admin/bulk-discounts
-// @access  Admin
+/**
+ * bulkUpdateDiscounts
+ * @route  POST /api/admin/bulk-discounts
+ * @access Admin
+ *
+ * Sets or removes discountedPrice on products matching a target scope.
+ *
+ * ACCEPTS:
+ *   targetType   'global' | 'category' | 'product'
+ *   targetId     category or product ObjectId (required when targetType is not 'global')
+ *   discountType 'percentage' | 'flat' | 'remove'
+ *   discountValue positive number (ignored when discountType = 'remove')
+ *
+ * FLOW:
+ *   1. Validate targetType and discountType enums
+ *   2. Build MongoDB query from targetType + targetId
+ *   3. Compute new discountedPrice per product (percentage/flat off price, or null to remove)
+ *   4. bulkWrite → one DB round-trip
+ */
 const bulkUpdateDiscounts = async (req, res) => {
   const { targetType, targetId, discountType, discountValue } = req.body;
   // targetType: 'global' | 'category' | 'product'
@@ -235,8 +294,22 @@ const bulkUpdateDiscounts = async (req, res) => {
   });
 };
 
-// @route   POST /api/admin/resync-dynamic-prices
-// @access  Admin
+/**
+ * resyncDynamicPrices
+ * @route  POST /api/admin/resync-dynamic-prices
+ * @access Admin
+ *
+ * Re-calculates and saves price for every dynamic product using the current
+ * GlobalPricing live rates. Use after bulk-importing products or if prices drift.
+ *
+ * FLOW:
+ *   1. Load all GlobalPricing entries → build pricingMap (material|purity|unit → entry)
+ *   2. Find all dynamic products with weightValue > 0
+ *   3. For each: resolvePricingEntry (handles gram/kg unit fallback)
+ *      → skip if no matching rate, else calcDynamicPrice
+ *   4. bulkWrite all price updates in one round-trip
+ *   5. Return updatedCount + skipped count
+ */
 const resyncDynamicPrices = async (req, res) => {
   const pricingEntries = await GlobalPricing.find({}).lean();
   const pricingMap = buildGlobalPricingMap(pricingEntries);
@@ -283,8 +356,14 @@ const resyncDynamicPrices = async (req, res) => {
 
 // ─── Delivery Partner Management ─────────────────────────────────────────────
 
-// GET /api/admin/delivery-partners
-// Returns all delivery partner accounts (approved and pending) from DeliveryPartner collection
+/**
+ * getDeliveryPartners
+ * @route  GET /api/admin/delivery-partners
+ * @access Admin
+ *
+ * Returns all DeliveryPartner accounts (both approved and pending).
+ * Used in admin panel to manage/approve DP accounts.
+ */
 const getDeliveryPartners = async (req, res) => {
   const partners = await DeliveryPartner.find()
     .select('name email phone vehicleNumber dispatchZone createdAt isActive isApproved partnerId')
@@ -292,8 +371,15 @@ const getDeliveryPartners = async (req, res) => {
   res.json({ success: true, partners });
 };
 
-// GET /api/admin/delivery-partners/users
-// Returns all DP accounts for the assign panel (no normal users)
+/**
+ * getUsersForDeliveryAssign
+ * @route  GET /api/admin/delivery-partners/users
+ * @access Admin
+ *
+ * Returns all DP accounts normalised with a `role` field for frontend compatibility.
+ * Used to populate the delivery assignment dropdown in the admin order panel.
+ * Returns only DPs (not regular users) — role = 'delivery' if approved, 'pending' if not.
+ */
 const getUsersForDeliveryAssign = async (req, res) => {
   const users = await DeliveryPartner.find()
     .select('name email isApproved partnerId')
@@ -303,8 +389,14 @@ const getUsersForDeliveryAssign = async (req, res) => {
   res.json({ success: true, users: normalised });
 };
 
-// POST /api/admin/delivery-partners/:id/assign-role
-// Approves a delivery partner (sets isApproved = true)
+/**
+ * assignDeliveryRole
+ * @route  POST /api/admin/delivery-partners/:id/assign-role
+ * @access Admin
+ *
+ * Approves a delivery partner account (sets isApproved = true).
+ * After approval, the DP can log in and see the delivery dashboard.
+ */
 const assignDeliveryRole = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid partner ID' });
@@ -316,8 +408,14 @@ const assignDeliveryRole = async (req, res) => {
   res.json({ success: true, message: `${dp.name} approved as delivery partner`, user: { ...dp.toObject(), role: 'delivery' } });
 };
 
-// POST /api/admin/delivery-partners/:id/remove-role
-// Revokes approval (sets isApproved = false)
+/**
+ * removeDeliveryRole
+ * @route  POST /api/admin/delivery-partners/:id/remove-role
+ * @access Admin
+ *
+ * Revokes a delivery partner's approval (sets isApproved = false).
+ * The DP account is NOT deleted — they cannot log in until re-approved.
+ */
 const removeDeliveryRole = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid partner ID' });
@@ -329,7 +427,23 @@ const removeDeliveryRole = async (req, res) => {
   res.json({ success: true, message: `${dp.name} removed from active delivery partners`, user: dp });
 };
 
-// PATCH /api/admin/orders/:id/assign-delivery
+/**
+ * assignDeliveryAgent
+ * @route  PATCH /api/admin/orders/:id/assign-delivery
+ * @access Admin
+ *
+ * Assigns (or un-assigns) a delivery partner to an order or custom order.
+ *
+ * ACCEPTS:
+ *   agentId  ObjectId | null  — DP to assign; null to un-assign
+ *   source   'order' | 'custom_order'
+ *
+ * FLOW:
+ *   1. Validate order ID and agentId format
+ *   2. If agentId provided: confirm DP exists, is approved, and is active
+ *   3. findByIdAndUpdate with { deliveryAgent: agentId }
+ *   4. Return updated order with populated deliveryAgent
+ */
 const assignDeliveryAgent = async (req, res) => {
   const { agentId, source } = req.body;
   if (!mongoose.isValidObjectId(req.params.id)) {
@@ -359,7 +473,24 @@ const assignDeliveryAgent = async (req, res) => {
   res.json({ success: true, order });
 };
 
-// POST /api/admin/orders/:id/admin-confirm-delivery
+/**
+ * adminConfirmDelivery
+ * @route  POST /api/admin/orders/:id/admin-confirm-delivery
+ * @access Admin
+ *
+ * Admin manually marks an order as delivered after verifying DP confirmation.
+ *
+ * PRE-CONDITIONS (both must be true):
+ *   1. order.dpConfirmedAt must be set (DP raised the delivery flag first)
+ *   2. Payment must be 'paid' — for custom orders: finalPayment.status = 'paid'
+ *
+ * SIDE EFFECTS:
+ *   - Sets status/orderStatus = 'delivered'
+ *   - Sets deliveredAt timestamp
+ *   - Appends 'delivered' entry to trackingHistory
+ *
+ * IDEMPOTENT: if already 'delivered', returns 200 with no writes.
+ */
 const adminConfirmDelivery = async (req, res) => {
   const { source } = req.body;
   if (!mongoose.isValidObjectId(req.params.id)) {
@@ -393,6 +524,16 @@ const adminConfirmDelivery = async (req, res) => {
   res.json({ success: true, order, message: 'Order marked as delivered' });
 };
 
+/**
+ * deleteGlobalPricing
+ * @route  DELETE /api/admin/global-pricing/:id
+ * @access Admin
+ *
+ * Hard-deletes a GlobalPricing entry by ID.
+ * NOTE: does NOT recalculate dynamic product prices after deletion.
+ * Run resyncDynamicPrices afterward if needed, or dynamic products will
+ * retain their last calculated price until the next price update.
+ */
 const deleteGlobalPricing = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid ID' });
@@ -402,8 +543,15 @@ const deleteGlobalPricing = async (req, res) => {
   res.json({ success: true, message: 'Pricing entry deleted' });
 };
 
-// DELETE /api/admin/delivery-partners/:id
-// Hard-delete only non-approved (pending) partners
+/**
+ * deleteDeliveryPartner
+ * @route  DELETE /api/admin/delivery-partners/:id
+ * @access Admin
+ *
+ * Hard-deletes a pending (non-approved) delivery partner account.
+ * Approved DPs cannot be deleted directly — admin must call removeDeliveryRole first.
+ * This prevents accidental deletion of active delivery partners.
+ */
 const deleteDeliveryPartner = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid partner ID' });

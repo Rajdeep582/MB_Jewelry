@@ -101,6 +101,16 @@ productSchema.index({ material: 1, purity: 1, unit: 1 }); // pricing resolution 
 
 productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 
+/**
+ * pre('save') hook — auto-generates productId (PRD-XXXXXXXX) on first save.
+ * Uses crypto.randomBytes → not sequential (prevents product count enumeration).
+ *
+ * Dynamic pricing note:
+ *   pricingType = 'dynamic' → price is NOT stored as ground truth.
+ *   At read time, applyLivePrice() (pricingUtils.js) recomputes from GlobalPricing livePrice.
+ *   Formula: livePrice × weightValue × (1 + makingCharges%) × (1 + gst%)
+ *   Product-level makingCharges/gst override global defaults when set.
+ */
 productSchema.pre('save', function (next) {
   if (!this.productId) {
     this.productId = `PRD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;

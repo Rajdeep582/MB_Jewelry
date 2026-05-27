@@ -1,3 +1,19 @@
+/**
+ * Razorpay gateway configuration.
+ *
+ * Required env vars:
+ *   RAZORPAY_KEY_ID     — public key (sent to frontend for Razorpay Checkout)
+ *   RAZORPAY_KEY_SECRET — secret key (used server-side for order creation + HMAC verification)
+ *
+ * If keys are missing or still set to placeholder values, a stub object is exported
+ * instead of a real Razorpay instance. The stub rejects all calls with a clear error
+ * → surfaces as 503 at the payment endpoint rather than a cryptic crash.
+ *
+ * DELIBERATELY NOT configured in test env — tests mock the Razorpay SDK directly.
+ *
+ * isRazorpayConfigured — boolean exported alongside `razorpay` so controllers can
+ * gate-check and return 503 before attempting any SDK call.
+ */
 const Razorpay = require('razorpay');
 const logger = require('../utils/logger');
 

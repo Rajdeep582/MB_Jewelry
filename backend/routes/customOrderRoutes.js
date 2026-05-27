@@ -1,3 +1,28 @@
+/**
+ * Custom Order Routes — /api/custom-orders
+ *
+ * User Routes (protect + userOnly):
+ *   POST /                   — submit new custom order with reference images (uploadCustomOrderImages)
+ *   GET  /my-orders          — list user's own custom orders
+ *   POST /create-payment     — create Razorpay order for advance or final payment phase
+ *   POST /verify-payment     — verify Razorpay payment after user checkout
+ *   POST /fail-payment       — mark a payment phase as failed (called on Razorpay modal dismiss)
+ *   PUT  /:id/cancel         — user cancels their own order (allowed in pending/quoted states only)
+ *
+ * Admin Routes (protect + adminOnly):
+ *   GET  /stats              — aggregate stats for all custom orders
+ *   GET  /                   — list all custom orders with filters
+ *   PUT  /:id/quote          — admin sets quote amount, advances status to 'quoted'
+ *   PUT  /:id/status         — admin advances order through lifecycle states
+ *
+ * Shared (protect, owner or admin):
+ *   GET  /:id                — get single custom order (ownership enforced inside controller)
+ *
+ * Payment lifecycle:
+ *   Advance phase: status=quoted → user pays 70% → status=advance_paid
+ *   Final phase:   status=shipped → user pays 30% → status=delivered
+ *   Both phases route through create-payment → verify-payment (same endpoints, `phase` param distinguishes).
+ */
 const express = require('express');
 const router  = express.Router();
 

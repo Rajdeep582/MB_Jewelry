@@ -16,10 +16,12 @@ import api from '../services/api';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 const PASSWORD_REGEX  = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+// MOBILE_AUTH_DISABLED: MOBILE_REGEX and mobile detection preserved for re-enable
 const MOBILE_REGEX    = /^(\+91[-\s]?)?[6-9]\d{9}$/;
 const detectType = (val) => {
   const v = val?.trim() || '';
-  if (MOBILE_REGEX.test(v.replace(/[-\s]/g, ''))) return 'mobile';
+  // MOBILE_AUTH_DISABLED: mobile detection disabled — always returns 'email' or ''
+  // if (MOBILE_REGEX.test(v.replace(/[-\s]/g, ''))) return 'mobile';
   if (/^\S+@\S+\.\S+$/.test(v)) return 'email';
   return '';
 };
@@ -398,9 +400,9 @@ function AuthPage({ type }) {
 
   // ─── Derived labels (replace nested ternaries) ───────────────────────────────
   const getIdentifierLabel = () => {
-    if (inputType === 'mobile') return 'Mobile Number';
+    // MOBILE_AUTH_DISABLED: restore mobile check to re-enable: if (inputType === 'mobile') return 'Mobile Number';
     if (inputType === 'email') return 'Email Address';
-    return 'Email or Mobile';
+    return 'Email Address';
   };
 
   const getLoadingLabel = () => {
@@ -411,7 +413,7 @@ function AuthPage({ type }) {
 
   const getSubmitLabel = () => {
     if (type === 'login') return 'Sign In';
-    if (inputType === 'mobile') return 'Send OTP';
+    // MOBILE_AUTH_DISABLED: restore to re-enable: if (inputType === 'mobile') return 'Send OTP';
     return 'Create Account';
   };
 
@@ -476,7 +478,8 @@ function AuthPage({ type }) {
           <AnimatePresence mode="wait">
 
             {/* ═══ MOBILE OTP (register) ═══ */}
-            {step === 'mobile-otp' && (
+            {/* MOBILE_AUTH_DISABLED: change false to: step === 'mobile-otp' to re-enable */}
+            {false && step === 'mobile-otp' && (
               <motion.form
                 key="mobile-otp"
                 variants={slideVariants}
@@ -795,35 +798,29 @@ function AuthPage({ type }) {
                     </div>
                   )}
 
-                  {/* Identifier: email or mobile */}
+                  {/* Identifier: email only (MOBILE_AUTH_DISABLED) */}
+                  {/* MOBILE_AUTH_DISABLED: restore mobile badge + FiPhone icon + inputMode + placeholder to re-enable */}
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="label-dark !mb-0">
                         {getIdentifierLabel()}
                       </label>
-                      {inputType && (
-                        <span className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${
-                          inputType === 'mobile'
-                            ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
-                            : 'bg-gold-500/10 border-gold-500/30 text-gold-400'
-                        }`}>
-                          {inputType === 'mobile' ? '📱 Mobile' : '✉️ Email'}
+                      {inputType === 'email' && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full border font-medium bg-gold-500/10 border-gold-500/30 text-gold-400">
+                          ✉️ Email
                         </span>
                       )}
                     </div>
                     <div className="relative">
-                      {inputType === 'mobile'
-                        ? <FiPhone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
-                        : <FiMail  size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
-                      }
+                      <FiMail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-400" />
                       <input
                         id="identifier"
                         name="identifier"
                         type="text"
-                        inputMode={inputType === 'mobile' ? 'numeric' : 'email'}
+                        inputMode="email"
                         value={form.identifier}
                         onChange={handleChange}
-                        placeholder="you@example.com or 9876543210"
+                        placeholder="you@example.com"
                         className={`input-dark pl-10 ${errors.identifier ? 'border-red-500' : ''}`}
                         autoComplete="username"
                       />

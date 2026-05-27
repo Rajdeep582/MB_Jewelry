@@ -1,9 +1,19 @@
-// Final Price = livePrice × weightValue × (1 + makingCharges%) × (1 + gst%)
+/**
+ * calcDynamicPrice — computes the final retail price for a dynamic (metal) product.
+ * Formula: livePrice × weightValue × (1 + makingCharges%) × (1 + gst%)
+ * Result is rounded to the nearest rupee.
+ * All four params must be numbers; pass 0 for makingCharges/gst if not applicable.
+ */
 function calcDynamicPrice(weightValue, livePrice, makingCharges, gst) {
   const withMaking = livePrice * weightValue * (1 + makingCharges / 100);
   return Math.round(withMaking * (1 + gst / 100));
 }
 
+/**
+ * buildPricingKey — creates a composite map key string for a GlobalPricing entry.
+ * Format: 'material|purity|unit' (e.g. 'Gold|22K|gram')
+ * Used internally by buildGlobalPricingMap and resolvePricingEntry.
+ */
 function buildPricingKey(material, purity, unit) {
   return `${material}|${purity}|${unit}`;
 }

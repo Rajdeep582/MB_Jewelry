@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import {
-  FiPackage, FiTruck, FiCheckCircle, FiSearch, FiRefreshCw,
+  FiTruck, FiCheckCircle, FiSearch, FiRefreshCw,
   FiMapPin, FiPhone, FiUser, FiAlertCircle, FiDownload, FiX,
   FiCreditCard, FiActivity, FiLogOut,
 } from 'react-icons/fi';
@@ -375,7 +375,7 @@ ConfirmModal.propTypes = {
 
 /* ── Delivery Card ───────────────────────────────────────────────────────────── */
 
-function DeliveryCard({ item, onStatusUpdate, onConfirm, currentUserId }) {
+function DeliveryCard({ item, onConfirm, currentUserId }) {
   const status = STATUS_DISPLAY[item.rawStatus] || 'In Progress';
   const meta   = STAGE_META[status];
   const [confirmInput, setConfirmInput] = useState('');
@@ -529,7 +529,6 @@ DeliveryCard.propTypes = {
     createdAt:     PropTypes.string,
     dpConfirmedAt: PropTypes.string,
   }).isRequired,
-  onStatusUpdate: PropTypes.func.isRequired,
   onConfirm:      PropTypes.func.isRequired,
   currentUserId:  PropTypes.string,
 };
@@ -577,17 +576,6 @@ export default function DeliveryPartnerPage() {
     setLoggingOut(false);
   };
 
-  const handleStatusUpdate = async (id, source, status, note) => {
-    try {
-      await deliveryService.updateStatus(id, { source, status, note });
-      await load(true);
-      toast.success('Status updated');
-    } catch (err) {
-      const msg = err?.response?.data?.message || 'Status update failed';
-      toast.error(msg);
-    }
-  };
-
   const handleConfirm = async (id, source, note) => {
     try {
       await deliveryService.confirmDelivery(id, { source, note });
@@ -618,15 +606,13 @@ export default function DeliveryPartnerPage() {
     });
 
   const counts = {
-    'In Progress': items.filter((i) => (STATUS_DISPLAY[i.rawStatus] || 'In Progress') === 'In Progress').length,
-    'Shipped':     items.filter((i) => STATUS_DISPLAY[i.rawStatus] === 'Shipped').length,
-    'Delivered':   items.filter((i) => STATUS_DISPLAY[i.rawStatus] === 'Delivered').length,
+    'Shipped':   items.filter((i) => STATUS_DISPLAY[i.rawStatus] === 'Shipped').length,
+    'Delivered': items.filter((i) => STATUS_DISPLAY[i.rawStatus] === 'Delivered').length,
   };
 
   const statBtns = [
-    ['In Progress', counts['In Progress'], 'text-amber-400',   'bg-amber-500/10 border-amber-500/20',    'ring-amber-500/30'],
-    ['Shipped',     counts['Shipped'],     'text-blue-400',    'bg-blue-500/10 border-blue-500/20',      'ring-blue-500/30'],
-    ['Delivered',   counts['Delivered'],   'text-emerald-400', 'bg-emerald-500/10 border-emerald-500/20','ring-emerald-500/30'],
+    ['Shipped',   counts['Shipped'],   'text-blue-400',    'bg-blue-500/10 border-blue-500/20',      'ring-blue-500/30'],
+    ['Delivered', counts['Delivered'], 'text-emerald-400', 'bg-emerald-500/10 border-emerald-500/20','ring-emerald-500/30'],
   ];
 
   const renderDeliveryList = () => {
@@ -658,7 +644,6 @@ export default function DeliveryPartnerPage() {
             <DeliveryCard
               key={`${item._source}-${item._id}`}
               item={item}
-              onStatusUpdate={handleStatusUpdate}
               onConfirm={handleConfirm}
               currentUserId={user?._id}
             />
@@ -722,7 +707,7 @@ export default function DeliveryPartnerPage() {
 
       <div className="max-w-4xl mx-auto px-4 py-4 space-y-4">
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {statBtns.map(([label, count, textCls, bgCls, ringCls]) => (
             <motion.button
               key={label}
@@ -758,7 +743,6 @@ export default function DeliveryPartnerPage() {
             className="bg-dark-800 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors"
           >
             <option value="all">All</option>
-            <option value="In Progress">In Progress</option>
             <option value="Shipped">Shipped</option>
             <option value="Delivered">Delivered</option>
           </select>

@@ -210,7 +210,7 @@ const createPayment = async (req, res) => {
         shippingPrice: pricing.shippingPrice,
         taxPrice: pricing.taxPrice,
         totalAmount: pricing.totalAmount,
-        orderStatus: 'confirmed',
+        orderStatus: 'pending_payment',
       }],
       { session }
     );
@@ -341,7 +341,7 @@ const verifyPayment = async (req, res) => {
   if (!result.success) {
     return res.status(500).json({
       success: false,
-      message: `Payment confirmation failed: ${result.error}. If money was deducted, it will be auto-refunded within 5–7 business days.`,
+      message: `Payment confirmation failed: ${result.error}. Please contact support if amount was deducted.`,
     });
   }
 
@@ -543,10 +543,43 @@ async function processWebhookFailed(payment) {
 }
 
 // ─── Razorpay Webhook Handler ─────────────────────────────────────────────────
-// @route   POST /api/webhook/razorpay
-// @access  Public (signature-verified)
+/**
+ * handleWebhook
+ * @route  POST /api/webhook/razorpay
+ * @access Public — BUT only Razorpay can pass signature verification
+ *
+ * SIGNATURE VERIFICATION (HMAC-SHA256):
+ *   Razorpay signs the raw request body with RAZORPAY_WEBHOOK_SECRET.
+ *   We recompute HMAC-SHA256 over the raw body and compare using
+ *   crypto.timingSafeEqual — NOT ===.
+ *
+ *   WHY timingSafeEqual, not ===:
+ *     JavaScript === short-circuits on first mismatching character.
+ *     Response time therefore leaks how many bytes of the signature matched.
+ *     An attacker sending thousands of crafted requests can measure timing
+ *     to deduce the correct signature byte-by-byte (timing side-channel attack).
+ *     timingSafeEqual always compares all bytes in constant time — no leak.
+ *
+ *   BUFFER LENGTH GUARD:
+ *     timingSafeEqual throws if buffers differ in length. We check length first
+ *     and short-circuit with a safe rejection — no timing information leaked
+ *     because a length mismatch is structurally invalid, not a partial match.
+ *
+ * RESPONSE ORDER:
+ *   200 is sent BEFORE processing — Razorpay considers any non-200 a failure
+ *   and retries. Processing happens asynchronously after ACK.
+ *
+ * EVENTS HANDLED:
+ *   payment.captured → atomicConfirmOrder (marks order paid, sends confirmation)
+ *   payment.failed   → marks order + transaction as failed
+ *   All others       → silently ignored (logged)
+ *
+ * IDEMPOTENCY:
+ *   processWebhookCaptured checks if order is already confirmed before writing.
+ *   Safe to receive duplicate events (Razorpay retries on timeout).
+ */
 const handleWebhook = async (req, res) => {
-  // 1. Always acknowledge immediately — Razorpay will retry on non-200
+  // 1. Always acknowledge immediately — Razorpay retries on non-200
   res.status(200).json({ received: true });
 
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -555,15 +588,23 @@ const handleWebhook = async (req, res) => {
     return;
   }
 
-  // 2. Verify webhook signature
-  const signature = req.headers['x-razorpay-signature'];
+  // 2. Verify webhook signature — timing-safe HMAC comparison
+  const signature = req.headers['x-razorpay-signature'] || '';
   const expectedSig = crypto
     .createHmac('sha256', webhookSecret)
-    .update(req.body) // raw buffer from express.raw()
+    .update(req.body) // raw Buffer from express.raw() — must not be parsed
     .digest('hex');
 
-  if (expectedSig !== signature) {
-    logger.warn('Webhook signature mismatch. Rejecting event.');
+  // Length check first: timingSafeEqual throws on unequal-length buffers.
+  // A length mismatch is always invalid — reject immediately (no timing leak).
+  const expectedBuf  = Buffer.from(expectedSig, 'hex');
+  const receivedBuf  = Buffer.from(signature,   'hex');
+  const sigValid =
+    expectedBuf.length === receivedBuf.length &&
+    crypto.timingSafeEqual(expectedBuf, receivedBuf);
+
+  if (!sigValid) {
+    logger.warn('Webhook signature mismatch — request rejected (possible forgery or wrong secret).');
     return;
   }
 
@@ -646,9 +687,9 @@ const getAllOrders = async (req, res) => {
 
   if (status === 'needs_attention') {
     // Only flag orders that genuinely need admin intervention:
-    // Payment failed but order is still actionable (not already resolved as 'failed' or 'returned_refunded')
+    // Payment failed but order is still actionable (not already marked failed)
     query.$or = [
-      { 'payment.status': 'failed', orderStatus: { $nin: ['failed', 'returned_refunded'] } },
+      { 'payment.status': 'failed', orderStatus: { $ne: 'failed' } },
     ];
   } else {
     if (status) query.orderStatus = String(status);
@@ -691,23 +732,42 @@ const getAllOrders = async (req, res) => {
 // ─── Delivery Lifecycle State Machine ────────────────────────────────────────
 //
 // Valid forward transitions only:
-//   confirmed  → ready_to_ship | failed
-//   ready_to_ship → shipped | failed
-//   shipped    → delivered | failed | returned_refunded
-//   delivered  → returned_refunded (terminal otherwise)
-//   failed     → returned_refunded (terminal otherwise)
+//   pending_payment → (no admin transition — becomes 'confirmed' via webhook, or 'failed' via cleanup)
+//   confirmed   → ready_to_ship
+//   ready_to_ship → shipped
+//   shipped     → delivered
+//   delivered   → (terminal)
+//   failed      → (terminal — internal only, set by payment failure/cleanup)
 //
 const DELIVERY_TRANSITIONS = {
-  confirmed:         ['ready_to_ship', 'failed'],
-  ready_to_ship:     ['shipped', 'failed'],
-  shipped:           ['delivered', 'failed', 'returned_refunded'],
-  delivered:         [],                       // terminal — no further updates
-  returned_refunded: [],
-  failed:            ['returned_refunded'],
+  confirmed:     ['ready_to_ship'],
+  ready_to_ship: ['shipped'],
+  shipped:       ['delivered'],
+  delivered:     [],   // terminal
+  failed:        [],   // terminal — payment failure, no admin transition
 };
 
 // ─── Transition Helper ────────────────────────────────────────────────────────
-function applyOrderTransition(order, status, paymentStatus, estimatedDelivery) {
+/**
+ * applyOrderTransition(order, status, estimatedDelivery)
+ *
+ * Mutates `order` in-place for a status change. Caller must call order.save().
+ *
+ * WHAT IT DOES:
+ *   - Sets order.orderStatus to `status`
+ *   - On shipped/delivered: generates deliveryId (UUID) + sets dispatchedAt
+ *   - On delivered: sets deliveredAt timestamp
+ *   - Optionally updates estimatedDelivery
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO:
+ *   - Does NOT touch order.payment.status
+ *   - payment.status is only ever set by the Razorpay webhook handler
+ *     (POST /api/payments/verify). No admin UI call can mark an order "paid"
+ *     without a real Razorpay transaction. This is a security constraint.
+ *
+ * CALLER: updateOrderStatus (admin PUT /api/orders/:id/status)
+ */
+function applyOrderTransition(order, status, estimatedDelivery) {
   // ── Dispatch: auto-generate deliveryId + set internal tracking ref ───────────
   if (status === 'shipped' || status === 'delivered') {
     if (!order.deliveryId) {
@@ -722,22 +782,42 @@ function applyOrderTransition(order, status, paymentStatus, estimatedDelivery) {
   order.orderStatus = status;
   if (estimatedDelivery) order.estimatedDelivery = new Date(estimatedDelivery);
 
-  // ── Handle Payment State Updates ───────────────────────────────────────────
-  if (paymentStatus && ['pending', 'paid', 'failed', 'refunded'].includes(paymentStatus)) {
-    order.payment.status = paymentStatus;
-    if (paymentStatus === 'paid' && !order.payment.paidAt) {
-      order.payment.paidAt = new Date();
-    }
-  }
-
   if (status === 'delivered') order.deliveredAt = new Date();
 }
 
 // ─── Update Order Status (Admin) ─────────────────────────────────────────────
-// @route   PUT /api/orders/:id/status
-// @access  Admin
+/**
+ * updateOrderStatus
+ * @route  PUT /api/orders/:id/status
+ * @access Admin only
+ *
+ * Advances an order through the state machine: DELIVERY_TRANSITIONS defines
+ * all valid moves (e.g. confirmed → ready_to_ship → shipped → delivered).
+ *
+ * ACCEPTED BODY FIELDS:
+ *   status            {string}  required — target status
+ *   comment           {string}  optional — appended to trackingHistory
+ *   estimatedDelivery {string}  optional — ISO date, only meaningful on shipped
+ *
+ * REJECTED BODY FIELDS (silently ignored for security):
+ *   paymentStatus — admin cannot set payment.status via this endpoint.
+ *                   Only the Razorpay webhook (POST /api/payments/verify) may
+ *                   mark an order as "paid". This prevents fraudulent records.
+ *
+ * PRE-CONDITIONS FOR "delivered":
+ *   1. DP must have confirmed delivery first (order.dpConfirmedAt must exist).
+ *      Set by POST /api/delivery/orders/:id/confirm (delivery partner action).
+ *   2. order.payment.status must already be "paid" (set by Razorpay webhook).
+ *      Admin cannot pass paymentStatus in this same request to bypass this.
+ *
+ * SIDE EFFECTS:
+ *   - Appends entry to order.trackingHistory
+ *   - On shipped/delivered: upserts a snapshot into the Delivery collection
+ *   - On delivered: records deliveredByPartnerId/Name from dpConfirmedBy
+ */
 const updateOrderStatus = async (req, res) => {
-  const { status, comment, estimatedDelivery, paymentStatus } = req.body;
+  const { status, comment, estimatedDelivery } = req.body;
+  // NOTE: paymentStatus intentionally not destructured — see JSDoc above.
 
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
@@ -776,11 +856,11 @@ const updateOrderStatus = async (req, res) => {
   if (status === 'delivered' && !order.dpConfirmedAt) {
     return res.status(400).json({ success: false, message: 'Delivery partner must confirm delivery first before admin can mark as delivered.' });
   }
-  if (status === 'delivered' && order.payment.status !== 'paid' && paymentStatus !== 'paid') {
-    return res.status(400).json({ success: false, message: 'Payment needs to be done before marking as delivered.' });
+  if (status === 'delivered' && order.payment.status !== 'paid') {
+    return res.status(400).json({ success: false, message: 'Payment must be confirmed (via Razorpay webhook) before marking as delivered.' });
   }
 
-  applyOrderTransition(order, status, paymentStatus, estimatedDelivery);
+  applyOrderTransition(order, status, estimatedDelivery);
 
   // ── Store delivery partner ID when marked delivered ────────────────────────
   if (status === 'delivered' && !order.deliveredByPartnerId) {
@@ -837,7 +917,7 @@ const updateOrderStatus = async (req, res) => {
 // @access  Admin
 const getStats = async (req, res) => {
   // Only count orders with successful payment — exclude transient pending-payment records
-  const validOrderQuery = { 'payment.status': 'paid', orderStatus: { $nin: ['failed', 'returned_refunded'] } };
+  const validOrderQuery = { 'payment.status': 'paid', orderStatus: { $ne: 'failed' } };
 
   const [totalOrders, revenueAgg, statusCounts, recentOrders, pendingCount] = await Promise.all([
     Order.countDocuments(validOrderQuery),
@@ -862,7 +942,7 @@ const getStats = async (req, res) => {
     // Pending count for "needs attention" badge
     Order.countDocuments({
       'payment.status': 'failed',
-      orderStatus: { $nin: ['failed', 'returned_refunded'] },
+      orderStatus: { $ne: 'failed' },
     }),
   ]);
 
@@ -891,7 +971,7 @@ const getDeliveryStats = async (req, res) => {
   // ready_to_ship → ready_to_ship
   // shipped → shipped
   // delivered → delivered
-  const CUSTOM_DELIVERY_STATUSES = ['final_payment_paid', 'ready_to_ship', 'shipped', 'delivered'];
+  const CUSTOM_DELIVERY_STATUSES = ['advance_paid', 'confirmed', 'ready_to_ship', 'shipped', 'delivered'];
 
   const [
     orderCounts, orderOverdue,
@@ -912,7 +992,7 @@ const getDeliveryStats = async (req, res) => {
   const oc = orderCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
   const cc = customCounts.reduce((acc, s) => ({ ...acc, [s._id]: s.count }), {});
 
-  const confirmed     = (oc.confirmed     || 0) + (cc.final_payment_paid || 0);
+  const confirmed     = (oc.confirmed     || 0) + (cc.confirmed || 0) + (cc.advance_paid || 0);
   const ready_to_ship = (oc.ready_to_ship || 0) + (cc.ready_to_ship     || 0);
   const shipped       = (oc.shipped       || 0) + (cc.shipped            || 0);
   const delivered     = (oc.delivered     || 0) + (cc.delivered          || 0);

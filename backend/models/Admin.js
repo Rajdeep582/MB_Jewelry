@@ -37,9 +37,12 @@ const adminSchema = new mongoose.Schema(
       expiresAt: { type: Date, required: true },
       _id: false,
     }],
-    isEmailVerified: { type: Boolean, default: false },
-    emailOtpHash:    { type: String, select: false },
-    emailOtpExpiry:  { type: Date,   select: false },
+    isEmailVerified:   { type: Boolean, default: false },
+    emailOtpHash:      { type: String, select: false },
+    emailOtpExpiry:    { type: Date,   select: false },
+    // Brute-force guard: incremented on each wrong OTP attempt.
+    // Locked at >= 5. Reset to 0 when correct OTP accepted or new OTP issued.
+    emailOtpAttempts:  { type: Number, default: 0, select: false },
     adminId: { type: String, unique: true, sparse: true },
     auditLogs: [{
       action: String,
@@ -52,6 +55,11 @@ const adminSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/**
+ * pre('save') hook:
+ *   1. Auto-generates adminId (ADM-XXXXXXXX) on first save
+ *   2. Hashes password with bcrypt (cost 12) only if modified
+ */
 adminSchema.pre('save', async function (next) {
   if (!this.adminId) {
     this.adminId = `ADM-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -62,10 +70,16 @@ adminSchema.pre('save', async function (next) {
   next();
 });
 
+/**
+ * comparePassword — bcrypt comparison of candidate against stored hash.
+ */
 adminSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+/**
+ * isLocked — true if admin account is in 15-minute lockout (after 5 failed login attempts).
+ */
 adminSchema.methods.isLocked = function () {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 };

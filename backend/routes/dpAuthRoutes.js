@@ -1,3 +1,14 @@
+/**
+ * Delivery Partner Authentication Routes — /api/dp-auth
+ *
+ * POST /register  — register DP account (authLimiter); account inactive until admin approves
+ * POST /login     — DP login → access + refresh tokens (loginLimiter); blocked if not approved
+ * POST /logout    — invalidate current session (protect + deliveryOnly)
+ * POST /refresh   — rotate refresh token → new access token
+ * GET  /me        — return minimal DP identity (protect + deliveryOnly)
+ * GET  /profile   — return full DP profile (protect + deliveryOnly)
+ * PATCH /profile  — update DP profile fields (protect + deliveryOnly)
+ */
 const express = require('express');
 const router = express.Router();
 const { protect, deliveryOnly } = require('../middleware/auth');

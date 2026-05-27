@@ -20,7 +20,11 @@ const buildImageUrl = (file, folder = 'products') => {
   };
 };
 
-// Helper: build query filter object from request query params
+/**
+ * buildProductQuery — builds MongoDB filter from GET /api/products query params.
+ * Supports: search (text index), category, material, purity (comma-separated),
+ * featured flag, and price range (minPrice/maxPrice).
+ */
 function buildProductQuery(params) {
   const { search, category, material, purity, minPrice, maxPrice, featured } = params;
   const query = {};
@@ -44,7 +48,11 @@ function buildProductQuery(params) {
   return query;
 }
 
-// Helper: resolve sort option from query param
+/**
+ * buildSortOption — maps sort query string to a MongoDB sort object.
+ * Valid values: 'price-asc', 'price-desc', 'popular' (by sold count), 'rating'.
+ * Defaults to createdAt descending (newest first) for unknown/missing sort.
+ */
 function buildSortOption(sort) {
   const sortMap = {
     'price-asc':  { price: 1 },
@@ -55,9 +63,23 @@ function buildSortOption(sort) {
   return sortMap[sort] || { createdAt: -1 };
 }
 
-// @desc    Get all products with filters, sort, pagination
-// @route   GET /api/products
-// @access  Public
+/**
+ * getProducts
+ * @route  GET /api/products
+ * @access Public
+ *
+ * Returns paginated, filtered, sorted products. Dynamic product prices are
+ * re-computed on the fly using current GlobalPricing live rates (applyLivePrice).
+ *
+ * FLOW:
+ *   1. Build query from params → buildProductQuery
+ *   2. Build sort option → buildSortOption
+ *   3. Parallel fetch: products + total count + GlobalPricing entries
+ *   4. Apply live price to each dynamic product → applyLivePrice
+ *   5. Return enriched products + pagination meta
+ *
+ * NOTE: prices shown here reflect live market rates, not stored static prices.
+ */
 const getProducts = async (req, res) => {
   const { sort, page = 1, limit = 12 } = req.query;
 
@@ -94,9 +116,15 @@ const getProducts = async (req, res) => {
   });
 };
 
-// @desc    Get single product
-// @route   GET /api/products/:id
-// @access  Public
+/**
+ * getProduct
+ * @route  GET /api/products/:id
+ * @access Public
+ *
+ * Returns a single product by ID with its reviews and live-calculated price.
+ * Reviews are populated with user name + avatar, sorted newest first.
+ * Dynamic price applied via applyLivePrice using current GlobalPricing.
+ */
 const getProduct = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id)
@@ -118,8 +146,12 @@ const getProduct = async (req, res) => {
   res.json({ success: true, product: productObj });
 };
 
-// Helper: resolve dynamic price from GlobalPricing with gram/kg unit fallback.
-// Accepts optional per-product makingCharges and gst; falls back to global defaults.
+/**
+ * resolvePrice — fetches GlobalPricing and calculates final price for a dynamic product.
+ * Falls back from the requested unit to gram/kg if exact unit entry doesn't exist
+ * (via resolvePricingEntry). Per-product makingCharges/gst override global defaults.
+ * Returns { price, error } — price is null if no matching rate found.
+ */
 async function resolvePrice(material, purity, unit, weightValue, makingCharges, gst) {
   const wv = Number(weightValue);
   if (!wv || wv <= 0) {
@@ -157,7 +189,11 @@ async function resolvePrice(material, purity, unit, weightValue, makingCharges, 
   return { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, g), error: null };
 }
 
-// Helper: recalculate price if pricing-critical fields changed
+/**
+ * recalcPriceIfNeeded — called during product update.
+ * Recalculates dynamic price only if weightValue, material, purity, or unit changed.
+ * Returns resolvePrice result ({ price, error }) or null if no recalc needed.
+ */
 async function recalcPriceIfNeeded(product, updates) {
   const pricingChanged = updates.weightValue !== undefined ||
     updates.material !== undefined ||
@@ -176,7 +212,12 @@ async function recalcPriceIfNeeded(product, updates) {
   return resolvePrice(mat, pur, u, wv, mc, g);
 }
 
-// Helper: apply image updates to the updates object
+/**
+ * applyImageUpdates — mutates the `updates` object with new image data.
+ * If req.body.replaceImages = 'true': deletes all old Cloudinary images, replaces array.
+ * Otherwise: appends new images to existing array (no deletion).
+ * Cloudinary deletion failures are logged as warnings and not thrown — non-blocking.
+ */
 async function applyImageUpdates(product, updates, req) {
   if (!req.files || req.files.length === 0) return;
   const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
@@ -192,9 +233,16 @@ async function applyImageUpdates(product, updates, req) {
   }
 }
 
-// @desc    Create product
-// @route   POST /api/products
-// @access  Admin
+/**
+ * createProduct
+ * @route  POST /api/products
+ * @access Admin
+ *
+ * Creates a new product with dynamic pricing.
+ * Price is resolved from GlobalPricing using material/purity/unit/weightValue.
+ * Fails with 400 if no matching GlobalPricing rate exists — admin must set it first.
+ * All products created through this endpoint use pricingType = 'dynamic'.
+ */
 const createProduct = async (req, res) => {
   const { name, description, category, material, stock, isFeatured, tags, purity, weightValue, unit, makingCharges, gst } = req.body;
 
@@ -225,7 +273,7 @@ const createProduct = async (req, res) => {
     category, material,
     stock: Number(stock),
     isFeatured: isFeatured === 'true' || isFeatured === true,
-    tags: tags ? JSON.parse(tags) : [],
+    tags: (() => { try { return tags ? JSON.parse(tags) : []; } catch { return []; } })(),
     purity: String(purity),
     pricingType: 'dynamic',
     weightValue: Number(weightValue),
@@ -239,7 +287,13 @@ const createProduct = async (req, res) => {
   res.status(201).json({ success: true, product: populated });
 };
 
-// Helper to parse and typecast product updates
+/**
+ * parseProductUpdates — extracts and type-casts known product fields from request body.
+ * Only includes fields that are actually present in body (undefined-safe).
+ * Handles: name, description, stock (Number), category, material, purity,
+ * isFeatured (bool coercion), weightValue (Number|null), unit, makingCharges,
+ * gst, tags (JSON.parse if string).
+ */
 function parseProductUpdates(body) {
   const updates = {};
   if (body.name !== undefined) updates.name = body.name;
@@ -254,14 +308,24 @@ function parseProductUpdates(body) {
   if (body.makingCharges !== undefined) updates.makingCharges = Number(body.makingCharges);
   if (body.gst !== undefined) updates.gst = Number(body.gst);
   if (body.tags !== undefined) {
-    updates.tags = typeof body.tags === 'string' ? JSON.parse(body.tags) : body.tags;
+    if (typeof body.tags === 'string') {
+      try { updates.tags = JSON.parse(body.tags); } catch { updates.tags = []; }
+    } else {
+      updates.tags = body.tags;
+    }
   }
   return updates;
 }
 
-// @desc    Update product
-// @route   PUT /api/products/:id
-// @access  Admin
+/**
+ * updateProduct
+ * @route  PUT /api/products/:id
+ * @access Admin
+ *
+ * Updates product fields. If pricing-critical fields changed (weight/material/purity/unit),
+ * recalculates price from GlobalPricing → sets pricingType = 'dynamic', clears discountedPrice.
+ * Image updates handled by applyImageUpdates (replace or append mode).
+ */
 const updateProduct = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id);
@@ -311,9 +375,21 @@ const deleteProduct = async (req, res) => {
   res.json({ success: true, message: 'Product deleted successfully' });
 };
 
-// @desc    Add/Update rating for a product
-// @route   POST /api/products/:id/review
-// @access  Private
+/**
+ * addReview
+ * @route  POST /api/products/:id/review
+ * @access Private (authenticated user)
+ *
+ * Adds or updates the authenticated user's review for a product.
+ * Only verified purchasers (delivered + paid order containing this product) can review.
+ *
+ * FLOW:
+ *   1. Validate rating (1–5) and comment (min 10 chars)
+ *   2. Check Order collection for a delivered+paid order containing this product → isVerifiedPurchase
+ *   3. Non-purchasers → 403
+ *   4. findOneAndUpdate with upsert → one review per user per product
+ *   5. Recalculate product.averageRating + numReviews from all reviews → save
+ */
 const addReview = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const { rating, comment, title } = req.body;
@@ -370,7 +446,15 @@ const addReview = async (req, res) => {
   });
 };
 
-// GET /api/products/reviews/featured — 3 random 5-star reviews with user name
+/**
+ * getFeaturedReviews
+ * @route  GET /api/products/reviews/featured
+ * @access Public
+ *
+ * Returns 3 randomly sampled 5-star reviews with user name for the homepage testimonials.
+ * Uses MongoDB $sample aggregation — result is random on each request (no caching).
+ * Reviews with empty comment are excluded.
+ */
 const getFeaturedReviews = async (req, res) => {
   const reviews = await Review.aggregate([
     { $match: { rating: 5, comment: { $exists: true, $ne: '' } } },

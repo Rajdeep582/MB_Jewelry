@@ -7,13 +7,26 @@ const {
   generateAccessToken,
   generateRefreshToken,
   sendRefreshTokenCookie,
+  clearRefreshTokenCookie,
 } = require('../utils/generateToken');
 const logger = require('../utils/logger');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
-// @desc  Register delivery partner
-// @route POST /api/dp-auth/register
+/**
+ * registerDP
+ * @route  POST /api/dp-auth/register
+ * @access Public
+ *
+ * Creates a new DeliveryPartner account in pending state (isApproved = false).
+ * Account is not usable until admin calls assignDeliveryRole.
+ *
+ * CROSS-PORTAL CHECK:
+ *   If the email is already in User or Admin collection → 403 WRONG_PORTAL.
+ *   Each portal (user/admin/dp) is a separate collection — no shared accounts.
+ *
+ * DOES NOT send verification email — DP registration is approved manually by admin.
+ */
 const registerDP = async (req, res) => {
   const { name, email, password, phone, vehicleNumber, dispatchZone, gender, aadhaarNumber } = req.body;
   if (!name || !email || !password) {
@@ -59,8 +72,26 @@ const registerDP = async (req, res) => {
   }
 };
 
-// @desc  Login delivery partner
-// @route POST /api/dp-auth/login
+/**
+ * loginDP
+ * @route  POST /api/dp-auth/login
+ * @access Public
+ *
+ * Authenticates a delivery partner and issues access + refresh tokens.
+ *
+ * FLOW:
+ *   1. Find DP by email; check isLocked() (5 failed attempts → 15 min lockout)
+ *   2. Cross-portal check if not found → helpful WRONG_PORTAL message
+ *   3. comparePassword → on fail, increment loginAttempts; lock at >= 5
+ *   4. Guard: isActive=false → 403; isApproved=false → 403 (pending approval)
+ *   5. Generate accessToken (15 min) + refreshToken (7 days)
+ *   6. Prune expired sessions, push new session entry, save
+ *   7. Set refreshToken in httpOnly cookie; return accessToken + user payload
+ *
+ * SESSION MANAGEMENT:
+ *   Refresh tokens are stored hashed (SHA-256) in dp.sessions array.
+ *   refreshDP rotates the token on each silent refresh (single-use pattern).
+ */
 const loginDP = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -136,16 +167,29 @@ const loginDP = async (req, res) => {
   });
 };
 
-// @desc  Get current DP profile
-// @route GET /api/dp-auth/me
+/**
+ * getMeDP
+ * @route  GET /api/dp-auth/me
+ * @access Delivery partner (authenticated)
+ *
+ * Returns the full DP document for the authenticated user.
+ * Role field is injected as 'delivery' for frontend compatibility.
+ */
 const getMeDP = async (req, res) => {
   const dp = await DeliveryPartner.findById(req.user._id);
   if (!dp) return res.status(404).json({ success: false, message: 'Not found' });
   res.json({ success: true, user: { ...dp.toObject(), role: 'delivery' } });
 };
 
-// @desc  Logout delivery partner
-// @route POST /api/dp-auth/logout
+/**
+ * logoutDP
+ * @route  POST /api/dp-auth/logout
+ * @access Delivery partner (authenticated)
+ *
+ * Removes the current session's tokenHash from dp.sessions (server-side invalidation).
+ * Clears the refreshToken httpOnly cookie.
+ * After this, the refresh token is unusable even if an attacker has it.
+ */
 const logoutDP = async (req, res) => {
   const token = req.cookies.refreshToken;
   if (token) {
@@ -154,12 +198,27 @@ const logoutDP = async (req, res) => {
       $pull: { sessions: { tokenHash: hashed } },
     });
   }
-  res.clearCookie('refreshToken');
+  clearRefreshTokenCookie(res);
   res.json({ success: true, message: 'Logged out.' });
 };
 
-// @desc  Refresh access token for DP
-// @route POST /api/dp-auth/refresh
+/**
+ * refreshDP
+ * @route  POST /api/dp-auth/refresh
+ * @access Public (called silently by frontend when access token expires)
+ *
+ * Rotates the refresh token (single-use pattern):
+ *   1. Verify JWT signature on the refresh token
+ *   2. Confirm userType = 'delivery' (prevents user/admin tokens being used here)
+ *   3. Hash the incoming token → find matching session in dp.sessions
+ *   4. If not found → REPLAY ATTACK DETECTED → wipe all sessions → 401
+ *   5. Replace session entry with new tokenHash (old token invalidated)
+ *   6. Issue new accessToken + refreshToken, set cookie
+ *
+ * REPLAY ATTACK PROTECTION:
+ *   If an old (already-rotated) refresh token is used, it won't exist in sessions.
+ *   All sessions are wiped to force re-login. This covers token theft scenarios.
+ */
 const refreshDP = async (req, res) => {
   const token = req.cookies.refreshToken;
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
@@ -206,8 +265,15 @@ const refreshDP = async (req, res) => {
   res.json({ success: true, accessToken: newAccessToken });
 };
 
-// @desc  Get DP profile (includes aadhaar masked)
-// @route GET /api/dp-auth/profile
+/**
+ * getProfileDP
+ * @route  GET /api/dp-auth/profile
+ * @access Delivery partner (authenticated)
+ *
+ * Returns the DP's profile with Aadhaar number masked (all digits except last 4 → 'X').
+ * Aadhaar is stored in the DB but selected with +aadhaarNumber only here — not in getMeDP.
+ * The masking ensures the raw number is never exposed via API response.
+ */
 const getProfileDP = async (req, res) => {
   const dp = await require('../models/DeliveryPartner').findById(req.user._id).select('+aadhaarNumber');
   if (!dp) return res.status(404).json({ success: false, message: 'Not found' });
@@ -232,8 +298,16 @@ const getProfileDP = async (req, res) => {
   });
 };
 
-// @desc  Update DP profile fields
-// @route PATCH /api/dp-auth/profile
+/**
+ * updateProfileDP
+ * @route  PATCH /api/dp-auth/profile
+ * @access Delivery partner (authenticated)
+ *
+ * Updates mutable DP profile fields. Only applies fields present in req.body.
+ * Aadhaar number: spaces stripped before saving.
+ * Name: trimmed + capped at 50 chars.
+ * Email and isApproved cannot be changed through this endpoint.
+ */
 const updateProfileDP = async (req, res) => {
   const { name, phone, gender, vehicleNumber, dispatchZone, aadhaarNumber } = req.body;
   const dp = await require('../models/DeliveryPartner').findById(req.user._id).select('+aadhaarNumber');

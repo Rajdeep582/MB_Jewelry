@@ -1,7 +1,25 @@
 const Delivery = require('../models/Delivery');
 
-// @route   GET /api/admin/deliveries
-// @access  Admin
+/**
+ * getDeliveries
+ * @route  GET /api/admin/deliveries
+ * @access Admin
+ *
+ * Returns paginated Delivery snapshot records with optional filters.
+ *
+ * QUERY PARAMS:
+ *   status     'shipped' | 'delivered'    — filter by delivery status
+ *   sourceType 'order' | 'custom_order'   — filter by order type
+ *   page       number (default 1)
+ *   limit      number (default 50)
+ *
+ * SECURITY:
+ *   Filter values are matched against allowlists (VALID_STATUS, VALID_SOURCE_TYPE)
+ *   before being used in the DB query. Raw query strings are never passed to MongoDB
+ *   directly — prevents NoSQL injection via query operator strings.
+ *
+ * RETURNS: { deliveries, total, page, pages }
+ */
 const VALID_STATUS      = ['shipped', 'delivered'];
 const VALID_SOURCE_TYPE = ['order', 'custom_order'];
 
@@ -29,8 +47,14 @@ const getDeliveries = async (req, res) => {
   res.json({ success: true, deliveries, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
 };
 
-// @route   GET /api/admin/deliveries/stats
-// @access  Admin
+/**
+ * getDeliveryRecordStats
+ * @route  GET /api/admin/deliveries/stats
+ * @access Admin
+ *
+ * Returns aggregate counts of delivery records by status.
+ * Used for the admin dashboard summary cards (shipped count, delivered count, total).
+ */
 const getDeliveryRecordStats = async (req, res) => {
   const [shipped, delivered] = await Promise.all([
     Delivery.countDocuments({ status: 'shipped' }),

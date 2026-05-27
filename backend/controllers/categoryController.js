@@ -18,11 +18,27 @@ const buildFileUrl = (file, folder = 'categories') => {
   };
 };
 
+/**
+ * getCategories
+ * @route  GET /api/categories
+ * @access Public
+ *
+ * Returns all active categories sorted alphabetically by name.
+ * Only isActive=true categories are shown to the public.
+ */
 const getCategories = async (req, res) => {
   const categories = await Category.find({ isActive: true }).sort({ name: 1 });
   res.json({ success: true, categories });
 };
 
+/**
+ * getCategory
+ * @route  GET /api/categories/:id
+ * @access Public
+ *
+ * Returns a single category by ID. Returns regardless of isActive status
+ * (admin may need to view inactive categories too).
+ */
 const getCategory = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);
@@ -32,6 +48,15 @@ const getCategory = async (req, res) => {
   res.json({ success: true, category });
 };
 
+/**
+ * createCategory
+ * @route  POST /api/categories
+ * @access Admin
+ *
+ * Creates a new category. Optionally accepts an image upload via multipart.
+ * Image URL is built via buildFileUrl — supports both Cloudinary (http URL)
+ * and local disk (constructs URL from BACKEND_URL + /uploads/categories/).
+ */
 const createCategory = async (req, res) => {
   const { name, description } = req.body;
   const image = req.file ? buildFileUrl(req.file, 'categories') : { url: '', publicId: '' };
@@ -39,6 +64,16 @@ const createCategory = async (req, res) => {
   res.status(201).json({ success: true, category });
 };
 
+/**
+ * updateCategory
+ * @route  PUT /api/categories/:id
+ * @access Admin
+ *
+ * Updates a category's fields. If a new image is uploaded:
+ *   1. Deletes the old image from Cloudinary (if it has a publicId)
+ *   2. Replaces image with new buildFileUrl result
+ * Non-image fields are spread from req.body into the update.
+ */
 const updateCategory = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);
@@ -62,6 +97,15 @@ const updateCategory = async (req, res) => {
   res.json({ success: true, category: updated });
 };
 
+/**
+ * deleteCategory
+ * @route  DELETE /api/categories/:id
+ * @access Admin
+ *
+ * Hard-deletes a category and its Cloudinary image (if present).
+ * NOTE: does not cascade-delete products in this category.
+ * Products will retain their category reference (dangling ref) — handle upstream.
+ */
 const deleteCategory = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidId(res);
   const category = await Category.findById(req.params.id);

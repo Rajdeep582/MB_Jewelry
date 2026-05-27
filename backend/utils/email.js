@@ -1,11 +1,21 @@
 const nodemailer = require('nodemailer');
 const logger = require('./logger');
 
-// Escape user-controlled strings before inserting into HTML email body
+/**
+ * escapeHtml — sanitises user-controlled strings before embedding in HTML email bodies.
+ * Prevents XSS if a malicious name/email somehow reaches the mailer.
+ * Escapes: & < > " '
+ */
 const escapeHtml = (str) => String(str)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
 
+/**
+ * getTransporter — creates a fresh Nodemailer SMTP transport per call.
+ * Throws immediately if any required env var is missing (fail-fast on misconfiguration).
+ * TLS cert verification: strict in production, relaxed in dev (allows self-signed certs).
+ * DELIBERATELY uses `secure: false` — STARTTLS upgrade handled by nodemailer automatically.
+ */
 const getTransporter = () => {
   if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     throw new Error('CRITICAL: SMTP credentials missing from environment variables.');
@@ -24,10 +34,23 @@ const getTransporter = () => {
   });
 };
 
+/**
+ * getSender — returns the From address for outgoing mail.
+ * Falls back to 'support@mbjewelry.com' if SMTP_FROM_EMAIL env var not set.
+ */
 const getSender = () => {
   return process.env.SMTP_FROM_EMAIL ? process.env.SMTP_FROM_EMAIL.trim() : 'support@mbjewelry.com';
 };
 
+/**
+ * sendVerificationEmail — sends a 6-digit OTP to a user's email for account verification.
+ * OTP is valid for 10 minutes (enforced server-side via otpExpires field, not by this mailer).
+ * userName is HTML-escaped before embedding to prevent injection.
+ * @param {string} userEmail — recipient address
+ * @param {string} userName  — display name (HTML-escaped)
+ * @param {string} otpCode   — 6-digit OTP string
+ * @returns {Promise<true>} on success; throws on SMTP error
+ */
 const sendVerificationEmail = async (userEmail, userName, otpCode) => {
   try {
     const transporter = getTransporter();
@@ -61,6 +84,15 @@ const sendVerificationEmail = async (userEmail, userName, otpCode) => {
   }
 };
 
+/**
+ * sendPasswordResetEmail — sends a 6-digit OTP for password reset.
+ * Includes a security notice telling users to ignore if they didn't request a reset.
+ * OTP validity (10 min) enforced server-side via pwdResetOtpExpires field.
+ * @param {string} userEmail — recipient address
+ * @param {string} userName  — display name (HTML-escaped)
+ * @param {string} otpCode   — 6-digit OTP string
+ * @returns {Promise<true>} on success; throws on SMTP error
+ */
 const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
   try {
     const transporter = getTransporter();

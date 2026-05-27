@@ -1,3 +1,12 @@
+/**
+ * Category Routes — /api/categories
+ *
+ * GET    /        — list all categories (public)
+ * GET    /:id     — get category by ID (public)
+ * POST   /        — create category with optional image (protect + adminOnly, uploadCategoryImage)
+ * PUT    /:id     — update category with optional image (protect + adminOnly, uploadCategoryImage)
+ * DELETE /:id     — delete category (protect + adminOnly)
+ */
 const express = require('express');
 const router = express.Router();
 const {

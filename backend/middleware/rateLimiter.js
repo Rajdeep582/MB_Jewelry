@@ -1,6 +1,20 @@
 const rateLimit = require('express-rate-limit');
 const { logAlert } = require('../utils/alerting');
 
+/**
+ * Rate limiters — protect endpoints from brute force, credential stuffing, and spam.
+ *
+ * All limiters raise their caps drastically in NODE_ENV=test so limiter state doesn't
+ * bleed between test cases. The dedicated rate-limit test describe block re-tests at low caps.
+ *
+ * Exported limiters:
+ *   authLimiter    — generic auth routes (register, resend OTP) → 20 req / 15 min
+ *   loginLimiter   — login endpoints → 10 req / 15 min (strict, brute-force guard)
+ *   otpLimiter     — OTP send endpoints → 5 req / 1 hour (prevents email/SMS flooding)
+ *   paymentLimiter — order creation & payment verify → 10 req / 1 min (double-click + replay guard)
+ *
+ * Limiters fire logAlert() on trigger so security alerts are emitted to the alerting system.
+ */
 // In test mode we raise the caps drastically so limiter state doesn't bleed
 // between test cases. The rate-limit describe block tests them at low caps.
 const IS_TEST = process.env.NODE_ENV === 'test';

@@ -1,3 +1,31 @@
+/**
+ * Order Routes — /api/orders
+ *
+ * Payment Flow (3-phase, userOnly + paymentLimiter):
+ *   POST /create-payment   — create Razorpay order; returns razorpayOrderId for frontend checkout
+ *   POST /verify-payment   — verify Razorpay signature after payment; sets payment.status = 'paid'
+ *   POST /fail-payment     — mark payment as failed (called on Razorpay modal dismiss / timeout)
+ *   POST /:id/retry-verify — re-attempt verification for an existing unverified payment (userOnly)
+ *
+ * IMPORTANT: payment.status = 'paid' is ONLY set by verifyPayment (Razorpay signature verified).
+ * The webhook handler (webhookRoutes.js) also sets it independently as a safety net.
+ * No admin endpoint may set payment.status directly.
+ *
+ * User Routes (protect + userOnly):
+ *   GET  /my-orders     — paginated list of the authenticated user's orders
+ *
+ * Admin Routes (protect + adminOnly):
+ *   GET  /stats          — aggregate order stats
+ *   GET  /delivery-stats — delivery-focused aggregate stats
+ *   GET  /               — list all orders with filters
+ *   PUT  /:id/status     — advance order lifecycle status (does NOT accept paymentStatus in body)
+ *
+ * Shared:
+ *   GET  /:id            — get single order (ownership enforced inside controller for non-admins)
+ *
+ * NOTE: static paths (/stats, /delivery-stats, /my-orders) are registered BEFORE /:id
+ * so Express doesn't treat "stats" as an order ID.
+ */
 const express = require('express');
 const router = express.Router();
 const {

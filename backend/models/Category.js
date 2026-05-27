@@ -29,7 +29,12 @@ const categorySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Auto-generate slug from name
+/**
+ * pre('save') hook — auto-generates URL-safe slug from name whenever name changes.
+ * Rules: lowercase → spaces to hyphens → strip non-alphanumeric (keep hyphens).
+ * e.g. "Gold Coin" → "gold-coin"
+ * DELIBERATELY DOES NOT run if name unchanged (prevents unnecessary slug mutation on unrelated saves).
+ */
 categorySchema.pre('save', function (next) {
   if (this.isModified('name')) {
     this.slug = this.name.toLowerCase().replaceAll(/\s+/g, '-').replaceAll(/[^a-z0-9-]/g, '');

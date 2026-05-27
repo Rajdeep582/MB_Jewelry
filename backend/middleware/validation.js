@@ -1,7 +1,19 @@
 const Joi = require('joi');
 const xss = require('xss-clean/lib/xss').clean;
 
-// Custom sanitization wrapper
+/**
+ * validateSchema — Joi schema validation + XSS sanitization middleware factory.
+ *
+ * FLOW per request:
+ *   1. Sanitize req.body through xss-clean (strips script tags, event attrs)
+ *   2. Validate sanitized body against provided Joi schema
+ *      - abortEarly=false: collect ALL field errors, not just the first
+ *      - stripUnknown=true: remove fields not in schema (prevents mass assignment)
+ *   3. On error: return 400 with array of { field, message } objects
+ *   4. On success: replace req.body with Joi-coerced value (trimmed, lowercased, etc.)
+ *
+ * Usage: router.post('/route', validateSchema(schemas.register), controller)
+ */
 const validateSchema = (schema) => (req, res, next) => {
   // Sanitize req.body for XSS first
   if (req.body) {
@@ -31,18 +43,20 @@ const schemas = {
       'string.empty': 'Name is required',
       'string.max': 'Name cannot exceed 50 characters'
     }),
-    email: Joi.string().email().lowercase().trim().optional().messages({
-      'string.email': 'Valid email required'
+    email: Joi.string().email().lowercase().trim().required().messages({
+      'string.email': 'Valid email required',
+      'string.empty': 'Email is required',
     }),
-    mobile: Joi.string().trim().pattern(MOBILE_RE).optional().messages({
-      'string.pattern.base': 'Valid Indian mobile number required'
-    }),
-    otp: Joi.string().length(6).optional(),
+    // MOBILE_AUTH_DISABLED: restore below to re-enable mobile registration
+    // mobile: Joi.string().trim().pattern(MOBILE_RE).optional().messages({
+    //   'string.pattern.base': 'Valid Indian mobile number required'
+    // }),
+    // otp: Joi.string().length(6).optional(),
     password: Joi.string().min(8).pattern(PWD_RE).required().messages({
       'string.min': 'Password must be at least 8 characters',
       'string.pattern.base': 'Password must contain a letter, a number, and a special character'
     }),
-  }).or('email', 'mobile'), // at least one required
+  }), // MOBILE_AUTH_DISABLED: was .or('email', 'mobile')
 
   sendMobileOtp: Joi.object({
     mobile: Joi.string().trim().pattern(MOBILE_RE).required().messages({

@@ -7,6 +7,7 @@ const {
   generateAccessToken,
   generateRefreshToken,
   sendRefreshTokenCookie,
+  clearRefreshTokenCookie,
 } = require('../utils/generateToken');
 const crypto = require('node:crypto');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
@@ -19,9 +20,19 @@ const { OAuth2Client } = require('google-auth-library');
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+/**
+ * hashToken — SHA-256 digest of a token string.
+ * Refresh tokens are stored as SHA-256 hashes (never plaintext) in sessions[].tokenHash.
+ * Plaintext token sent in cookie → compared by hashing and comparing, never decrypting.
+ */
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-// Check if an email belongs to another portal — returns specific error message or null
+/**
+ * crossPortalCheck — checks if an email is registered in Admin or DeliveryPartner collections.
+ * Returns a user-facing error string if found, or null if safe to proceed.
+ * Called before: register (email), login (on failed user lookup), Google OAuth (on account creation).
+ * Prevents confusion where a user tries to log into the wrong portal with the same email.
+ */
 const crossPortalCheck = async (email) => {
   if (!email) return null;
   const e = email.toLowerCase().trim();
@@ -34,6 +45,10 @@ const crossPortalCheck = async (email) => {
   return null;
 };
 
+/**
+ * addAuditLog — appends an audit entry to user.auditLogs (in-memory mutation, caller saves).
+ * Capped at MAX_AUDIT_LOGS=50 — oldest entries dropped to prevent unbounded document growth.
+ */
 const MAX_AUDIT_LOGS = 50;
 const addAuditLog = (user, action, details, ipAddress) => {
   user.auditLogs ??= [];
@@ -44,10 +59,22 @@ const addAuditLog = (user, action, details, ipAddress) => {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** isMobile — returns true if val matches Indian mobile format (with or without +91 prefix). */
 const isMobile = (val) => /^(\+91[-\s]?)?[6-9]\d{9}$/.test(val?.replace(/[-\s]/g, '') || '');
+
+/** isEmail — lightweight email format check (full validation done via Joi schema in validation.js). */
 const isEmail  = (val) => /^\S+@\S+\.\S+$/.test(val || '');
+
+/** normaliseMobile — strips spaces/hyphens and +91/91 prefix → returns 10-digit mobile string. */
 const normaliseMobile = (m) => m.replace(/[-\s]/g, '').replace(/^\+91/, '').replace(/^91([6-9])/, '$1');
 
+/**
+ * buildSessionEntry — creates a new session object for sessions[] array.
+ * sessionId = crypto.randomUUID() (unique, non-sequential).
+ * tokenHash = SHA-256 of refresh token (plaintext never stored).
+ * expiresAt = now + 7 days (matches refresh token TTL).
+ */
 const buildSessionEntry = (req, refreshToken) => ({
   sessionId: crypto.randomUUID(),
   tokenHash: hashToken(refreshToken),
@@ -56,15 +83,27 @@ const buildSessionEntry = (req, refreshToken) => ({
   expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
 });
 
+/**
+ * pruneExpiredSessions — filters out sessions whose expiresAt has passed.
+ * Called before adding a new session to keep sessions[] clean.
+ */
 const pruneExpiredSessions = (sessions) =>
   (sessions || []).filter((s) => s.expiresAt > new Date());
 
+/**
+ * capSessions — limits concurrent sessions to MAX_SESSIONS (10).
+ * If at cap, the oldest session (index 0 after pruning) is dropped to make room.
+ */
 const MAX_SESSIONS = 10;
 const capSessions = (sessions) =>
   sessions.length >= MAX_SESSIONS ? sessions.slice(-(MAX_SESSIONS - 1)) : sessions;
 
-// @desc    Send OTP to mobile (pre-registration)
-// @route   POST /api/auth/send-mobile-otp
+/**
+ * sendMobileOtp — sends a 6-digit OTP to a mobile number before account creation.
+ * OTP stored as SHA-256 hash in PendingMobileOtp (TTL 10 min → auto-deleted by MongoDB).
+ * MOBILE_AUTH_DISABLED: this route is commented out in authRoutes.js and blocked in register().
+ * @route POST /api/auth/send-mobile-otp
+ */
 const sendMobileOtp = async (req, res) => {
   const { mobile } = req.body;
   if (!mobile || !isMobile(mobile)) {
@@ -87,13 +126,23 @@ const sendMobileOtp = async (req, res) => {
   res.json({ success: true, message: 'OTP sent to your mobile number.' });
 };
 
-// @desc    Register new user (email or mobile)
-// @route   POST /api/auth/register
+/**
+ * register — creates a new user account.
+ * Email path: creates user with isVerified=false, sends OTP via email.
+ *   → Uses MongoDB transaction: if email send fails, User.create is rolled back atomically.
+ * Mobile path: MOBILE_AUTH_DISABLED — blocked until re-enabled; code preserved for reference.
+ *   Mobile path would: verify pending OTP → create user with isVerified=true → delete PendingMobileOtp.
+ * Cross-portal check: rejects registration if email belongs to Admin or DeliveryPartner collection.
+ * @route POST /api/auth/register
+ */
 const register = async (req, res) => {
   const { name, email, mobile, password, otp } = req.body;
   const ipAddress = req.ip;
 
   // ── Mobile registration ──────────────────────────────────────────────────
+  // MOBILE_AUTH_DISABLED: remove next line to re-enable
+  if (mobile) return res.status(400).json({ success: false, message: 'Mobile registration is currently disabled.' });
+  /* MOBILE_AUTH_DISABLED_CODE_START
   if (mobile) {
     const norm = normaliseMobile(mobile);
 
@@ -125,8 +174,10 @@ const register = async (req, res) => {
     }
   }
 
+  MOBILE_AUTH_DISABLED_CODE_END */
+
   // ── Email registration ───────────────────────────────────────────────────
-  if (!email) return res.status(400).json({ success: false, message: 'Email or mobile required.' });
+  if (!email) return res.status(400).json({ success: false, message: 'Email required.' });
 
   const existingUser = await User.findOne({ email });
   if (existingUser) return res.status(400).json({ success: false, message: 'Email already registered' });
@@ -163,8 +214,12 @@ const register = async (req, res) => {
   }
 };
 
-// @desc    Verify OTP
-// @route   POST /api/auth/verify-otp
+/**
+ * verifyOTP — validates the 6-digit registration OTP and activates the account.
+ * Brute-force guard: otpAttempts >= 5 → 403 (must request new OTP via register again).
+ * On success: isVerified=true, OTP fields cleared, otpAttempts reset to 0.
+ * @route POST /api/auth/verify-otp
+ */
 const verifyOTP = async (req, res) => {
   const { email, otp } = req.body;
   const user = await User.findOne({ email }).select('+otpHash +otpExpires +otpAttempts');
@@ -192,15 +247,28 @@ const verifyOTP = async (req, res) => {
   res.json({ success: true, message: 'Email verified successfully! You can now log in.' });
 };
 
-// @desc    Login user (email or mobile)
-// @route   POST /api/auth/login
+/**
+ * login — authenticates a user and issues access + refresh tokens.
+ * identifier = email (mobile disabled; original query commented inline for easy re-enable).
+ * FLOW:
+ *   1. Look up user by email
+ *   2. If not found and email-like: crossPortalCheck → helpful redirect message
+ *   3. isLocked() check (15-min lockout after 5 failed attempts)
+ *   4. bcrypt.compare(password, hash)
+ *   5. On wrong password: increment loginAttempts → lock at 5
+ *   6. isVerified + isActive guard
+ *   7. Issue tokens, prune + cap sessions, set refresh cookie
+ * @route POST /api/auth/login
+ */
 const login = async (req, res) => {
   const { identifier, password } = req.body; // identifier = email or mobile
   const ipAddress = req.ip;
 
-  const query = isMobile(identifier)
-    ? { mobile: normaliseMobile(identifier) }
-    : { email: identifier?.toLowerCase()?.trim() };
+  // MOBILE_AUTH_DISABLED: restore original query to re-enable mobile login
+  // const query = isMobile(identifier)
+  //   ? { mobile: normaliseMobile(identifier) }
+  //   : { email: identifier?.toLowerCase()?.trim() };
+  const query = { email: identifier?.toLowerCase()?.trim() };
 
   const user = await User.findOne(query).select('+password +sessions');
 
@@ -245,8 +313,22 @@ const login = async (req, res) => {
   res.json({ success: true, accessToken, user: { _id: user._id, name: user.name, email: user.email, mobile: user.mobile, role: 'user', avatar: user.avatar } });
 };
 
-// @desc    Refresh Token & Handle Replay Attacks
-// @route   POST /api/auth/refresh
+/**
+ * refreshToken — rotates the refresh token and issues a new access token.
+ * Handles three user types from one endpoint (user / admin / delivery).
+ * Delivery tokens are rejected here → must use /dp-auth/refresh.
+ *
+ * TOKEN REPLAY ATTACK DETECTION:
+ *   - Old refresh token hash looked up in sessions[].
+ *   - Not found = token was already rotated (replay of stolen old token).
+ *   - Response: wipe ALL sessions (nuclear option) + 401.
+ *   - Legitimate user must re-login. Attacker's stolen token is also now worthless.
+ *
+ * ROTATION:
+ *   - Found = overwrite sessions[sessionIndex] with new tokenHash in-place.
+ *   - New refresh token set in httpOnly cookie; new access token returned in body.
+ * @route POST /api/auth/refresh
+ */
 const refreshToken = async (req, res) => {
   const token = req.cookies.refreshToken;
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
@@ -323,8 +405,12 @@ const refreshToken = async (req, res) => {
   res.json({ success: true, accessToken: newAccessToken });
 };
 
-// @desc    Logout
-// @route   POST /api/auth/logout
+/**
+ * logout — removes the current session from sessions[] and clears the refresh cookie.
+ * Operates on either User or Admin collection based on req.userType (set by protect middleware).
+ * $pull removes only the session matching the current refresh token hash — other sessions unaffected.
+ * @route POST /api/auth/logout
+ */
 const logout = async (req, res) => {
   const token = req.cookies.refreshToken;
   if (token) {
@@ -332,11 +418,17 @@ const logout = async (req, res) => {
     const Model = req.userType === 'admin' ? Admin : User;
     await Model.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
   }
-  res.clearCookie('refreshToken');
+  clearRefreshTokenCookie(res);
   res.json({ success: true, message: 'Logged out.' });
 };
 
-// @desc    Get Me
+/**
+ * getMe — returns the authenticated user's profile.
+ * req.user populated by protect middleware from the correct model (User/Admin/DeliveryPartner).
+ * Role field is always normalised: admin → 'admin', delivery → 'delivery', else → 'user'.
+ * This ensures role consistency even if User.role field contains a stale value.
+ * @route GET /api/auth/me
+ */
 const getMe = async (req, res) => {
   // req.user is already populated by protect middleware from the correct model
   // Convert to plain object and ensure role is included (Mongoose toJSON may strip dynamically added fields)
@@ -349,6 +441,18 @@ const getMe = async (req, res) => {
 
 // ─── OAuth Flows ───────────────────────────────────────────────────────────────
 
+/**
+ * handleOAuthLogin — shared OAuth login/register handler (used by googleLogin).
+ * FLOW:
+ *   1. extractionLogic() → verify provider token, extract { email, name, avatar, providerId, emailVerified }
+ *   2. email required + emailVerified required (provider-verified emails only)
+ *   3. Find existing user by email:
+ *      - Found: link new provider if not already linked
+ *      - Not found: crossPortalCheck → create new verified user
+ *   4. isActive guard
+ *   5. Issue tokens, update sessions, set refresh cookie
+ * Throws → caught here and returns 401 (no stack trace to client).
+ */
 const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
   try {
     const { email, name, avatar, providerId, emailVerified } = await extractionLogic();
@@ -393,6 +497,11 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
   }
 };
 
+/**
+ * googleLogin — verifies a Google ID token (from frontend Google Sign-In) and delegates to handleOAuthLogin.
+ * idToken verified against GOOGLE_CLIENT_ID → payload.email_verified must be true.
+ * @route POST /api/auth/google
+ */
 const googleLogin = (req, res) => handleOAuthLogin(req, res, 'google', async () => {
   const ticket = await googleClient.verifyIdToken({ idToken: req.body.idToken, audience: process.env.GOOGLE_CLIENT_ID });
   const p = ticket.getPayload();
@@ -401,6 +510,13 @@ const googleLogin = (req, res) => handleOAuthLogin(req, res, 'google', async () 
 
 // ─── Forgot Password / OTP Flows ───────────────────────────────────────────────
 
+/**
+ * forgotPassword — sends a 6-digit password reset OTP to the user's email.
+ * Returns GENERIC_OK regardless of whether the email exists (prevents user enumeration).
+ * OAuth-only accounts (no password field) get a specific error — these can't reset passwords.
+ * OTP valid 10 min; previous OTP attempts reset to 0 on each new OTP issue.
+ * @route POST /api/auth/forgot-password
+ */
 const forgotPassword = async (req, res) => {
   const { email } = req.body;
   const GENERIC_OK = { success: true, message: 'If email is known, a reset code was sent.' };
@@ -421,7 +537,17 @@ const forgotPassword = async (req, res) => {
   res.json(GENERIC_OK);
 };
 
-// Strict return of a true single-use database Token instead of JWT
+/**
+ * verifyResetOtp — validates the password reset OTP and issues a single-use reset token.
+ * Brute-force guard: pwdResetOtpAttempts >= 5 → 403, OTP nuked.
+ * On success:
+ *   - OTP fields cleared immediately (can't be reused)
+ *   - 32-byte crypto-random reset token generated → stored as SHA-256 hash in DB
+ *   - Plaintext reset token returned to client (used in resetPassword call)
+ *   - Reset token valid for 15 minutes
+ * DELIBERATELY NOT a JWT — stored hash in DB so it can be burned after single use.
+ * @route POST /api/auth/verify-reset-otp
+ */
 const verifyResetOtp = async (req, res) => {
   const { email, otp } = req.body;
   const user = await User.findOne({ email }).select('+pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts +pwdResetTokenHash +pwdResetTokenExpires');
@@ -453,6 +579,14 @@ const verifyResetOtp = async (req, res) => {
   res.json({ success: true, message: 'Verified. Promptly set a new password.', resetToken: explicitToken });
 };
 
+/**
+ * resetPassword — sets a new password using the reset token from verifyResetOtp.
+ * Validates reset token not expired + hash matches stored hash.
+ * Rejects if new password is same as current password (bcrypt compare).
+ * On success: password updated, ALL sessions wiped (global logout), reset token burned (single use).
+ * loginAttempts + lockUntil also cleared (unlocks accounts that were locked).
+ * @route POST /api/auth/reset-password
+ */
 const resetPassword = async (req, res) => {
   const { email, resetToken, newPassword } = req.body;
   const user = await User.findOne({ email }).select('+password +sessions +pwdResetTokenHash +pwdResetTokenExpires');
@@ -483,6 +617,13 @@ const resetPassword = async (req, res) => {
 
 // ─── Device Management Endpoints ───────────────────────────────────────────────
 
+/**
+ * getActiveSessions — returns all non-expired sessions for the authenticated user.
+ * Expired sessions pruned from DB on each call (lazy cleanup — no separate cron needed).
+ * isCurrent: true = the session matching the caller's current refresh token cookie.
+ * tokenHash is NOT returned to client (only sessionId for revocation).
+ * @route GET /api/auth/sessions
+ */
 const getActiveSessions = async (req, res) => {
   const user = await User.findById(req.user._id).select('+sessions');
   const now = new Date();
@@ -502,6 +643,12 @@ const getActiveSessions = async (req, res) => {
   res.json({ success: true, sessions: sessionsSafe });
 };
 
+/**
+ * revokeSession — removes a specific session by sessionId (targeted device sign-out).
+ * 404 if sessionId not found (protects against guessing other users' session IDs — ownership
+ * enforced implicitly since we only query req.user._id's sessions).
+ * @route DELETE /api/auth/sessions/:id
+ */
 const revokeSession = async (req, res) => {
   const targetSessionId = req.params.id;
   const user = await User.findById(req.user._id).select('+sessions');
@@ -514,17 +661,28 @@ const revokeSession = async (req, res) => {
   res.json({ success: true, message: 'Device revoked.' });
 };
 
+/**
+ * revokeAllSessions — wipes all sessions (global sign-out from all devices).
+ * Also clears the refresh cookie for the current device.
+ * User must re-login on every device after this.
+ * @route DELETE /api/auth/sessions/all
+ */
 const revokeAllSessions = async (req, res) => {
   const user = await User.findById(req.user._id).select('+sessions');
   user.sessions = [];
   addAuditLog(user, 'GLOBAL_SIGNOUT', 'Revoked all active sessions manually', req.ip);
   await user.save({ validateBeforeSave: false });
-  res.clearCookie('refreshToken');
+  clearRefreshTokenCookie(res);
   res.json({ success: true, message: 'All active sessions globally revoked.' });
 };
 
-// @desc    Add/update email for mobile-registered user (sends verification email)
-// @route   POST /api/auth/add-email  (protected)
+/**
+ * addEmail — allows mobile-registered users to attach an email to their account.
+ * Sets isVerified=false until OTP confirmed (enforces email ownership).
+ * If email already belongs to another user → 400 (not exposed as "exists" — just "in use").
+ * OTP valid 10 min; must call verifyEmailOtp next to finalise.
+ * @route POST /api/auth/add-email (protect)
+ */
 const addEmail = async (req, res) => {
   const { email } = req.body;
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
@@ -549,8 +707,12 @@ const addEmail = async (req, res) => {
   res.json({ success: true, message: 'Verification email sent. Enter the code to confirm.' });
 };
 
-// @desc    Verify email OTP (for add-email flow on profile)
-// @route   POST /api/auth/verify-email-otp (protected)
+/**
+ * verifyEmailOtp — confirms the OTP sent by addEmail and marks email as verified.
+ * Brute-force guard: otpAttempts >= 5 → 403.
+ * On success: isVerified=true, OTP fields cleared, EMAIL_ADDED audit log written.
+ * @route POST /api/auth/verify-email-otp (protect)
+ */
 const verifyEmailOtp = async (req, res) => {
   const { otp } = req.body;
   const user = await User.findById(req.user._id).select('+otpHash +otpExpires +otpAttempts');

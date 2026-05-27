@@ -1,3 +1,17 @@
+/**
+ * Admin Authentication Routes — /api/admin-auth
+ *
+ * POST /register              — register new admin account (authLimiter)
+ * POST /verify-email          — submit email OTP to activate account (otpLimiter, 5-attempt lockout)
+ * POST /resend-otp            — resend verification OTP (otpLimiter)
+ * POST /login                 — admin login → access + refresh tokens (loginLimiter)
+ * POST /logout                — invalidate current session (protect + adminOnly)
+ * POST /refresh               — rotate refresh token → new access token
+ * GET  /me                    — return current admin profile (protect + adminOnly)
+ * PATCH /profile/name         — update display name (protect + adminOnly)
+ * POST /profile/request-email-change — send OTP to new email address (protect + adminOnly)
+ * POST /profile/confirm-email-change — verify OTP and commit new email (protect + adminOnly, 5-attempt lockout)
+ */
 const express = require('express');
 const router = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');

@@ -8,8 +8,12 @@ const DB_OPTIONS = {
   minPoolSize: 2,                  // keep at least 2 warm
 };
 
-// Deduplicate GlobalPricing collection — keeps newest per material/purity/unit
-// Runs at startup; after cleanup unique index applies correctly, preventing future dupes
+/**
+ * deduplicateGlobalPricing — one-time startup cleanup for GlobalPricing collection.
+ * Keeps the newest entry per material/purity/unit combination, deletes older duplicates.
+ * Then calls syncIndexes() to ensure the unique compound index is in place.
+ * Runs silently on every startup — safe if no duplicates exist (no-op).
+ */
 const deduplicateGlobalPricing = async () => {
   try {
     const GlobalPricing = require('../models/GlobalPricing');
@@ -35,7 +39,11 @@ const deduplicateGlobalPricing = async () => {
   }
 };
 
-// One-time category seeder — idempotent, skips existing
+/**
+ * seedCategories — inserts default categories on first startup if they don't exist.
+ * Idempotent: checks by slug before creating → safe to run on every boot.
+ * Add new default categories to the seeds array as the product catalogue grows.
+ */
 const seedCategories = async () => {
   try {
     const Category = require('../models/Category');
@@ -55,6 +63,13 @@ const seedCategories = async () => {
   }
 };
 
+/**
+ * connectDB — connects to MongoDB Atlas with retry logic.
+ * Retries up to 5 times with a 5-second delay between attempts.
+ * On final failure, calls process.exit(1) to crash the server intentionally
+ * (better to fail loudly than run with no DB).
+ * After connect: runs deduplicateGlobalPricing + seedCategories.
+ */
 const connectDB = async () => {
   let retries = 5;
   while (retries) {

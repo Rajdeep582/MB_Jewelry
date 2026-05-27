@@ -23,7 +23,8 @@ const cartSchema = new mongoose.Schema({
   items: [cartItemSchema],
 }, { timestamps: true });
 
-// Expire abandoned carts after 90 days of inactivity
+// TTL index: MongoDB auto-deletes carts with no activity for 90 days (7,776,000 s).
+// `updatedAt` is refreshed on every cart save → only truly abandoned carts expire.
 cartSchema.index({ updatedAt: 1 }, { expireAfterSeconds: 7776000 });
 
 module.exports = mongoose.model('Cart', cartSchema);

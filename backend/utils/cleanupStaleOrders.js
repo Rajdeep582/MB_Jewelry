@@ -4,9 +4,19 @@ const Transaction = require('../models/Transaction');
 const logger = require('./logger');
 
 /**
- * Mark orders/payments stuck in pending for longer than maxAgeMinutes as failed.
- * Covers: regular Orders, CustomOrder advance payments, CustomOrder final payments.
- * Safe to run repeatedly.
+ * cleanupStaleOrders — marks stale pending orders as failed.
+ * Runs on a schedule (server.js setInterval) to clean up orders where the user
+ * initiated payment but never completed it (browser closed, Razorpay timed out, etc.)
+ *
+ * COVERS:
+ *   - Regular Orders: payment.status='pending', not failed/delivered, older than cutoff
+ *   - CustomOrder advance payments: advancePayment.status='pending', status='quoted'
+ *   - CustomOrder final payments: finalPayment.status='pending', status='shipped'
+ *
+ * Each section is wrapped in its own try/catch so a failure in one doesn't
+ * prevent the other two from running.
+ *
+ * @param {number} maxAgeMinutes — age threshold (default 30 min)
  */
 async function cleanupStaleOrders(maxAgeMinutes = 30) {
   const cutoff = new Date(Date.now() - maxAgeMinutes * 60 * 1000);
@@ -16,7 +26,7 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
   try {
     const staleOrders = await Order.find({
       'payment.status': 'pending',
-      orderStatus: { $ne: 'failed' },
+      orderStatus: { $nin: ['failed', 'delivered'] },
       createdAt: { $lt: cutoff },
     }).select('_id').lean();
 

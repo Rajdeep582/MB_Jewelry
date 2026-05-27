@@ -1,3 +1,31 @@
+/**
+ * Admin Management Routes — /api/admin
+ * All routes require protect + adminOnly middleware.
+ *
+ * Global Pricing:
+ *   GET    /global-pricing          — list all material/purity pricing entries
+ *   POST   /global-pricing          — create or update a pricing entry
+ *   DELETE /global-pricing/:id      — delete a pricing entry
+ *   POST   /bulk-pricing            — bulk-update livePrice across multiple entries
+ *   POST   /bulk-discounts          — bulk-apply discount % to static-priced products
+ *   POST   /resync-dynamic-prices   — recompute and store price for all dynamic products
+ *
+ * Delivery Partners:
+ *   GET    /delivery-partners                  — list all delivery partners
+ *   GET    /delivery-partners/users            — list users eligible for delivery role
+ *   POST   /delivery-partners/:id/assign-role  — promote user to delivery partner
+ *   POST   /delivery-partners/:id/remove-role  — revoke delivery partner role
+ *   DELETE /delivery-partners/:id              — delete delivery partner account
+ *
+ * Orders:
+ *   PATCH  /orders/:id/assign-delivery        — assign a DP to an order
+ *   POST   /orders/:id/admin-confirm-delivery  — admin confirms DP-reported delivery
+ *                                               (requires dpConfirmedAt set by DP first)
+ *
+ * Delivery Records (snapshot collection):
+ *   GET    /deliveries               — list all delivery records
+ *   GET    /deliveries/stats         — aggregate delivery stats
+ */
 const express = require('express');
 const router = express.Router();
 const {

@@ -11,8 +11,24 @@ const modelMap = {
 };
 
 /**
- * Protect routes — verify JWT, load correct model based on userType.
- * Attaches req.user and req.userType.
+ * protect — JWT authentication middleware. Must be applied before any role guard.
+ *
+ * FLOW:
+ *   1. Extract Bearer token from Authorization header
+ *   2. jwt.verify → decode id + userType (user | admin | delivery)
+ *   3. Look up entity in the correct model via modelMap[userType]
+ *   4. Guard: entity missing → 401; isActive=false → 403
+ *   5. Attach req.user (entity) and req.userType (decoded type)
+ *   6. Inject req.user.role for frontend compatibility
+ *
+ * TOKEN EXPIRY:
+ *   Returns { code: 'TOKEN_EXPIRED' } — frontend uses this to silently refresh
+ *   via POST /api/auth/refresh (or dp/admin equivalent) before retrying.
+ *
+ * ROLE GUARDS (use after protect):
+ *   adminOnly    → req.userType === 'admin'
+ *   deliveryOnly → req.userType === 'delivery'
+ *   userOnly     → req.userType === 'user'
  */
 const protect = async (req, res, next) => {
   let token;

@@ -88,9 +88,7 @@ const customOrderSchema = new mongoose.Schema(
         'pending',
         'quoted',
         'advance_paid',
-        'in_production',
-        'final_payment_pending',
-        'final_payment_paid',
+        'confirmed',
         'ready_to_ship',
         'shipped',
         'delivered',
@@ -158,7 +156,11 @@ customOrderSchema.index({ 'advancePayment.status': 1, status: 1, createdAt: 1 })
 customOrderSchema.index({ 'finalPayment.status': 1,   status: 1, createdAt: 1 }); // stale final cleanup
 
 
-// Auto-generate customOrderId
+/**
+ * pre('save') hook — auto-generates customOrderId (CUS-XXXXXXXX) on first save.
+ * Uses crypto.randomBytes for collision-resistant ID — not sequential (no enumeration risk).
+ * DELIBERATELY DOES NOT re-generate if already set (idempotent across retries).
+ */
 customOrderSchema.pre('save', function (next) {
   if (!this.customOrderId) {
     this.customOrderId = `CUS-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;

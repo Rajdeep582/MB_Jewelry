@@ -57,8 +57,8 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     orderStatus: {
       type: String,
-      enum: ['confirmed', 'in_production', 'ready_to_ship', 'shipped', 'delivered', 'returned_refunded', 'failed'],
-      default: 'confirmed',
+      enum: ['pending_payment', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'failed'],
+      default: 'pending_payment',
     },
     deliveredAt: { type: Date },
     dispatchedAt: { type: Date },                                         // set automatically when shipped
@@ -91,7 +91,15 @@ orderSchema.index({ orderStatus: 1 });
 orderSchema.index({ createdAt: -1 });
 
 
-// Auto-generate orderId
+/**
+ * pre('save') hook — auto-generates orderId (ORD-XXXXXXXX) on first save.
+ * Uses crypto.randomBytes → collision-resistant, not sequential (no enumeration risk).
+ * DELIBERATELY DOES NOT re-generate if already set (safe across retried saves).
+ *
+ * IMPORTANT: payment.status is intentionally NOT mutated here.
+ * Only the Razorpay webhook handler (POST /api/payments/verify) may set payment.status = 'paid'.
+ * The order status endpoint (PATCH /api/orders/:id/status) does NOT accept paymentStatus in body.
+ */
 orderSchema.pre('save', function (next) {
   if (!this.orderId) {
     this.orderId = `ORD-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;

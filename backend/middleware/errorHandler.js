@@ -1,7 +1,19 @@
 const logger = require('../utils/logger');
 
 /**
- * Centralized error handler middleware
+ * errorHandler — Express centralized error handler (must have 4 params).
+ * Registered LAST in server.js after all routes.
+ *
+ * NORMALIZES:
+ *   - Mongoose ValidationError  → 400 with joined field messages
+ *   - Mongoose duplicate key (11000) → 400 with field name in message
+ *   - Mongoose CastError (bad ObjectId) → 400
+ *   - JsonWebTokenError / TokenExpiredError → 401
+ *   - All others → 500 (statusCode from err.statusCode if set)
+ *
+ * In development: includes stack trace in response.
+ * In production: stack trace is stripped.
+ * All errors are logged with correlationId for tracing.
  */
 const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;

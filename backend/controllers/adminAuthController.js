@@ -7,6 +7,7 @@ const {
   generateAccessToken,
   generateRefreshToken,
   sendRefreshTokenCookie,
+  clearRefreshTokenCookie,
 } = require('../utils/generateToken');
 const { sendVerificationEmail } = require('../utils/email');
 const logger = require('../utils/logger');
@@ -104,6 +105,23 @@ const register = async (req, res) => {
 };
 
 // POST /api/admin-auth/verify-email
+/**
+ * verifyEmail
+ * @route  POST /api/admin-auth/verify-email
+ * @access Public
+ *
+ * Verifies the 6-digit OTP sent to the admin's email on registration.
+ *
+ * BRUTE-FORCE PROTECTION:
+ *   emailOtpAttempts is incremented on every wrong OTP.
+ *   At >= 5 wrong attempts the endpoint locks and returns 403 regardless of
+ *   whether the OTP is correct. Admin must request a new OTP (resend-otp),
+ *   which resets the counter. This mirrors the user OTP lockout exactly.
+ *
+ * ON SUCCESS: clears emailOtpHash, emailOtpExpiry, emailOtpAttempts → sets isEmailVerified = true.
+ * ON WRONG OTP: increments emailOtpAttempts, saves, returns 400.
+ * ON LOCKED (>= 5): returns 403 without touching the OTP hash.
+ */
 const verifyEmail = async (req, res) => {
   const { email, otp } = req.body;
   if (!email || !otp) {
@@ -111,7 +129,7 @@ const verifyEmail = async (req, res) => {
   }
 
   const admin = await Admin.findOne({ email: email.toLowerCase() })
-    .select('+emailOtpHash +emailOtpExpiry');
+    .select('+emailOtpHash +emailOtpExpiry +emailOtpAttempts');
 
   if (!admin) {
     return res.status(404).json({ success: false, message: 'Account not found.' });
@@ -122,16 +140,32 @@ const verifyEmail = async (req, res) => {
   if (!admin.emailOtpHash || !admin.emailOtpExpiry) {
     return res.status(400).json({ success: false, message: 'No pending OTP. Request a new one.' });
   }
+
+  // Lockout check — must come before expiry so attacker can't bypass by getting a fresh OTP
+  if (admin.emailOtpAttempts >= 5) {
+    return res.status(403).json({ success: false, message: 'Too many incorrect attempts. Request a new OTP.' });
+  }
+
   if (admin.emailOtpExpiry < new Date()) {
     return res.status(400).json({ success: false, message: 'OTP expired. Request a new one.' });
   }
+
   if (hashToken(otp.trim()) !== admin.emailOtpHash) {
-    return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+    admin.emailOtpAttempts += 1;
+    await admin.save({ validateBeforeSave: false });
+    const remaining = 5 - admin.emailOtpAttempts;
+    return res.status(400).json({
+      success: false,
+      message: remaining > 0
+        ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+        : 'Too many incorrect attempts. Request a new OTP.',
+    });
   }
 
-  admin.isEmailVerified = true;
-  admin.emailOtpHash    = undefined;
-  admin.emailOtpExpiry  = undefined;
+  admin.isEmailVerified    = true;
+  admin.emailOtpHash       = undefined;
+  admin.emailOtpExpiry     = undefined;
+  admin.emailOtpAttempts   = 0;
   await admin.save({ validateBeforeSave: false });
 
   logger.info(`Admin email verified: ${admin.email}`);
@@ -144,19 +178,24 @@ const resendOtp = async (req, res) => {
   if (!email) return res.status(400).json({ success: false, message: 'Email required.' });
 
   const admin = await Admin.findOne({ email: email.toLowerCase() })
-    .select('+emailOtpHash +emailOtpExpiry');
+    .select('+emailOtpHash +emailOtpExpiry +emailOtpAttempts');
 
   if (!admin) return res.status(404).json({ success: false, message: 'Account not found.' });
   if (admin.isEmailVerified) return res.status(400).json({ success: false, message: 'Already verified.' });
 
-  // Throttle: don't resend if existing OTP still has > 8 min remaining
-  if (admin.emailOtpExpiry && admin.emailOtpExpiry > new Date(Date.now() + 2 * 60 * 1000)) {
+  // Throttle: don't resend if existing OTP still has > 8 min remaining AND not yet locked out
+  if (
+    admin.emailOtpAttempts < 5 &&
+    admin.emailOtpExpiry &&
+    admin.emailOtpExpiry > new Date(Date.now() + 2 * 60 * 1000)
+  ) {
     return res.status(429).json({ success: false, message: 'OTP recently sent. Wait before requesting again.' });
   }
 
   const { otp, hash } = generateOtp();
-  admin.emailOtpHash   = hash;
-  admin.emailOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+  admin.emailOtpHash      = hash;
+  admin.emailOtpExpiry    = new Date(Date.now() + 10 * 60 * 1000);
+  admin.emailOtpAttempts  = 0; // reset lockout counter — new OTP = fresh window
   await admin.save({ validateBeforeSave: false });
 
   await sendVerificationEmail(admin.email, admin.name, otp);
@@ -229,7 +268,7 @@ const logout = async (req, res) => {
     const hashed = hashToken(token);
     await Admin.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
   }
-  res.clearCookie('refreshToken');
+  clearRefreshTokenCookie(res);
   res.json({ success: true, message: 'Logged out.' });
 };
 
@@ -311,11 +350,12 @@ const requestEmailChange = async (req, res) => {
   const email = newEmail.toLowerCase().trim();
   const existing = await Admin.findOne({ email });
   if (existing) return res.status(400).json({ success: false, message: 'Email already in use.' });
-  const admin = await Admin.findById(req.user._id).select('+emailOtpHash +emailOtpExpiry');
+  const admin = await Admin.findById(req.user._id).select('+emailOtpHash +emailOtpExpiry +emailOtpAttempts');
   if (!admin) return res.status(404).json({ success: false, message: 'Admin not found.' });
   const { otp, hash } = generateOtp();
-  admin.emailOtpHash   = hash;
-  admin.emailOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+  admin.emailOtpHash      = hash;
+  admin.emailOtpExpiry    = new Date(Date.now() + 10 * 60 * 1000);
+  admin.emailOtpAttempts  = 0; // reset lockout — new OTP window
   admin.set('pendingEmail', email, { strict: false });
   await admin.save({ validateBeforeSave: false });
   try {
@@ -328,23 +368,50 @@ const requestEmailChange = async (req, res) => {
 };
 
 // POST /api/admin-auth/profile/confirm-email-change
+/**
+ * confirmEmailChange
+ * @route  POST /api/admin-auth/profile/confirm-email-change
+ * @access Admin (authenticated)
+ *
+ * Confirms the OTP sent to the new email address during an email-change request.
+ * Same 5-attempt lockout as verifyEmail — prevents brute-force on email-change OTP.
+ * emailOtpAttempts reset to 0 on success.
+ */
 const confirmEmailChange = async (req, res) => {
   const { otp } = req.body;
   if (!otp) return res.status(400).json({ success: false, message: 'OTP required.' });
-  const admin = await Admin.findById(req.user._id).select('+emailOtpHash +emailOtpExpiry +pendingEmail');
+
+  const admin = await Admin.findById(req.user._id)
+    .select('+emailOtpHash +emailOtpExpiry +emailOtpAttempts +pendingEmail');
   if (!admin) return res.status(404).json({ success: false, message: 'Admin not found.' });
   if (!admin.emailOtpHash || !admin.emailOtpExpiry || !admin.get('pendingEmail')) {
     return res.status(400).json({ success: false, message: 'No pending email change. Request again.' });
   }
+
+  if (admin.emailOtpAttempts >= 5) {
+    return res.status(403).json({ success: false, message: 'Too many incorrect attempts. Request a new OTP.' });
+  }
+
   if (admin.emailOtpExpiry < new Date()) {
     return res.status(400).json({ success: false, message: 'OTP expired. Request again.' });
   }
+
   if (hashToken(otp) !== admin.emailOtpHash) {
-    return res.status(400).json({ success: false, message: 'Invalid OTP.' });
+    admin.emailOtpAttempts += 1;
+    await admin.save({ validateBeforeSave: false });
+    const remaining = 5 - admin.emailOtpAttempts;
+    return res.status(400).json({
+      success: false,
+      message: remaining > 0
+        ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+        : 'Too many incorrect attempts. Request a new OTP.',
+    });
   }
-  admin.email          = admin.get('pendingEmail');
-  admin.emailOtpHash   = undefined;
-  admin.emailOtpExpiry = undefined;
+
+  admin.email              = admin.get('pendingEmail');
+  admin.emailOtpHash       = undefined;
+  admin.emailOtpExpiry     = undefined;
+  admin.emailOtpAttempts   = 0;
   admin.set('pendingEmail', undefined);
   await admin.save({ validateBeforeSave: false });
   res.json({ success: true, message: 'Email updated successfully.', user: adminPayload(admin) });

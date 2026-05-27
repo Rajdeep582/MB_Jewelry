@@ -21,6 +21,12 @@ const getProfile = async (req, res) => {
 };
 
 // ─── Profile Update Helper ───────────────────────────────────────────────────
+/**
+ * getProfileUpdates — compares req.body fields against current user values.
+ * Only returns fields that actually changed (avoids unnecessary DB writes).
+ * Fields: name, phone, gender, preferences, alternateEmail.
+ * alternateEmail is lowercased + trimmed; empty string becomes null.
+ */
 function getProfileUpdates(currentUser, body) {
   const { name, phone, alternateEmail, preferences, gender } = body;
   const updateData = {};
@@ -52,9 +58,14 @@ function getProfileUpdates(currentUser, body) {
   return updateData;
 }
 
-// @desc    Update user profile
-// @route   PUT /api/users/profile
-// @access  Private
+/**
+ * updateProfile
+ * @route  PUT /api/users/profile
+ * @access Private (authenticated user)
+ *
+ * Updates the authenticated user's profile. Skips DB write if nothing changed.
+ * Returns full user object with sessions + populated wishlist either way.
+ */
 const updateProfile = async (req, res) => {
   const currentUser = await User.findById(req.user._id);
   if (!currentUser) {
@@ -82,11 +93,20 @@ const updateProfile = async (req, res) => {
 };
 
 
-// @desc    Add address
-// @route   POST /api/users/addresses
-// @access  Private
+/**
+ * addAddress
+ * @route  POST /api/users/addresses
+ * @access Private
+ *
+ * Pushes a new address to user.addresses array.
+ * If isDefault=true: clears isDefault on all existing addresses first → only one default at a time.
+ */
 const addAddress = async (req, res) => {
   const user = await User.findById(req.user._id);
+
+  if (user.addresses.length >= 10) {
+    return res.status(400).json({ success: false, message: 'Address limit reached (max 10). Remove an existing address first.' });
+  }
 
   if (req.body.isDefault) {
     user.addresses.forEach((a) => (a.isDefault = false));
@@ -97,9 +117,15 @@ const addAddress = async (req, res) => {
   res.status(201).json({ success: true, addresses: user.addresses });
 };
 
-// @desc    Update address
-// @route   PUT /api/users/addresses/:addressId
-// @access  Private
+/**
+ * updateAddress
+ * @route  PUT /api/users/addresses/:addressId
+ * @access Private
+ *
+ * Updates a specific address by Mongoose subdocument ID.
+ * If isDefault=true: clears all other isDefault flags first.
+ * Uses Object.assign to merge only supplied fields.
+ */
 const updateAddress = async (req, res) => {
   const user = await User.findById(req.user._id);
   const address = user.addresses.id(req.params.addressId);
@@ -171,9 +197,15 @@ const updateUserRole = async (req, res) => {
   return res.status(403).json({ success: false, message: 'Role assignment not permitted on user accounts.' });
 };
 
-// @desc    Toggle item in wishlist
-// @route   POST /api/users/wishlist/:productId
-// @access  Private
+/**
+ * toggleWishlist
+ * @route  POST /api/users/wishlist/:productId
+ * @access Private
+ *
+ * Adds or removes a product from user.wishlist (toggle behavior).
+ * If productId already in wishlist → removes it. If not → adds it.
+ * Returns full user with populated wishlist after the update.
+ */
 const toggleWishlist = async (req, res) => {
   const productId = req.params.productId;
   if (!mongoose.isValidObjectId(productId)) {
@@ -185,6 +217,9 @@ const toggleWishlist = async (req, res) => {
 
   const index = user.wishlist.findIndex(id => id.toString() === productId);
   if (index === -1) {
+    if (user.wishlist.length >= 100) {
+      return res.status(400).json({ success: false, message: 'Wishlist limit reached (max 100). Remove items first.' });
+    }
     user.wishlist.push(productId);
   } else {
     user.wishlist.splice(index, 1);

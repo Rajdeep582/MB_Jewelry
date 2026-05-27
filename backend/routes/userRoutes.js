@@ -1,3 +1,23 @@
+/**
+ * User Routes — /api/users
+ *
+ * Profile (protect — all authenticated roles):
+ *   GET  /profile   — returns profile; admin/DP roles get a restricted view
+ *   PUT  /profile   — update user profile fields (userOnly, validates via schemas.profileUpdate)
+ *
+ * Wishlist (protect + userOnly):
+ *   POST /wishlist/:productId  — toggle product in/out of wishlist
+ *
+ * Addresses (protect + userOnly):
+ *   POST   /addresses              — add new address (validates via schemas.address)
+ *   PUT    /addresses/:addressId   — update existing address (validates via schemas.address)
+ *   DELETE /addresses/:addressId   — remove address
+ *
+ * Admin Only (protect + adminOnly):
+ *   GET  /                    — list all users with filters
+ *   PUT  /:id/toggle-active   — activate / deactivate a user account
+ *   PUT  /:id/role            — change user role (user / admin / delivery)
+ */
 const express = require('express');
 const router = express.Router();
 const {

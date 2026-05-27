@@ -4,6 +4,28 @@ const multerCloudinary = require('multer-storage-cloudinary'); // v2: factory fn
 const path = require('node:path');
 const fs = require('node:fs');
 
+/**
+ * upload.js — Multer middleware configured for image uploads.
+ *
+ * STORAGE STRATEGY (auto-detected at startup):
+ *   Cloudinary (production) — if CLOUDINARY_API_KEY is set and not placeholder:
+ *     → Images uploaded directly to Cloudinary CDN via multer-storage-cloudinary
+ *     → Transformed on upload (resize, quality=auto) to save storage
+ *     → file.path = Cloudinary URL, file.filename = public_id
+ *
+ *   Local disk (development fallback) — if Cloudinary not configured:
+ *     → Files saved to /uploads/<folder>/ inside backend
+ *     → Filenames randomized (timestamp + hex) — never trust originalname (path traversal risk)
+ *     → file.path = disk path, file.filename = random name
+ *
+ * EXPORTED MIDDLEWARE:
+ *   uploadProductImages   — up to 6 images, max 5 MB each (field: 'images')
+ *   uploadCategoryImage   — single image, max 2 MB (field: 'image')
+ *   uploadCustomOrderImages — up to 4 reference images, max 10 MB each (field: 'referenceImages')
+ *
+ * FILE FILTER:
+ *   JPEG, PNG, WebP only — MIME type checked (not extension) to prevent spoofing.
+ */
 const hasCloudinaryAuth = process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_KEY !== 'YOUR_API_KEY';
 
 // Ensure uploads folder exists gracefully

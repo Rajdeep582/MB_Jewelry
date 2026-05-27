@@ -114,6 +114,12 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/**
+ * pre('save') hook:
+ *   1. Auto-generates userId (USR-XXXXXXXX) on first save if not set
+ *   2. Hashes password with bcrypt (cost factor 12) only if password was modified
+ *      — skips hashing if only other fields changed (performance)
+ */
 userSchema.pre('save', async function (next) {
   if (!this.userId) {
     this.userId = `USR-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -124,7 +130,10 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// Compare passwords
+/**
+ * comparePassword — verifies a plaintext candidate against the stored bcrypt hash.
+ * Returns true if match, false otherwise.
+ */
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
@@ -134,7 +143,11 @@ userSchema.index({ role: 1 });
 userSchema.index({ otpHash: 1 });
 
 
-// Instance method to check if user is locked out
+/**
+ * isLocked — returns true if the account is in a temporary login lockout.
+ * Lockout is set after 5 failed login attempts (lockUntil = now + 15 min).
+ * Automatically unlocks when lockUntil passes (no manual reset needed).
+ */
 userSchema.methods.isLocked = function () {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 };

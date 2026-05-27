@@ -1,5 +1,42 @@
+/**
+ * server.js — Express application entry point for M&B Jewelry API.
+ *
+ * MIDDLEWARE STACK ORDER (order is intentional — do not reorder without understanding):
+ *   1. Sentry init           — must happen before any other requires that touch Express
+ *   2. correlationId         — attach x-correlation-id to every request for distributed tracing
+ *   3. Webhook route         — mounted with express.raw() BEFORE express.json() so raw body
+ *                              bytes are preserved for Razorpay HMAC-SHA256 verification
+ *   4. helmet                — sets secure HTTP headers (CSP, HSTS, etc.)
+ *   5. cors                  — restrict origins to CLIENT_URL; allow credentials (cookies)
+ *   6. Global rate limiter   — 1500 req/15 min per IP (raised to 10000 in test env)
+ *   7. express.json()        — parse JSON request bodies (10 MB limit)
+ *   8. cookieParser          — parse Cookie header (needed for refresh token + CSRF)
+ *   9. mongoSanitize         — strip $ and . from request data → blocks NoSQL injection
+ *  10. xss-clean             — sanitise HTML tags in request data → blocks XSS via body
+ *  11. attachCsrfCookie      — sets XSRF-TOKEN cookie on every response
+ *  12. validateCsrf          — checks x-csrf-token header on all /api mutation requests
+ *  13. morgan (HTTP logging) — skipped in test env
+ *  14. Route handlers        — /api/* routes
+ *  15. Sentry error handler  — must come before custom error handler
+ *  16. notFound              — 404 for unmatched routes
+ *  17. errorHandler          — global error normaliser (maps Mongoose/JWT/Multer errors)
+ *
+ * Admin routes (/api/admin, /api/admin-auth) additionally pass through adminIpWhitelist.
+ *
+ * Background jobs (non-test env only):
+ *   cleanupStaleOrders() — runs on startup + every 15 minutes via setInterval
+ *
+ * NODE_ENV=test: DB connection, stale-order cleanup, morgan, rate limiter all bypassed
+ * so test files get a clean, deterministic server import.
+ */
 require('dotenv').config();
 require('express-async-errors');
+
+// ─── Critical env var assertions (fail fast before any server init) ───────────
+// Skipped in test env — test files set their own values before requiring server.
+if (process.env.NODE_ENV !== 'test' && !process.env.ADMIN_REGISTER_SECRET) {
+  throw new Error('ADMIN_REGISTER_SECRET is not set. Admin registration would be open to anyone. Set this env var before starting the server.');
+}
 
 // ─── Sentry (must init before all other requires that touch Express) ──────────
 const Sentry = require('@sentry/node');
@@ -139,7 +176,6 @@ app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'M&B Jewelry API is running',
-    env: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
   });
 });

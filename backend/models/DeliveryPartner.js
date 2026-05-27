@@ -62,6 +62,12 @@ const deliveryPartnerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/**
+ * pre('save') hook:
+ *   1. Auto-generates partnerId (DP-XXXXXXXX) on first save if not set
+ *   2. Hashes password with bcrypt (cost 12) only if modified
+ *      → skips re-hash if only other fields changed (e.g. profile update)
+ */
 deliveryPartnerSchema.pre('save', async function (next) {
   if (!this.partnerId) {
     this.partnerId = `DP-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -72,10 +78,19 @@ deliveryPartnerSchema.pre('save', async function (next) {
   next();
 });
 
+/**
+ * comparePassword — bcrypt comparison of candidate against stored hash.
+ * `password` field is `select: false` → caller must explicitly select it
+ * before calling this method (e.g. `.select('+password')`).
+ */
 deliveryPartnerSchema.methods.comparePassword = async function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+/**
+ * isLocked — true if DP account is in 15-minute lockout (after 5 failed login attempts).
+ * Automatically resolves when lockUntil passes — no manual reset needed.
+ */
 deliveryPartnerSchema.methods.isLocked = function () {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 };
