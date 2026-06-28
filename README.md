@@ -1,21 +1,21 @@
 <div align="center">
-  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewellers Banner" style="border-radius: 12px; margin-bottom: 20px;" width="100%" />
+  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewellers Banner" width="100%" />
 
-  <h1 align="center">💎 M&B Jewellers</h1>
-  <h3 align="center">The Premier Luxury E-Commerce Experience</h3>
+  <h1>💎 M&B Jewellers</h1>
+  <h3><i>The Premier Luxury E-Commerce Experience</i></h3>
   
-  <p align="center">
+  <p>
     A production-ready, full-stack jewelry e-commerce platform crafted with elegance. Built exclusively to provide a high-end UI design, robust backend security, and seamless user experiences for a premium jewelry business.
   </p>
 
-  <p align="center">
+  <p>
     <a href="#about-us">About Us</a> •
     <a href="#features">Features</a> •
     <a href="#architecture">Architecture</a> •
     <a href="#getting-started">Getting Started</a>
   </p>
 
-  <p align="center">
+  <p>
     <img src="https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB" />
     <img src="https://img.shields.io/badge/Express.js-%23404d59.svg?style=for-the-badge&logo=express&logoColor=%2361DAFB" alt="Express.js" />
     <img src="https://img.shields.io/badge/React-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB" alt="React" />
@@ -26,27 +26,39 @@
 
 ---
 
-## 📖 About Us
+<div id="about-us"></div>
 
-**M&B Jewellers** represents the pinnacle of fine craftsmanship and luxury. This digital storefront was designed to mirror the elegance of our physical boutiques, providing clients with an immersive, secure, and personalized shopping experience from the comfort of their homes. 
-
-From exquisite engagement rings to timeless necklaces, our platform ensures that every piece of jewelry is showcased with the highest fidelity, offering a seamless journey from discovery to delivery.
+<table>
+  <tr>
+    <td valign="top" width="60%">
+      <h2>📖 About Us</h2>
+      <p><b>M&B Jewellers</b> represents the pinnacle of fine craftsmanship and luxury. This digital storefront was designed to mirror the elegance of our physical boutiques, providing clients with an immersive, secure, and personalized shopping experience from the comfort of their homes.</p>
+      <p>From exquisite engagement rings to timeless necklaces, our platform ensures that every piece of jewelry is showcased with the highest fidelity, offering a seamless journey from discovery to delivery. We blend traditional craftsmanship with modern digital convenience to bring you the finest collection of luxury jewelry.</p>
+    </td>
+    <td valign="center" width="40%">
+      <img src="https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=500&q=80" alt="Jewelry Display" width="100%" />
+    </td>
+  </tr>
+</table>
 
 ---
+
+<div id="features"></div>
 
 ## ✨ Features
 
 | Feature | Description |
 | :--- | :--- |
 | 🎨 **Premium User Interface** | Responsive, luxury dark theme enriched with gold accents and beautiful Framer Motion micro-animations. |
-| 🛍️ **Complete Shopping Journey** | Featuring a persistent shopping cart (Redux) and sophisticated product filtering/sorting for rings, necklaces, and earrings. |
-| 🔐 **Secure OTP Authentication** | 6-digit email verification flow for secure registration, preventing bot signups and ensuring valid user emails. |
-| 📦 **Standardized Order Lifecycle**| A rigorous, sequential fulfillment pipeline (`confirmed` → `in_production` → `ready_to_ship` → `shipped` → `delivered`) with detailed audit trails. |
-| 💳 **Seamless Payments** | Integrated Razorpay payment gateway handling with secure backend HMAC signature verification. |
-| 🖼️ **Media Optimization** | Cloudinary integration for scalable, high-quality jewelry image uploads, auto-cropping, and CDN delivery. |
-| 🛡️ **Admin Control Center** | Production-grade management of jewelry catalogs, users, and standardized order tracking. |
+| 🛍️ **Complete Shopping Journey** | Featuring a persistent shopping cart (Redux) and sophisticated product filtering/sorting. |
+| 🔐 **Secure OTP Authentication** | 6-digit email verification flow for secure registration, preventing bot signups. |
+| 📦 **Standardized Order Lifecycle** | Rigorous, sequential fulfillment pipeline with detailed audit trails for every order. |
+| 💳 **Seamless Payments** | Integrated Razorpay gateway handling with secure backend HMAC signature verification. |
+| 🖼️ **Media Optimization** | Cloudinary integration for scalable, high-quality jewelry image uploads & CDN delivery. |
 
 ---
+
+<div id="architecture"></div>
 
 ## 🏗️ Architecture & Stack
 
@@ -68,6 +80,8 @@ The application follows a standard Client-Server Architecture using the MERN sta
 
 ---
 
+<div id="getting-started"></div>
+
 ## 🚀 Getting Started
 
 ### Prerequisites
@@ -79,12 +93,12 @@ Ensure you have the following installed before starting:
 
 ### 1. Installation
 
-Clone the repository and install necessary dependencies for both ends:
+Clone the repository using the full GitHub link provided below, and install necessary dependencies for both ends:
 
 ```bash
 # Clone the repository
-git clone https://github.com/MyJewellShop/mbjewellers.git
-cd mbjewellers
+git clone https://github.com/Rajdeep582/MB_Jewelry.git
+cd MB_Jewelry
 
 # Install Backend dependencies
 cd backend && npm install
@@ -135,6 +149,15 @@ The client will be available on `http://localhost:5173`, and the API on `http://
 
 ---
 
+## 🔗 Repository Reference
+
+This project is open-source and hosted on GitHub. You can view, fork, or contribute to the full repository here:
+
+**Full GitHub Repository URL:**  
+👉 [https://github.com/Rajdeep582/MB_Jewelry.git](https://github.com/Rajdeep582/MB_Jewelry.git)
+
+---
+
 ## 🔒 Security Posture
 
 - **Refined JWT Handling:** Short-lived access tokens passed in-memory, paired with long-lived HTTP-only refresh tokens attached to secure sockets.
@@ -144,5 +167,7 @@ The client will be available on `http://localhost:5173`, and the API on `http://
 ---
 
 <div align="center">
-  <i>Providing pristine luxury e-commerce experiences for the finest jewelry.</i>
+  <i>Providing pristine luxury e-commerce experiences for the finest jewelry.</i><br/>
+  <br/>
+  <b>M&B Jewellers © 2026</b>
 </div>
