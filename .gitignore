@@ -58,7 +58,7 @@ backend/uploads/custom_orders/*
 !backend/uploads/custom_orders/.gitkeep
 backend/uploads/
 
-# Testing Files and Folders (Outputs)
+# Testing Files and Folders (Outputs & Source)
 test-results/
 playwright-report/
 playwright/.cache/
@@ -68,3 +68,7 @@ frontend/test-results/
 coverage/
 .nyc_output/
 backend/run_tests.js
+backend/tests/
+frontend/e2e/
+backend/startTestServer.js
+frontend/playwright.config.js
