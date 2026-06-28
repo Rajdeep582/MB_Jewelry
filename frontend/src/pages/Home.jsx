@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import imgPendant from '../assets/pendant.png';
 import imgRing from '../assets/ring.png';
@@ -7,7 +7,8 @@ import imgNecklace from '../assets/necklage.png';
 import imgCraftsman from '../assets/craftmen logo.png';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import { FiArrowRight, FiStar, FiShield, FiTruck, FiRefreshCw } from 'react-icons/fi';
+import { FiArrowRight, FiStar, FiShield, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+import { GiCutDiamond } from 'react-icons/gi';
 import { fetchFeaturedProducts, selectFeaturedProducts } from '../store/productSlice';
 // import { reviewService } from '../services/services'; // DB fetch: reviewService.getFeatured()
 import ProductCard from '../components/shop/ProductCard';
@@ -15,10 +16,9 @@ import { ProductCardSkeleton } from '../components/common/Skeletons';
 import ScrollReveal from '../components/common/ScrollReveal';
 
 const features = [
-  { icon: FiShield, title: 'Certified Authentic', desc: 'All jewelry certified by independent gemologists' },
-  { icon: FiTruck, title: 'Free Shipping', desc: 'Complimentary shipping on orders above ₹999' },
-  { icon: FiRefreshCw, title: '30-Day Returns', desc: 'Hassle-free returns within 30 days' },
-  { icon: FiStar, title: 'Premium Quality', desc: 'Crafted with the finest materials worldwide' },
+  { icon: FiShield, title: 'Certified Authentic', desc: 'Every piece certified by independent gemologists' },
+  { icon: GiCutDiamond, title: 'Fine Artistry', desc: 'Hand-finished by master craftsmen, detail by detail' },
+  { icon: FiStar, title: 'Premium Quality', desc: 'Crafted with the finest materials sourced worldwide' },
 ];
 
 
@@ -46,6 +46,34 @@ export default function Home() {
   const dispatch = useDispatch();
   const featured = useSelector(selectFeaturedProducts);
   const loading = featured.length === 0;
+  const railRef = useRef(null);
+
+  // Auto-advance the featured rail sideways every 4s; loop back at the end.
+  useEffect(() => {
+    if (loading) return;
+    const rail = railRef.current;
+    if (!rail) return;
+    const id = setInterval(() => {
+      const card = rail.querySelector('[data-card]');
+      const step = card ? card.offsetWidth + 40 : rail.clientWidth; // ~gap-10
+      const maxScroll = rail.scrollWidth - rail.clientWidth;
+      if (rail.scrollLeft >= maxScroll - 4) {
+        rail.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        rail.scrollBy({ left: step, behavior: 'smooth' });
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [loading, featured.length]);
+
+  // Manual prev/next — one card per click
+  const scrollRail = (dir) => {
+    const rail = railRef.current;
+    if (!rail) return;
+    const card = rail.querySelector('[data-card]');
+    const step = card ? card.offsetWidth + 40 : rail.clientWidth;
+    rail.scrollBy({ left: dir * step, behavior: 'smooth' });
+  };
 
   useEffect(() => {
     document.title = 'M.B. JEWELLERS — Luxury Fine Jewelry';
@@ -62,15 +90,22 @@ export default function Home() {
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute inset-0 hero-gradient" />
           <div
-            className="absolute inset-0 bg-cover bg-center opacity-20"
-            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=1920&q=80')" }}
+            className="absolute inset-0 bg-cover bg-center opacity-20 scale-105"
+            style={{ backgroundImage: "url('https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=1920&q=80')", willChange: 'transform' }}
           />
+          {/* Depth — warm gold glow from upper centre */}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(58% 48% at 50% 16%, rgba(212,175,55,0.16) 0%, rgba(212,175,55,0.04) 38%, transparent 70%)' }} />
+          {/* Depth — cinematic edge vignette */}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(120% 100% at 50% 38%, transparent 42%, rgba(0,0,0,0.55) 100%)' }} />
+          {/* Depth — bottom fade into page */}
+          <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ background: 'linear-gradient(to top, #0D0D0D 0%, transparent 100%)' }} />
           {/* Decorative rings */}
-          <div className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full border border-gold-500/10 animate-spin-slow" />
+          <div className="absolute top-1/4 right-1/4 w-96 h-96 rounded-full border border-gold-500/10 animate-spin-slow" style={{ willChange: 'transform' }} />
           <div className="absolute top-1/3 right-1/3 w-64 h-64 rounded-full border border-gold-500/5" />
+          <div className="absolute -top-10 left-1/4 w-72 h-72 rounded-full border border-gold-500/[0.04] animate-spin-slow" style={{ animationDirection: 'reverse', willChange: 'transform' }} />
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-5xl mx-auto">
+        <div className="relative z-10 text-center px-4 max-w-5xl mx-auto mt-4 md:mt-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -95,17 +130,16 @@ export default function Home() {
               </Link>
             </div>
           </motion.div>
-
-
         </div>
+
       </section>
 
       {/* ─── Features ───────────────────────────────────────────── */}
-      <section className="py-16 border-y border-white/5">
+      <section id="features" className="pt-36 md:pt-44 pb-24 md:pb-28 border-b border-white/5 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 max-w-5xl mx-auto">
             {features.map((item, i) => {
-               
+
               const SIcon = item.icon;
               return (
               <motion.div
@@ -114,14 +148,18 @@ export default function Home() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
-                className="flex flex-col items-center text-center gap-3 p-4"
+                className="flex flex-col items-center text-center gap-4 p-4"
               >
-                <div className="w-12 h-12 rounded-full glass-gold flex items-center justify-center">
-                  <SIcon size={20} className="text-gold-500" />
+                {/* Tubelight ring — border-only gold glow */}
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center bg-dark-900/40 border border-gold-500/50 transition-all duration-300 hover:border-gold-400/80"
+                  style={{ boxShadow: '0 0 16px rgba(212,175,55,0.45), 0 0 5px rgba(212,175,55,0.7), inset 0 0 10px rgba(212,175,55,0.15)' }}
+                >
+                  <SIcon size={30} className="text-gold-500" />
                 </div>
                 <div>
-                  <p className="text-white font-medium text-sm">{item.title}</p>
-                  <p className="text-dark-400 text-xs leading-relaxed">{item.desc}</p>
+                  <p className="text-white font-medium text-lg">{item.title}</p>
+                  <p className="text-dark-400 text-sm leading-relaxed mt-1">{item.desc}</p>
                 </div>
               </motion.div>
             )})}
@@ -130,7 +168,7 @@ export default function Home() {
       </section>
 
       {/* ─── Collections ────────────────────────────────────────── */}
-      <section className="py-20">
+      <section className="py-24 md:py-28 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal variant="up" className="text-center mb-12">
             <p className="section-subtitle mb-3">Browse By</p>
@@ -172,7 +210,7 @@ export default function Home() {
       </section>
 
       {/* ─── Featured Products ───────────────────────────────────── */}
-      <section className="py-20 bg-dark-800/30">
+      <section className="py-24 md:py-28 bg-dark-800/30 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal variant="up" className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
             <div>
@@ -185,18 +223,45 @@ export default function Home() {
             </Link>
           </ScrollReveal>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {loading
-              ? Array.from({ length: 8 }, (_, n) => n).map((n) => <ProductCardSkeleton key={n} />)
-              : featured.map((product) => (
-                  <ProductCard key={product._id} product={product} />
-                ))}
+          <div className="relative">
+            {/* Prev / Next controls */}
+            <button
+              onClick={() => scrollRail(-1)}
+              aria-label="Previous"
+              className="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full items-center justify-center bg-dark-900/80 backdrop-blur-sm border border-gold-500/30 text-gold-400 hover:bg-gold-500 hover:text-dark-900 transition-all duration-300 shadow-lg"
+            >
+              <FiChevronLeft size={20} />
+            </button>
+            <button
+              onClick={() => scrollRail(1)}
+              aria-label="Next"
+              className="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full items-center justify-center bg-dark-900/80 backdrop-blur-sm border border-gold-500/30 text-gold-400 hover:bg-gold-500 hover:text-dark-900 transition-all duration-300 shadow-lg"
+            >
+              <FiChevronRight size={20} />
+            </button>
+
+            <div
+              ref={railRef}
+              className="flex items-stretch gap-8 lg:gap-10 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2 -mx-4 px-4 sm:mx-0 sm:px-0"
+            >
+              {loading
+                ? Array.from({ length: 6 }, (_, n) => n).map((n) => (
+                    <div key={n} data-card className="snap-start shrink-0 w-[210px] sm:w-[240px]">
+                      <ProductCardSkeleton />
+                    </div>
+                  ))
+                : featured.map((product) => (
+                    <div key={product._id} data-card className="snap-start shrink-0 w-[210px] sm:w-[240px] h-full">
+                      <ProductCard product={product} />
+                    </div>
+                  ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ─── Brand Story Banner ──────────────────────────────────── */}
-      <section className="py-24">
+      <section className="py-24 md:py-28 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <ScrollReveal variant="fade">
           <div className="relative rounded-3xl overflow-hidden">
@@ -466,7 +531,7 @@ export default function Home() {
       </section>
 
       {/* ─── Testimonials ───────────────────────────────────────── */}
-      <section className="py-20 bg-dark-800/30">
+      <section className="py-24 md:py-28 bg-dark-800/30 scroll-mt-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <p className="section-subtitle mb-3">Customer Love</p>

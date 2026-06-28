@@ -10,11 +10,28 @@
   },
   "rules": {
     "no-console": "warn",
-    "no-unused-vars": "warn",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^next$|^_" }],
     "sonarjs/cognitive-complexity": ["warn", 15],
     "sonarjs/no-duplicate-string": "warn",
     "sonarjs/no-identical-functions": "warn",
     "sonarjs/no-redundant-boolean": "warn",
     "sonarjs/no-small-switch": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "**/*.test.js"],
+      "env": { "jest": true, "node": true },
+      "rules": {
+        "sonarjs/no-duplicate-string": "off",
+        "sonarjs/no-identical-functions": "off",
+        "no-unused-vars": "warn"
+      }
+    },
+    {
+      "files": ["scripts/**/*.js", "utils/seedProducts.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ]
 }

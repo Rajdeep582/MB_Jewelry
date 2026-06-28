@@ -16,16 +16,9 @@ const Admin     = require('../models/Admin');
 const Product   = require('../models/Product');
 const Category  = require('../models/Category');
 const Order     = require('../models/Order');
-const Review    = require('../models/Review');
 const { generateAccessToken } = require('../utils/generateToken');
 
 require('./setup');
-
-async function getCsrfToken(agent) {
-  const res = await agent.get('/api/health');
-  const c = res.headers['set-cookie']?.find(c => c.startsWith('csrfToken='));
-  return c ? c.split(';')[0].split('=')[1] : null;
-}
 
 async function createVerifiedUser(email = 'user@example.com') {
   return User.create({

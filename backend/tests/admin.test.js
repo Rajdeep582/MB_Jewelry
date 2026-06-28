@@ -331,7 +331,7 @@ describe('POST /api/admin-auth/verify-email', () => {
   });
 
   it('rejects already-verified admin OTP', async () => {
-    const admin = await createVerifiedAdmin('alreadyv@example.com');
+    await createVerifiedAdmin('alreadyv@example.com');
     const agent = request.agent(app);
     const csrf  = await getCsrfToken(agent);
     const res = await agent

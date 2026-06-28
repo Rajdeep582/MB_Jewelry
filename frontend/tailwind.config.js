@@ -57,7 +57,7 @@ export default {
       backgroundImage: {
         'gold-gradient': 'linear-gradient(135deg, #D4AF37 0%, #F2C94C 50%, #C5973B 100%)',
         'dark-gradient': 'linear-gradient(135deg, #141414 0%, #0D0D0D 100%)',
-        'hero-gradient': 'linear-gradient(160deg, #0D0D0D 0%, #1a1508 60%, #0D0D0D 100%)',
+        'hero-gradient': 'radial-gradient(125% 85% at 50% 0%, #1d160a 0%, #120d05 42%, #0D0D0D 70%, #050505 100%)',
         'velvet-gradient': 'radial-gradient(circle at center, #742A2A 0%, #2A0A0A 100%)',
       },
       animation: {

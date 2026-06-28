@@ -103,9 +103,9 @@ export default function ProductCard({ product, view = 'grid' }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
       whileHover={{ y: -4 }}
-      className={`card-hover group cursor-pointer ${isList ? 'p-3' : ''}`}
+      className={`card-hover group cursor-pointer ${isList ? 'p-3' : 'flex flex-col h-full'}`}
     >
-      <Link to={`/products/${_id}`} id={`product-${_id}`} className={isList ? 'flex flex-row items-center gap-5 sm:gap-6' : 'block'}>
+      <Link to={`/products/${_id}`} id={`product-${_id}`} className={isList ? 'flex flex-row items-center gap-5 sm:gap-6' : 'flex flex-col flex-1'}>
         {/* Image */}
         <div className={getImageWrapperClass(isList)}>
           {/* Discount badge */}
@@ -157,13 +157,15 @@ export default function ProductCard({ product, view = 'grid' }) {
             {name}
           </h3>
 
-          {/* Rating */}
-          {numReviews > 0 && (
-            <div className={`flex items-center gap-1 ${isList ? 'mb-1 sm:mb-2' : 'mb-2'}`}>
+          {/* Rating — reserve a fixed slot in grid so all cards match height */}
+          {numReviews > 0 ? (
+            <div className={`flex items-center gap-1 ${isList ? 'mb-1 sm:mb-2' : 'mb-2 h-[18px]'}`}>
               <FiStar size={11} className="fill-gold-400 text-gold-400" />
               <span className="text-gold-400 text-xs">{averageRating}</span>
               <span className="text-dark-500 text-xs">({numReviews})</span>
             </div>
+          ) : (
+            !isList && <div className="mb-2 h-[18px]" aria-hidden="true" />
           )}
 
           <div className={isList ? 'mt-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3' : 'mt-auto'}>

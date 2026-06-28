@@ -27,7 +27,7 @@ const testUser = {
 // Helper: create verified user directly in DB
 async function createVerifiedUser(overrides = {}) {
   const data = { ...testUser, ...overrides };
-  const user = await User.create({
+  return await User.create({
     name: data.name,
     email: data.email,
     password: data.password,
@@ -35,7 +35,6 @@ async function createVerifiedUser(overrides = {}) {
     isVerified: true,
     isActive: true,
   });
-  return user;
 }
 
 // Helper: get CSRF cookie then make request
@@ -604,7 +603,7 @@ describe('Forgot password / reset flow', () => {
 
   it('full flow: verifyResetOtp → resetPassword sets new password + wipes sessions', async () => {
     const rawOtp = '555444';
-    const user = await User.create({
+    await User.create({
       name: 'Full Reset',
       email: 'fullreset@example.com',
       password: testUser.password,

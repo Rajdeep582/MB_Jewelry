@@ -736,7 +736,8 @@ const updateCustomOrderStatus = async (req, res) => {
   // ── Persist delivery snapshot ─────────────────────────────────────────────
   if (status === 'shipped' || status === 'delivered') {
     const u = order.user;
-    const itemsSummary = `Custom ${order.type} — ${order.material}${order.purity && order.purity !== 'None' ? ` (${order.purity})` : ''}`;
+    const puritySuffix = order.purity && order.purity !== 'None' ? ` (${order.purity})` : '';
+    const itemsSummary = `Custom ${order.type} — ${order.material}${puritySuffix}`;
     let deliveredByPartnerId = '';
     let deliveredByPartnerName = '';
     if (status === 'delivered') {

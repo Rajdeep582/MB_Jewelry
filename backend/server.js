@@ -89,7 +89,6 @@ const deliveryRoutes = require('./routes/deliveryRoutes');
 const dpAuthRoutes = require('./routes/dpAuthRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
 const { attachCsrfCookie, validateCsrf } = require('./middleware/csrf');
-const { authLimiter } = require('./middleware/rateLimiter');
 
 // Utils
 const { cleanupStaleOrders } = require('./utils/cleanupStaleOrders');
@@ -106,6 +105,13 @@ if (process.env.NODE_ENV !== 'test') {
 
 const app = express();
 app.disable('x-powered-by');
+
+// ─── Trust Proxy ──────────────────────────────────────────────────────────────
+// App runs behind a PaaS load balancer (see Procfile). Without this, req.ip is the
+// proxy IP, not the client — which silently breaks rate limiters, adminIpWhitelist,
+// and audit/session IP logging. '1' = trust the first hop (the platform proxy).
+// Override via TRUST_PROXY env if your platform adds more hops.
+app.set('trust proxy', process.env.TRUST_PROXY || 1);
 
 // ─── Correlation ID ───────────────────────────────────────────────────────────
 app.use(correlationId);
@@ -127,7 +133,11 @@ app.use(helmet({
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: [
+      process.env.CLIENT_URL || 'http://localhost:5173',
+      // Dev-only Vite origin — excluded in production
+      ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5174'] : []),
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],

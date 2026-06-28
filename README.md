@@ -1,10 +1,10 @@
 <div align="center">
-  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewelry Banner" width="100%" />
+  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewellers Banner" width="100%" />
 
-  <h1>💎 M&B Jewelry | Luxury E-Commerce Platform</h1>
+  <h1>💎 M&B Jewellers | Luxury E-Commerce Platform</h1>
   
   <p>
-    A production-ready, full-stack jewelry e-commerce platform crafted with elegance. Built exclusively with the MERN stack emphasizing high-end UI design, robust backend security, and seamless user experiences.
+    A production-ready, full-stack jewelry e-commerce platform crafted with elegance. Built exclusively to provide a high-end UI design, robust backend security, and seamless user experiences for a premium jewelry business.
   </p>
 
 <!-- Badges -->
@@ -19,13 +19,15 @@
 
 ---
 
-* **Secure OTP Authentication:** 6-digit email verification flow for secure registration, preventing bot signups and ensuring valid user emails.
+## ✨ Features
+
+* **Premium User Interface:** Responsive, luxury dark theme enriched with gold accents and beautiful micro-animations.
+* **Complete Shopping Journey:** Featuring a persistent shopping cart and sophisticated product filtering/sorting for rings, necklaces, earrings, and more.
+* **Secure OTP Authentication:** 6-digit email verification flow for secure registration, ensuring valid user emails.
 * **Standardized Order Lifecycle:** A rigorous, sequential fulfillment pipeline (`confirmed` → `in_production` → `ready_to_ship` → `shipped` → `delivered`) with audit trails.
-* **Premium User Interface:** Responsive, luxury dark theme enriched with gold accents and Framer Motion micro-animations.
-* **Complete Shopping Journey:** Featuring a persistent shopping cart (Redux + LocalStorage) and sophisticated product filtering/sorting.
-* **Seamless Payments:** Integrated Razorpay payment gateway handling with backend HMAC signature verification.
-* **Media Optimization:** Cloudinary integration for scalable product image uploads and optimizations.
-* **Admin Control Center:** production-grade management of catalogs, users, and standardized order tracking.
+* **Seamless Payments:** Integrated Razorpay payment gateway handling with secure backend HMAC signature verification.
+* **Media Optimization:** Cloudinary integration for scalable high-quality jewelry image uploads and optimizations.
+* **Admin Control Center:** Production-grade management of jewelry catalogs, users, and standardized order tracking.
 
 ---
 
@@ -33,7 +35,7 @@
 
 ### Frontend Application (Client)
 - **Framework:** React 18, Vite
-- **Styling:** Tailwind CSS v3, Vanilla CSS for intricate layouts
+- **Styling:** Tailwind CSS, Vanilla CSS for intricate layouts
 - **State Management:** Redux Toolkit
 - **Routing:** React Router DOM
 - **Interactions:** Framer Motion, React Hot Toast
@@ -45,27 +47,6 @@
 - **Security:** Helmet, CORS, Express Validator
 - **Payment Gateway:** Razorpay API Integration
 - **Storage:** Cloudinary
-
----
-
-## 📁 Repository Structure
-
-```text
-MB_Jewelry/
-├── backend/                  # Server-side logic & APIs
-│   ├── config/               # Database & service configurations
-│   ├── controllers/          # Request handlers
-│   ├── models/               # MongoDB schema definitions
-│   ├── routes/               # API endpoint definitions
-│   └── seed.js               # Database population script
-│
-└── frontend/                 # Client UI application
-    ├── public/               # Static assets
-    ├── src/                  # React source code
-    │   ├── components/       # Reusable UI components
-    │   ├── pages/            # Application views/routes
-    │   └── store/            # Redux global state configuration
-```
 
 ---
 
@@ -84,8 +65,8 @@ Clone the repository and install necessary dependencies for both ends:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Rajdeep582/MB_Jewelry.git
-cd MB_Jewelry
+git clone https://github.com/MyJewellShop/mbjewellers.git
+cd mbjewellers
 
 # Install Backend dependencies
 cd backend && npm install
@@ -96,7 +77,7 @@ cd ../frontend && npm install
 
 ### 2. Environment Configuration
 
-Variables are managed securely. Example files (`.env.example`) are provided.
+Variables are managed securely. Ensure you create `.env` files in both `backend` and `frontend` directories based on the provided examples (these are ignored by git for security).
 
 **Backend `.env`:**
 ```env
@@ -138,26 +119,13 @@ The application client runs on `http://localhost:5173`, and the API server start
 
 ## 📦 Order Lifecycle Pipeline
 
-The platform enforces a strict, production-grade fulfillment sequence for all standard orders:
+The platform enforces a strict, production-grade fulfillment sequence for all jewelry orders:
 
 1. **Confirmed:** Initial state upon successful online payment via Razorpay.
-2. **In Production:** Item is being handcrafted/curated.
-3. **Ready to Ship:** Quality checked and packaged.
+2. **In Production:** Jewelry item is being handcrafted/curated.
+3. **Ready to Ship:** Quality checked and securely packaged.
 4. **Shipped:** Handed over to logistics with tracking history initiated.
 5. **Delivered:** Final destination reached.
-
-*Note: Administrative failsafes like `Returned & Refunded` or `Failed` are handled as terminal states with full audit comments.*
-
----
-
-## 💳 Payment Flow Architecture
-
-1. Client finalizes cart and triggers **Checkout**.
-2. Frontend requests payment initialization from `POST /api/orders/create-payment`.
-3. Server calculates absolute DB-based pricing to prevent client-side tampering, resolving a dynamic Razorpay order ID.
-4. Razorpay's overlay initializes natively on the UI.
-5. On successful capture, the client shoots raw transaction details to `POST /api/orders/verify-payment`.
-6. Node.js backend mathematically verifies the **HMAC payload signature** against `RAZORPAY_KEY_SECRET`. Upon total match, an Order DB record is formed.
 
 ---
 
@@ -170,6 +138,5 @@ The platform enforces a strict, production-grade fulfillment sequence for all st
 ---
 
 <div align="center">
-  <p>Designed and Built by <b>Rajdeep</b></p>
-  <p>Providing pristine luxury e-commerce experiences.</p>
+  <p>Providing pristine luxury e-commerce experiences for the finest jewelry.</p>
 </div>

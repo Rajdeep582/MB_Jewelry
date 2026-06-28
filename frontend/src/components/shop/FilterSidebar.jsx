@@ -226,7 +226,7 @@ export default function FilterSidebar() {
     <>
       {/* Desktop Sidebar */}
       <aside className="hidden lg:block w-64 flex-shrink-0">
-        <div className="card p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
+        <div className="card p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto" data-lenis-prevent="true">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-white text-lg">Filters</h2>
             <FiFilter size={16} className="text-gold-500" />
@@ -260,6 +260,7 @@ export default function FilterSidebar() {
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               className="fixed left-0 top-0 bottom-0 w-80 z-50 glass overflow-y-auto p-5 lg:hidden"
+              data-lenis-prevent="true"
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-display text-white text-lg">Filters</h2>

@@ -34,6 +34,14 @@ async function validateAndBuildItems(items) {
   const orderItems = [];
   const errors = [];
 
+  // Pre-fetch every referenced product in ONE query (avoids N+1: was 1 findById per item).
+  // Validation logic below is unchanged — it now reads from this map instead of hitting the DB per loop.
+  const validIds = items
+    .map((i) => i.productId)
+    .filter((id) => id && mongoose.isValidObjectId(id));
+  const products = await Product.find({ _id: { $in: validIds } }).lean();
+  const productMap = new Map(products.map((p) => [String(p._id), p]));
+
   for (const item of items) {
     if (!item.productId || !mongoose.isValidObjectId(item.productId)) {
       errors.push(`Invalid product ID: ${item.productId}`);
@@ -45,7 +53,7 @@ async function validateAndBuildItems(items) {
       continue;
     }
 
-    const product = await Product.findById(item.productId).lean();
+    const product = productMap.get(String(item.productId));
     if (!product) {
       errors.push(`Product not found: ${item.productId}`);
       continue;
@@ -663,7 +671,8 @@ const getOrder = async (req, res) => {
     .select('-payment.razorpaySignature')
     .populate('items.product', 'name images price')
     .populate('trackingHistory.updatedBy', 'name role')  // include admin name in timeline
-    .populate('user', 'name email phone');
+    .populate('user', 'name email phone')
+    .lean();
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
@@ -832,7 +841,6 @@ const updateOrderStatus = async (req, res) => {
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
   const current = order.orderStatus;
-  const currentPaymentStatus = order.payment.status;
 
   // ── Same-status guard ─────────────────────────────────────────────────────
   if (current === status) {

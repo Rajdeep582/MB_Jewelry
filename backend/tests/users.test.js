@@ -362,7 +362,6 @@ describe('Password reset flow', () => {
   });
 
   it('reset-password rejects token reuse (single use)', async () => {
-    const rawOtp     = '555666';
     const resetToken = crypto.randomBytes(32).toString('hex');
     await User.create({
       name: 'Single Use',

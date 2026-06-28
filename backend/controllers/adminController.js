@@ -1,12 +1,11 @@
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const GlobalPricing = require('../models/GlobalPricing');
-const User = require('../models/User');
 const DeliveryPartner = require('../models/DeliveryPartner');
 const Order = require('../models/Order');
 const CustomOrder = require('../models/CustomOrder');
 const logger = require('../utils/logger');
-const { calcDynamicPrice, buildPricingKey, buildGlobalPricingMap, resolvePricingEntry } = require('../utils/pricingUtils');
+const { calcDynamicPrice, buildGlobalPricingMap, resolvePricingEntry } = require('../utils/pricingUtils');
 
 // Valid purity values per material for global pricing
 const VALID_PURITIES = {
@@ -108,9 +107,10 @@ const setGlobalPricing = async (req, res) => {
     `livePrice=${numLivePrice} making=${numMaking}% gst=${numGst}% updatedProducts=${updatedCount}`
   );
 
+  const updatedSuffix = updatedCount > 0 ? `. ${updatedCount} product(s) updated.` : '.';
   res.json({
     success: true,
-    message: `Global pricing saved${updatedCount > 0 ? `. ${updatedCount} product(s) updated.` : '.'}`,
+    message: `Global pricing saved${updatedSuffix}`,
     entry,
     updatedCount,
   });

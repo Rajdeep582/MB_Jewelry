@@ -60,8 +60,10 @@ export default function Navbar() {
       initial={{ y: -80 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.5, ease: 'easeOut' }}
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 border-b ${
-        scrolled ? 'bg-dark-900/90 backdrop-blur-md border-white/10 shadow-xl' : 'bg-transparent border-transparent'
+      className={`fixed top-0 left-0 right-0 z-50 border-b border-transparent transition-[background-color,backdrop-filter,border-color,box-shadow] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        scrolled
+          ? 'bg-dark-900/80 backdrop-blur-xl !border-gold-500/15 shadow-[0_10px_40px_-12px_rgba(0,0,0,0.75)]'
+          : 'bg-transparent'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

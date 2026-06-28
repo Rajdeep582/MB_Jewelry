@@ -136,7 +136,7 @@ const sendMobileOtp = async (req, res) => {
  * @route POST /api/auth/register
  */
 const register = async (req, res) => {
-  const { name, email, mobile, password, otp } = req.body;
+  const { name, email, mobile, password } = req.body;
   const ipAddress = req.ip;
 
   // ── Mobile registration ──────────────────────────────────────────────────

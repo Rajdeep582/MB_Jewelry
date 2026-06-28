@@ -16,7 +16,6 @@ const mongoose = require('mongoose');
 const app = require('../server');
 const User = require('../models/User');
 const Order = require('../models/Order');
-const Product = require('../models/Product');
 const { generateAccessToken } = require('../utils/generateToken');
 
 require('./setup');
@@ -213,7 +212,6 @@ describe('GET /api/orders/my-orders', () => {
 
     const token = generateAccessToken(user._id, 'user', 'user');
     const agent = request.agent(app);
-    const csrf = await getCsrfToken(agent);
     const res = await agent
       .get('/api/orders/my-orders')
       .set('Authorization', `Bearer ${token}`);

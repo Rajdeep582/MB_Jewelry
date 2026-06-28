@@ -15,8 +15,6 @@ const User            = require('../models/User');
 const Admin           = require('../models/Admin');
 const DeliveryPartner = require('../models/DeliveryPartner');
 const Order           = require('../models/Order');
-const Category        = require('../models/Category');
-const Product         = require('../models/Product');
 const { generateAccessToken } = require('../utils/generateToken');
 
 require('./setup');

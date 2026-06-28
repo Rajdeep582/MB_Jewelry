@@ -14,8 +14,6 @@ const app      = require('../server');
 const User     = require('../models/User');
 const Admin    = require('../models/Admin');
 const Order    = require('../models/Order');
-const Product  = require('../models/Product');
-const Category = require('../models/Category');
 const { generateAccessToken } = require('../utils/generateToken');
 
 require('./setup');
@@ -119,7 +117,7 @@ describe('POST /api/orders/fail-payment', () => {
 
     const agent = request.agent(app);
     const csrf = await getCsrfToken(agent);
-    const res = await agent
+    await agent
       .post('/api/orders/fail-payment')
       .set('Authorization', `Bearer ${token}`)
       .set('x-csrf-token', csrf)

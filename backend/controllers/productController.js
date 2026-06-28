@@ -8,6 +8,21 @@ const mongoose = require('mongoose');
 
 const invalidProductId = (res) => res.status(400).json({ success: false, message: 'Invalid product ID' });
 
+// ── GlobalPricing cache ───────────────────────────────────────────────────────
+// GlobalPricing.find({}) was read on EVERY public catalogue request (getProducts/getProduct).
+// It changes infrequently, so cache it in-memory with a short TTL. Bounded staleness: a price
+// edit is reflected within PRICING_TTL_MS. No API/logic change — same data, fewer DB reads.
+let _pricingCache = null;
+let _pricingCacheAt = 0;
+const PRICING_TTL_MS = 30 * 1000;
+async function getCachedPricing() {
+  const now = Date.now();
+  if (_pricingCache && now - _pricingCacheAt < PRICING_TTL_MS) return _pricingCache;
+  _pricingCache = await GlobalPricing.find({}).lean();
+  _pricingCacheAt = now;
+  return _pricingCache;
+}
+
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
   if (file.path?.startsWith('http')) {
@@ -98,7 +113,7 @@ const getProducts = async (req, res) => {
       .limit(limitNum)
       .lean(),
     Product.countDocuments(query),
-    GlobalPricing.find({}).lean(),
+    getCachedPricing(),
   ]);
 
   const pricingMap = buildGlobalPricingMap(pricingEntries);
@@ -128,19 +143,20 @@ const getProducts = async (req, res) => {
 const getProduct = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const product = await Product.findById(req.params.id)
-    .populate('category', 'name slug');
+    .populate('category', 'name slug')
+    .lean();
 
   if (!product) {
     return res.status(404).json({ success: false, message: 'Product not found' });
   }
 
   const [ratings, pricingEntries] = await Promise.all([
-    Review.find({ product: product._id }).populate('user', 'name avatar').sort('-createdAt'),
-    GlobalPricing.find({}).lean(),
+    Review.find({ product: product._id }).populate('user', 'name avatar').sort('-createdAt').lean(),
+    getCachedPricing(),
   ]);
 
   const pricingMap = buildGlobalPricingMap(pricingEntries);
-  const productObj = applyLivePrice(product.toJSON(), pricingMap);
+  const productObj = applyLivePrice(product, pricingMap);
   productObj.ratings = ratings;
 
   res.json({ success: true, product: productObj });
