@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiFilter, FiX, FiChevronDown } from 'react-icons/fi';
 import { selectProductsFilter } from '../../store/productSlice';
@@ -50,6 +50,7 @@ FilterSection.propTypes = {
 export default function FilterSidebar() {
   const filters = useSelector(selectProductsFilter);
   const [, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -68,6 +69,11 @@ export default function FilterSidebar() {
   }, [filters.minPrice, filters.maxPrice]);
 
   const handleChange = (key, value) => {
+    // ── Diamond disabled: redirect to Coming Soon instead of filtering ──
+    if (key === 'material' && value === 'Diamond') {
+      navigate('/diamond-coming-soon');
+      return;
+    }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (filters[key] === value) next.delete(key);

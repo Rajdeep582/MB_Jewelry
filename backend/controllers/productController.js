@@ -49,6 +49,16 @@ function buildProductQuery(params) {
   if (material) query.material = String(material);
   if (featured === 'true') query.isFeatured = true;
 
+  // ── Diamond disabled: exclude Diamond products from public catalogue ──
+  // Diamond sales are temporarily disabled (pending certification).
+  // If no material filter is set, exclude Diamond from results.
+  // If material=Diamond is explicitly requested, the query will naturally return nothing
+  // since the frontend redirects to a Coming Soon page, but this ensures API-level safety.
+  // To re-enable Diamond: remove this block.
+  if (!material) {
+    query.material = { $ne: 'Diamond' };
+  }
+
   if (purity) {
     const purities = String(purity).split(',').map((p) => String(p).trim());
     query.purity = { $in: purities };

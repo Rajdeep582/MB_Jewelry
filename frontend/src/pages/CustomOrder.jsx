@@ -16,6 +16,8 @@ import AddressSelector from '../components/common/AddressSelector';
 // ─── Config ───────────────────────────────────────────────────────────────────
 const JEWELRY_TYPES = ['Ring', 'Necklace', 'Earrings', 'Bracelet', 'Pendant', 'Anklet', 'Bangle', 'Bala'];
 const MATERIALS     = ['Gold', 'Silver', 'Diamond'];
+// ── Diamond disabled: hide from customer material picker until certification is obtained ──
+const CUSTOMER_MATERIALS = MATERIALS.filter(m => m !== 'Diamond');
 const PURITY_MAP    = {
   Gold:    ['22K', '18K'],
   Silver:  ['Hallmark', 'Normal'],
@@ -395,7 +397,7 @@ export default function CustomOrder() {
               <div>
                 <p className="label-dark">Material <span className="text-red-400">*</span></p>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {MATERIALS.map((m) => (
+                  {CUSTOMER_MATERIALS.map((m) => (
                     <OptionBtn key={m} active={form.material === m} onClick={() => setForm((f) => ({ ...f, material: m, purity: 'None' }))}>
                       {m}
                     </OptionBtn>

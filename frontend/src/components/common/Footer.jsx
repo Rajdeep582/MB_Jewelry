@@ -15,12 +15,13 @@ const footerLinks = {
     { label: 'About Us', to: '/about' },
     { label: 'Contact', to: '/contact' },
     { label: 'Custom Jewelry', to: '/custom-order' },
+    { label: 'Terms & Conditions', to: '/terms' },
+    { label: 'Privacy Policy', to: '/privacy-policy' },
   ],
   Materials: [
     { label: 'Gold Jewelry', to: '/shop?material=Gold' },
     { label: 'Silver Jewelry', to: '/shop?material=Silver' },
-    { label: 'Diamond Jewelry', to: '/shop?material=Diamond' },
-    { label: 'Platinum Jewelry', to: '/shop?material=Platinum' },
+    { label: 'Diamond Jewelry', to: '/diamond-coming-soon' },
   ],
 };
 
@@ -68,12 +69,12 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="lg:col-span-2">
-            <Link to="/" className="flex items-center gap-2 mb-5">
-              <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center">
-                <span className="text-dark-900 font-bold text-sm font-serif">M</span>
+            <Link to="/" className="flex items-center gap-2 mb-5 group">
+              <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center shadow-gold group-hover:shadow-gold-lg transition-shadow duration-300">
+                <span className="text-dark-900 font-bold text-[10px] font-serif tracking-tight">MB</span>
               </div>
-              <span className="text-xl font-display text-white">
-                M<span className="text-gradient-gold">&</span>B Jewelry
+              <span className="font-jakarta font-bold text-white tracking-widest text-sm uppercase">
+                M.B.<span className="text-gradient-gold"> JEWELLERS</span>
               </span>
             </Link>
             <p className="text-dark-400 text-sm leading-relaxed max-w-xs">
@@ -85,15 +86,15 @@ export default function Footer() {
             <div className="mt-6 space-y-2.5">
               <div className="flex items-center gap-2.5 text-dark-400 text-sm">
                 <FiMail size={14} className="text-gold-500 flex-shrink-0" />
-                <span>hello@mbjewelry.com</span>
+                <a href="mailto:mbjewellers2021@gmail.com" className="hover:text-gold-400 transition-colors">mbjewellers2021@gmail.com</a>
               </div>
               <div className="flex items-center gap-2.5 text-dark-400 text-sm">
                 <FiPhone size={14} className="text-gold-500 flex-shrink-0" />
-                <span>+91 98765 43210</span>
+                <a href="tel:09830424257" className="hover:text-gold-400 transition-colors">09830424257</a>
               </div>
-              <div className="flex items-center gap-2.5 text-dark-400 text-sm">
-                <FiMapPin size={14} className="text-gold-500 flex-shrink-0" />
-                <span>Mumbai, Maharashtra, India</span>
+              <div className="flex items-start gap-2.5 text-dark-400 text-sm">
+                <FiMapPin size={14} className="text-gold-500 flex-shrink-0 mt-0.5" />
+                <span>BOYS&apos; HIGH SCHOOL, 217/3, Netaji Subhash Bose Rd, beside NEW BARRACKPORE, New Barrackpur, West Bengal 700131</span>
               </div>
             </div>
 
@@ -144,9 +145,15 @@ export default function Footer() {
       {/* Bottom Bar */}
       <div className="border-t border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p className="text-dark-500 text-xs">
-            © {new Date().getFullYear()} M.B. JEWELLERS. All rights reserved.
-          </p>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-4 gap-y-1 text-xs text-dark-500">
+            <span>© {new Date().getFullYear()} M.B. JEWELLERS. All rights reserved.</span>
+            <Link to="/terms" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-gold-400 transition-colors">
+              Terms & Conditions
+            </Link>
+            <Link to="/privacy-policy" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-gold-400 transition-colors">
+              Privacy Policy
+            </Link>
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-dark-500 text-xs">Secure payments by</span>
             <div className="flex items-center gap-2">

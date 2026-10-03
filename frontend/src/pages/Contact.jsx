@@ -11,7 +11,12 @@ export default function Contact() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 600));
+
+    const subject = encodeURIComponent(form.subject || 'Inquiry — M.B. JEWELLERS');
+    const body = encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\n\nMessage:\n${form.message}`);
+    window.location.href = `mailto:mbjewellers2021@gmail.com?subject=${subject}&body=${body}`;
+
     toast.success('Message sent! We\'ll reply within 24 hours. 💍');
     setForm({ name: '', email: '', subject: '', message: '' });
     setSubmitting(false);
@@ -32,23 +37,23 @@ export default function Contact() {
             <div className="card p-5">
               <h2 className="font-display text-xl text-white mb-4">Reach Out</h2>
               {[
-                { icon: FiMail, title: 'Email', value: 'hello@mbjewelry.com', href: 'mailto:hello@mbjewelry.com' },
-                { icon: FiPhone, title: 'Phone', value: '+91 98765 43210', href: 'tel:+919876543210' },
-                { icon: FiMapPin, title: 'Store', value: 'Bandra West, Mumbai\nMaharashtra — 400050', href: null },
+                { icon: FiMail, title: 'Email', value: 'mbjewellers2021@gmail.com', href: 'mailto:mbjewellers2021@gmail.com' },
+                { icon: FiPhone, title: 'Phone', value: '09830424257', href: 'tel:09830424257' },
+                { icon: FiMapPin, title: 'Store', value: "BOYS' HIGH SCHOOL, 217/3, Netaji Subhash Bose Rd, beside NEW BARRACKPORE, New Barrackpur, West Bengal 700131", href: null },
               ].map((item) => {
                  
                 const SIcon = item.icon;
                 return (
-                <div key={item.title} className="flex gap-3 mb-4">
-                  <div className="w-9 h-9 rounded-xl glass-gold flex items-center justify-center flex-shrink-0">
+                <div key={item.title} className="flex items-start gap-3 mb-4">
+                  <div className="w-9 h-9 rounded-xl glass-gold flex items-center justify-center flex-shrink-0 mt-0.5">
                     <SIcon size={15} className="text-gold-500" />
                   </div>
                   <div>
                     <p className="text-xs text-dark-500 uppercase tracking-wider mb-0.5">{item.title}</p>
                     {item.href ? (
-                      <a href={item.href} className="text-dark-300 text-sm hover:text-gold-400 transition-colors">{item.value}</a>
+                      <a href={item.href} className="text-dark-300 text-sm hover:text-gold-400 transition-colors break-all">{item.value}</a>
                     ) : (
-                      <p className="text-dark-300 text-sm whitespace-pre">{item.value}</p>
+                      <p className="text-dark-300 text-sm whitespace-pre-line leading-relaxed">{item.value}</p>
                     )}
                   </div>
                 </div>
@@ -72,7 +77,7 @@ export default function Contact() {
             <div className="card p-5">
               <h3 className="text-white font-medium mb-3">Follow Us</h3>
               <div className="flex gap-3">
-                {[FiInstagram, FiTwitter].map((SIcon, i) => {
+                {[FiInstagram, FiTwitter].map((SIcon) => {
                    
                   const ActiveIcon = SIcon;
                   return (

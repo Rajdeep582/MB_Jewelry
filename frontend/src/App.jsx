@@ -16,6 +16,9 @@ import Footer from './components/common/Footer';
 import CartDrawer from './components/common/CartDrawer';
 import ScrollToTop from './components/common/ScrollToTop';
 import SmoothScroller from './components/common/SmoothScroller';
+import Terms from './pages/Terms';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import DiamondComingSoon from './pages/DiamondComingSoon';
 
 // Pages
 const Home = lazy(() => import('./pages/Home'));
@@ -181,6 +184,11 @@ export default function App() {
                     <Route path="/cart" element={<Cart />} />
                     <Route path="/about" element={<About />} />
                     <Route path="/contact" element={<Contact />} />
+                    <Route path="/terms" element={<Terms />} />
+                    <Route path="/terms-and-conditions" element={<Terms />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="/diamond-coming-soon" element={<DiamondComingSoon />} />
                     <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
                     <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
                     <Route path="/orders/:id" element={<ProtectedRoute><Orders /></ProtectedRoute>} />

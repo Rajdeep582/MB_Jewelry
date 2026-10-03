@@ -12,7 +12,7 @@ const navLinks = [
   { to: '/shop',               label: 'Shop' },
   { to: '/shop?material=Gold', label: 'Gold' },
   { to: '/shop?material=Silver', label: 'Silver' },
-  { to: '/shop?material=Diamond', label: 'Diamond' },
+  { to: '/diamond-coming-soon', label: 'Diamond' },
   { to: '/custom-order',       label: 'Custom Jewelry', highlight: true },
   { to: '/about',              label: 'About' },
   { to: '/contact',            label: 'Contact' },

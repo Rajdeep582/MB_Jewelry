@@ -39,6 +39,7 @@ frontend/lint-results.txt
 # Editor/Temp
 .vscode/
 .idea/
+.sf/
 .DS_Store
 *.swp
 *.suo

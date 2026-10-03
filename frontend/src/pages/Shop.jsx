@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams, useLocation } from 'react-router-dom';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiGrid, FiList } from 'react-icons/fi';
 import { useState, useRef } from 'react';
@@ -29,6 +29,14 @@ export default function Shop() {
   const [view, setView] = useState('grid');
   const location = useLocation();
   const searchInputRef = useRef(null);
+  const navigate = useNavigate();
+
+  // ── Diamond disabled: redirect /shop?material=Diamond → Coming Soon page ──
+  useEffect(() => {
+    if (searchParams.get('material') === 'Diamond') {
+      navigate('/diamond-coming-soon', { replace: true });
+    }
+  }, [searchParams, navigate]);
 
   useEffect(() => {
     if (location.state?.focusSearch && searchInputRef.current) {
