@@ -1,6 +1,4 @@
 <div align="center">
-  <img src="https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1200&q=80" alt="M&B Jewellers Banner" width="100%" />
-
   <h1>💎 M&B Jewellers</h1>
   <h3><i>The Premier Luxury E-Commerce & Bespoke Jewelry Platform</i></h3>
   
