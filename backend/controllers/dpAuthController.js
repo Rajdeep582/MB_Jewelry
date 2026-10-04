@@ -8,7 +8,9 @@ const {
   generateRefreshToken,
   sendRefreshTokenCookie,
   clearRefreshTokenCookie,
+  readRefreshToken,
 } = require('../utils/generateToken');
+const { rotateRefreshSession } = require('../utils/refreshSessions');
 const logger = require('../utils/logger');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
@@ -150,7 +152,7 @@ const loginDP = async (req, res) => {
   dp.lastLogin = new Date();
   await dp.save({ validateBeforeSave: false });
 
-  sendRefreshTokenCookie(res, refreshToken);
+  sendRefreshTokenCookie(res, refreshToken, 'delivery');
   res.json({
     success: true,
     accessToken,
@@ -191,14 +193,15 @@ const getMeDP = async (req, res) => {
  * After this, the refresh token is unusable even if an attacker has it.
  */
 const logoutDP = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const { token, legacy } = readRefreshToken(req, 'delivery');
   if (token) {
     const hashed = hashToken(token);
     await DeliveryPartner.findByIdAndUpdate(req.user._id, {
       $pull: { sessions: { tokenHash: hashed } },
     });
   }
-  clearRefreshTokenCookie(res);
+  clearRefreshTokenCookie(res, 'delivery');
+  if (legacy) clearRefreshTokenCookie(res, 'user'); // legacy shared cookie held this DP session
   res.json({ success: true, message: 'Logged out.' });
 };
 
@@ -211,8 +214,9 @@ const logoutDP = async (req, res) => {
  *   1. Verify JWT signature on the refresh token
  *   2. Confirm userType = 'delivery' (prevents user/admin tokens being used here)
  *   3. Hash the incoming token → find matching session in dp.sessions
- *   4. If not found → REPLAY ATTACK DETECTED → wipe all sessions → 401
- *   5. Replace session entry with new tokenHash (old token invalidated)
+ *   4. If not found (and not rotated within the last few seconds by a parallel request)
+ *      → REPLAY ATTACK DETECTED → wipe all sessions → 401
+ *   5. Atomically replace session entry with new tokenHash (utils/refreshSessions.js)
  *   6. Issue new accessToken + refreshToken, set cookie
  *
  * REPLAY ATTACK PROTECTION:
@@ -220,7 +224,7 @@ const logoutDP = async (req, res) => {
  *   All sessions are wiped to force re-login. This covers token theft scenarios.
  */
 const refreshDP = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const { token, legacy } = readRefreshToken(req, 'delivery');
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
 
   let decoded;
@@ -230,39 +234,30 @@ const refreshDP = async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid token' });
   }
 
-  // Only handle delivery userType here
+  // Only handle delivery userType here (a legacy cookie with a customer token is left untouched)
   if (decoded.userType !== 'delivery') {
     return res.status(401).json({ success: false, message: 'Invalid token type' });
   }
 
   const dp = await DeliveryPartner.findById(decoded.id).select('+sessions');
   if (!dp) return res.status(401).json({ success: false, message: 'Not found' });
+  if (!dp.isActive || !dp.isApproved) {
+    return res.status(401).json({ success: false, message: 'Delivery partner access has been revoked' });
+  }
 
-  dp.sessions = dp.sessions.filter(s => s.expiresAt > new Date());
-  const hashedRToken = hashToken(token);
-  const idx = dp.sessions.findIndex(s => s.tokenHash === hashedRToken);
+  const result = await rotateRefreshSession({ Model: DeliveryPartner, doc: dp, token, userType: 'delivery', req });
 
-  if (idx === -1) {
+  if (result.status === 'replay') {
     dp.sessions = [];
     await dp.save({ validateBeforeSave: false });
     return res.status(401).json({ success: false, message: 'Security breach detected.' });
   }
 
-  const newAccessToken  = generateAccessToken(dp._id, 'delivery', 'delivery');
-  const newRefreshToken = generateRefreshToken(dp._id, 'delivery');
-
-  dp.sessions[idx] = {
-    sessionId: dp.sessions[idx].sessionId,
-    tokenHash: hashToken(newRefreshToken),
-    deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-    ipAddress: req.ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  };
-  dp.markModified('sessions');
-  await dp.save({ validateBeforeSave: false });
-
-  sendRefreshTokenCookie(res, newRefreshToken);
-  res.json({ success: true, accessToken: newAccessToken });
+  if (result.status === 'rotated') {
+    sendRefreshTokenCookie(res, result.refreshToken, 'delivery');
+    if (legacy) clearRefreshTokenCookie(res, 'user'); // migrate off the legacy shared cookie
+  }
+  res.json({ success: true, accessToken: generateAccessToken(dp._id, 'delivery', 'delivery') });
 };
 
 /**

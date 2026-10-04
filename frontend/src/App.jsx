@@ -5,11 +5,12 @@ import { Provider } from 'react-redux';
 import { Toaster } from 'react-hot-toast';
 import { store } from './store/store';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import { refreshSession, isAuthFailure } from './services/api';
 import { ProtectedRoute, AdminRoute, DeliveryRoute } from './components/common/ProtectedRoute';
 import {
   selectIsDelivery, selectIsAdmin, selectIsAuthenticated,
   selectUser, selectToken, selectInitialized,
-  refreshAccessToken, setInitialized,
+  setInitialized,
 } from './store/authSlice';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
@@ -70,8 +71,21 @@ function AppInitializer() {
     if (_authInitStarted || initialized) return;
     _authInitStarted = true;
     if (user && !accessToken) {
-      // User metadata in localStorage but no token — restore via httpOnly refresh cookie
-      dispatch(refreshAccessToken());
+      // User metadata in localStorage but no token — restore via httpOnly refresh cookie.
+      // Shares the single in-flight refresh with the API client. A temporary failure (API restarting,
+      // network blip) is retried instead of signing the user out.
+      (async () => {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            await refreshSession();
+            return;
+          } catch (err) {
+            if (isAuthFailure(err.status)) return; // session over — slice already signed out
+            await new Promise((r) => setTimeout(r, 800 * 2 ** attempt));
+          }
+        }
+        dispatch(setInitialized()); // still unreachable — stop waiting, keep the stored user
+      })();
     } else {
       // Not logged in — mark initialized so ProtectedRoute can redirect immediately
       dispatch(setInitialized());

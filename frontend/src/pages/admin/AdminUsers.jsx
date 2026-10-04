@@ -12,14 +12,20 @@ export default function AdminUsers() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState('');
+  const [query, setQuery] = useState(''); // debounced — searched on the server across all pages
 
   useEffect(() => { document.title = 'Users — Admin'; }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const loadUsers = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await userService.getAllUsers({ page, limit: 20 });
+      const res = await userService.getAllUsers({ page, limit: 20, search: query || undefined });
       setUsers(res.data.users);
       setTotal(res.data.total);
       setPages(res.data.pages);
@@ -31,13 +37,9 @@ export default function AdminUsers() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadUsers(); }, [page]);
+  useEffect(() => { loadUsers(); }, [page, query]);
 
-  const filteredUsers = users.filter((u) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
+  const filteredUsers = users;
 
   const handleToggle = async (id, name) => {
     try {
@@ -84,7 +86,7 @@ export default function AdminUsers() {
 
       <div className="card p-4">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="border-b border-white/10">
               <tr className="text-dark-500 text-xs uppercase tracking-wider">
                 <th className="text-left py-2 pr-4">User</th>
@@ -104,7 +106,7 @@ export default function AdminUsers() {
                   {search ? `No users matching "${search}"` : 'No users found'}
                 </td></tr>
               ) : filteredUsers.map((user) => (
-                <tr key={user._id} className="hover:bg-white/2 transition-colors">
+                <tr key={user._id} className="hover:bg-white/[0.02] transition-colors">
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gold-gradient flex items-center justify-center text-dark-900 text-sm font-bold flex-shrink-0">

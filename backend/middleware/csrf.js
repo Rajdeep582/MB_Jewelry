@@ -2,21 +2,31 @@ const crypto = require('node:crypto');
 
 /**
  * attachCsrfCookie — Double Submit Cookie pattern (step 1 of 2).
- * Sets a 'csrfToken' cookie if not already present.
- * httpOnly=false so the frontend JavaScript can read it from document.cookie
- * and send it back in the x-csrf-token header on mutating requests.
- * The cookie is SameSite=strict to prevent cross-origin reads.
+ * Sets a 'csrfToken' cookie if not already present, and echoes the token in the
+ * X-CSRF-Token response header.
+ *
+ * WHY THE HEADER: in production the frontend (e.g. Vercel) and the API live on
+ * different domains. JavaScript on the frontend origin can never read a cookie that
+ * belongs to the API domain via document.cookie, so without the header the client
+ * could not send x-csrf-token and every POST/PUT/DELETE (login included) got 403.
+ * The header is only readable by origins allowed by CORS (exposedHeaders in server.js),
+ * so a cross-origin attacker still cannot learn the token.
+ *
+ * SameSite: 'none' in production (cookie must ride along cross-site API calls, same as
+ * the refresh cookie), 'strict' locally.
  */
 const attachCsrfCookie = (req, res, next) => {
-  // If not already set, assign a new CSRF token to the user's browser cookie
-  if (!req.cookies.csrfToken) {
-    const token = crypto.randomBytes(32).toString('hex');
+  const isProd = process.env.NODE_ENV === 'production';
+  let token = req.cookies.csrfToken;
+  if (!token) {
+    token = crypto.randomBytes(32).toString('hex');
     res.cookie('csrfToken', token, {
-      httpOnly: false, // The frontend must read this from document.cookie
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      httpOnly: false, // same-origin setups may still read it from document.cookie
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'strict',
     });
   }
+  res.setHeader('X-CSRF-Token', token);
   next();
 };
 
@@ -26,8 +36,8 @@ const attachCsrfCookie = (req, res, next) => {
  * GET/HEAD/OPTIONS are safe methods and skip validation.
  * Skipped entirely in NODE_ENV=test to avoid requiring test clients to manage CSRF state.
  *
- * WHY this works: a cross-origin attacker cannot read SameSite=strict cookies
- * from document.cookie, so they cannot replicate the matching header value.
+ * WHY this works: a cross-origin attacker can neither read the cookie nor the
+ * X-CSRF-Token response header (CORS blocks it), so they cannot replicate the header value.
  */
 const validateCsrf = (req, res, next) => {
   if (process.env.NODE_ENV === 'test') return next();

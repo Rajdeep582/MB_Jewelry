@@ -111,7 +111,12 @@ app.disable('x-powered-by');
 // proxy IP, not the client — which silently breaks rate limiters, adminIpWhitelist,
 // and audit/session IP logging. '1' = trust the first hop (the platform proxy).
 // Override via TRUST_PROXY env if your platform adds more hops.
-app.set('trust proxy', process.env.TRUST_PROXY || 1);
+// Env values are strings: Express treats '1' as an IP address, not a hop count.
+// Numeric values → hop count; anything else (e.g. 'loopback, 10.0.0.0/8') passed through.
+const trustProxyEnv = process.env.TRUST_PROXY;
+app.set('trust proxy', trustProxyEnv === undefined || trustProxyEnv === ''
+  ? 1
+  : (/^\d+$/.test(trustProxyEnv) ? Number(trustProxyEnv) : trustProxyEnv));
 
 // ─── Correlation ID ───────────────────────────────────────────────────────────
 app.use(correlationId);
@@ -133,14 +138,16 @@ app.use(helmet({
 
 app.use(
   cors({
+    // CLIENT_URL may hold several comma-separated origins (e.g. apex + www domain)
     origin: [
-      process.env.CLIENT_URL || 'http://localhost:5173',
+      ...(process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((o) => o.trim()).filter(Boolean),
       // Dev-only Vite origin — excluded in production
       ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5174'] : []),
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+    exposedHeaders: ['x-csrf-token'], // cross-domain frontend reads the CSRF token from here
   })
 );
 

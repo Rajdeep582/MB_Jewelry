@@ -43,6 +43,8 @@ const deliveryPartnerSchema = new mongoose.Schema(
     sessions: [{
       sessionId: { type: String, required: true },
       tokenHash: { type: String, required: true },
+      prevTokenHash: { type: String }, // previous refresh-token hash, honoured briefly after rotation
+      rotatedAt: { type: Date },
       deviceId: { type: String },
       ipAddress: { type: String },
       createdAt: { type: Date, default: Date.now },

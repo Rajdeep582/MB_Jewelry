@@ -8,7 +8,9 @@ const {
   generateRefreshToken,
   sendRefreshTokenCookie,
   clearRefreshTokenCookie,
+  readRefreshToken,
 } = require('../utils/generateToken');
+const { rotateRefreshSession } = require('../utils/refreshSessions');
 const crypto = require('node:crypto');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
 const { sendSmsOtp } = require('../utils/sms');
@@ -314,71 +316,40 @@ const login = async (req, res) => {
 };
 
 /**
- * refreshToken — rotates the refresh token and issues a new access token.
- * Handles three user types from one endpoint (user / admin / delivery).
- * Delivery tokens are rejected here → must use /dp-auth/refresh.
+ * refreshToken — rotates the customer's refresh token and issues a new access token.
+ * Customer tokens only: admin and delivery portals have their own cookie + /refresh endpoint.
+ *
+ * ROTATION (utils/refreshSessions.js):
+ *   - Atomic compare-and-set of the session's token hash; new token set in the httpOnly cookie.
+ *   - The just-replaced token is honoured for a few seconds (parallel tabs / retried request):
+ *     a new access token is issued without rotating again.
  *
  * TOKEN REPLAY ATTACK DETECTION:
- *   - Old refresh token hash looked up in sessions[].
- *   - Not found = token was already rotated (replay of stolen old token).
- *   - Response: wipe ALL sessions (nuclear option) + 401.
- *   - Legitimate user must re-login. Attacker's stolen token is also now worthless.
- *
- * ROTATION:
- *   - Found = overwrite sessions[sessionIndex] with new tokenHash in-place.
- *   - New refresh token set in httpOnly cookie; new access token returned in body.
+ *   - Token unknown and not within the grace window = reuse of an old (possibly stolen) token.
+ *   - Response: wipe ALL sessions + 401. Legitimate user must re-login; the stolen token is worthless.
  * @route POST /api/auth/refresh
  */
 const refreshToken = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const { token } = readRefreshToken(req, 'user');
   if (!token) return res.status(401).json({ success: false, message: 'No token' });
 
   let decoded;
   try { decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET); }
   catch { return res.status(401).json({ success: false, message: 'Invalid token' }); }
 
-  // Delivery tokens must use /dp-auth/refresh
-  if (decoded.userType === 'delivery') {
+  // Admin / delivery tokens must use their own portal's refresh endpoint
+  if (decoded.userType && decoded.userType !== 'user') {
     return res.status(401).json({ success: false, message: 'Invalid token for this endpoint' });
   }
 
-  // Admin token — query Admin collection
-  if (decoded.userType === 'admin') {
-    const admin = await Admin.findById(decoded.id).select('+sessions');
-    if (!admin) return res.status(401).json({ success: false, message: 'Admin not found' });
-    admin.sessions = (admin.sessions || []).filter(s => s.expiresAt > new Date());
-    const hashedR = hashToken(token);
-    const idx = admin.sessions.findIndex(s => s.tokenHash === hashedR);
-    if (idx === -1) {
-      admin.sessions = [];
-      await admin.save({ validateBeforeSave: false });
-      return res.status(401).json({ success: false, message: 'Security breach detected. All sessions terminated.' });
-    }
-    const newAccess  = generateAccessToken(admin._id, 'admin', 'admin');
-    const newRefresh = generateRefreshToken(admin._id, 'admin');
-    admin.sessions[idx] = {
-      sessionId: admin.sessions[idx].sessionId,
-      tokenHash: hashToken(newRefresh),
-      deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-      ipAddress: req.ip,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    };
-    admin.markModified('sessions');
-    await admin.save({ validateBeforeSave: false });
-    sendRefreshTokenCookie(res, newRefresh);
-    return res.json({ success: true, accessToken: newAccess });
-  }
-
-  // Normal user token
   const user = await User.findById(decoded.id).select('+sessions');
   if (!user) return res.status(401).json({ success: false, message: 'User not found' });
-  user.sessions = user.sessions.filter(s => s.expiresAt > new Date());
+  if (!user.isActive) return res.status(401).json({ success: false, message: 'Account is deactivated' });
 
-  const hashedRToken = hashToken(token);
-  const sessionIndex = user.sessions.findIndex(s => s.tokenHash === hashedRToken);
+  const result = await rotateRefreshSession({ Model: User, doc: user, token, userType: 'user', req });
 
   // TOKEN REPLAY ATTACK DETECTION
-  if (sessionIndex === -1) {
+  if (result.status === 'replay') {
     user.sessions = []; // Nuke entirely
     addAuditLog(user, 'TOKEN_REPLAY_ATTACK', 'Invalid refresh token used, wiped all specific sessions', req.ip);
     logAlert('TOKEN_REPLAY_ATTACK', `Invalid duplicate use of token on ${user.email}`, req.ip);
@@ -386,23 +357,8 @@ const refreshToken = async (req, res) => {
     return res.status(401).json({ success: false, message: 'Security breach detected. All sessions terminated.' });
   }
 
-  // Issue new pair (Rotation)
-  const newAccessToken = generateAccessToken(user._id, user.role, 'user');
-  const newRefreshToken = generateRefreshToken(user._id, 'user');
-
-  user.sessions[sessionIndex] = {
-    sessionId: user.sessions[sessionIndex].sessionId,
-    tokenHash: hashToken(newRefreshToken),
-    deviceId: req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-    ipAddress: req.ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-  };
-
-  user.markModified('sessions');
-  await user.save({ validateBeforeSave: false });
-  sendRefreshTokenCookie(res, newRefreshToken);
-
-  res.json({ success: true, accessToken: newAccessToken });
+  if (result.status === 'rotated') sendRefreshTokenCookie(res, result.refreshToken, 'user');
+  res.json({ success: true, accessToken: generateAccessToken(user._id, user.role, 'user') });
 };
 
 /**
@@ -412,13 +368,14 @@ const refreshToken = async (req, res) => {
  * @route POST /api/auth/logout
  */
 const logout = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const userType = req.userType === 'admin' ? 'admin' : 'user';
+  const { token } = readRefreshToken(req, userType);
   if (token) {
     const hashed = hashToken(token);
-    const Model = req.userType === 'admin' ? Admin : User;
+    const Model = userType === 'admin' ? Admin : User;
     await Model.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
   }
-  clearRefreshTokenCookie(res);
+  clearRefreshTokenCookie(res, userType);
   res.json({ success: true, message: 'Logged out.' });
 };
 

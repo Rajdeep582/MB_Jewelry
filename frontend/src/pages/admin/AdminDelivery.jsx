@@ -3,7 +3,7 @@ import {
   FiPackage, FiSearch, FiRefreshCw, FiAlertCircle, FiTruck,
   FiCheck, FiCheckCircle, FiShield, FiTag, FiRadio,
   FiMapPin, FiPhone, FiUser, FiClock, FiUserPlus, FiUserX, FiUsers,
-  FiChevronDown, FiChevronUp, FiDownload,
+  FiChevronDown, FiChevronUp, FiDownload, FiX, FiInbox,
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { orderService, customOrderService, adminService } from '../../services/services';
@@ -13,8 +13,9 @@ import { formatDate, formatPrice, resolveImageUrl } from '../../utils/helpers';
 
 /* ── Pipeline stage mapping ─────────────────────────────────────────────────── */
 
-const IN_PROGRESS_REGULAR = ['confirmed', 'in_production', 'ready_to_ship'];
-const IN_PROGRESS_CUSTOM  = ['in_production', 'final_payment_pending', 'final_payment_paid', 'ready_to_ship'];
+// Real statuses only (backend 'confirmed' filter for custom orders = advance_paid + confirmed)
+const IN_PROGRESS_REGULAR = ['confirmed', 'ready_to_ship'];
+const IN_PROGRESS_CUSTOM  = ['confirmed', 'ready_to_ship'];
 
 function getStage(displayStatus) {
   if (['confirmed', 'in_production', 'ready_to_ship'].includes(displayStatus)) return 'progress';
@@ -97,20 +98,29 @@ function resolveOrderId(item) {
 
 /* ── Stat Pill ──────────────────────────────────────────────────────────────── */
 
-function StatPill({ label, value, color, icon: Icon, active, onClick }) {
+function StatPill({ label, value, color, icon: Icon, active, onClick, hint }) {
   const colors = {
-    amber:   'bg-amber-500/10 border-amber-500/20 text-amber-400',
-    blue:    'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    emerald: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+    amber:   { box: 'from-amber-500/[0.12] to-amber-500/[0.03] border-amber-500/25', text: 'text-amber-300', icon: 'bg-amber-500/15 text-amber-300' },
+    blue:    { box: 'from-sky-500/[0.12] to-sky-500/[0.03] border-sky-500/25',       text: 'text-sky-300',   icon: 'bg-sky-500/15 text-sky-300' },
+    emerald: { box: 'from-emerald-500/[0.12] to-emerald-500/[0.03] border-emerald-500/25', text: 'text-emerald-300', icon: 'bg-emerald-500/15 text-emerald-300' },
   };
+  const c = colors[color];
   return (
-    <button onClick={onClick}
-      className={`rounded-xl border px-5 py-4 flex flex-col gap-1 transition-all text-left ${colors[color]} ${active ? 'ring-2 ring-offset-1 ring-offset-dark-950 ring-gold-500/50 scale-[1.02]' : 'hover:scale-[1.01]'}`}>
-      <div className="flex items-center justify-between w-full">
-        <p className="text-2xl font-display font-semibold">{value}</p>
-        {Icon && <Icon size={18} className="opacity-50" />}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br px-3 sm:px-4 py-3 sm:py-3.5 text-left transition-all duration-300 ${c.box} ${
+        active ? 'ring-2 ring-gold-500/60 ring-offset-2 ring-offset-dark-950 shadow-lg' : 'opacity-80 hover:opacity-100 hover:-translate-y-0.5'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className={`text-2xl sm:text-[1.7rem] font-bold leading-none tabular-nums ${c.text}`}>{value}</p>
+        {Icon && <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${c.icon}`}><Icon size={15} /></span>}
       </div>
-      <p className="text-xs opacity-75">{label}</p>
+      <p className="text-[11px] sm:text-xs font-semibold text-dark-200 mt-1.5">{label}</p>
+      {hint && <p className="hidden sm:block text-[10px] text-dark-500 mt-0.5">{hint}</p>}
+      {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-gold-500" aria-hidden="true" />}
     </button>
   );
 }
@@ -151,6 +161,44 @@ function printInvoice(item) {
 
 /* ── Delivery Card (read-only, collapsible) ─────────────────────────────────── */
 
+const PIPELINE = ['Processing', 'Packed', 'Shipped', 'Delivered'];
+function pipelineIndex(displayStatus) {
+  if (displayStatus === 'ready_to_ship') return 1;
+  if (displayStatus === 'shipped') return 2;
+  if (displayStatus === 'delivered') return 3;
+  return 0;
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+function daysSince(d) { return d ? Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / DAY)) : null; }
+function ago(d) {
+  const n = daysSince(d);
+  if (n == null) return '';
+  if (n === 0) return 'today';
+  return n === 1 ? '1 day ago' : `${n} days ago`;
+}
+
+/** One-line "what needs attention" summary for the card footer */
+function timingBadge(item, stage) {
+  if (stage === 'delivered') {
+    return { text: `Delivered ${item.deliveredAt ? formatDate(item.deliveredAt) : ''}`.trim(), cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' };
+  }
+  if (stage === 'shipped') {
+    if (item.estimatedDelivery && new Date(item.estimatedDelivery).getTime() < Date.now()) {
+      return { text: `Overdue · ETA was ${formatDate(item.estimatedDelivery)}`, cls: 'text-red-300 bg-red-500/10 border-red-500/25' };
+    }
+    return {
+      text: item.estimatedDelivery ? `ETA ${formatDate(item.estimatedDelivery)}` : `Dispatched ${ago(item.dispatchedAt || item.createdAt)}`,
+      cls: 'text-sky-300 bg-sky-500/10 border-sky-500/20',
+    };
+  }
+  const n = daysSince(item.createdAt);
+  return {
+    text: `Placed ${ago(item.createdAt)}`,
+    cls: n >= 3 ? 'text-amber-300 bg-amber-500/10 border-amber-500/25' : 'text-dark-300 bg-white/[0.03] border-white/10',
+  };
+}
+
 function DeliveryCard({ item }) {
   const [expanded, setExpanded] = useState(false);
   const stage    = getStage(item._displayStatus);
@@ -158,52 +206,98 @@ function DeliveryCard({ item }) {
   const isCustom = item._sourceType === 'custom_order';
   const delivID  = maskDeliveryId(item.deliveryId);
   const mainItem = item.items?.[0];
+  const addr     = item.shippingAddress || {};
+  const step     = pipelineIndex(item._displayStatus);
+  const timing   = timingBadge(item, stage);
+  const itemCount = (item.items || []).reduce((n, it) => n + (it.quantity || 1), 0);
+  const toggle = () => setExpanded(v => !v);
 
   return (
     <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-      className={`card border-l-4 ${meta.border} transition-shadow hover:shadow-lg hover:shadow-black/20 overflow-hidden`}>
+      className={`card !rounded-2xl border-l-[3px] ${meta.border} transition-all duration-300 hover:border-white/10 hover:shadow-lg hover:shadow-black/30 overflow-hidden ${expanded ? 'ring-1 ring-gold-500/20' : ''}`}>
 
-      {/* ── Collapsed Header (always visible, clickable) ── */}
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full text-left p-4 flex flex-wrap items-center gap-3"
+      {/* ── Summary (click to expand) ── */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={toggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+        className="w-full text-left p-3.5 sm:p-4 cursor-pointer select-none focus:outline-none focus-visible:bg-white/[0.02]"
       >
-        {/* Thumbnail */}
-        <div className="w-10 h-10 rounded-lg bg-dark-800 flex-shrink-0 overflow-hidden border border-white/5">
-          {mainItem?.image
-            ? <img src={resolveImageUrl(mainItem.image)} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
-            : <FiPackage size={16} className="m-auto text-dark-600 mt-2.5" />}
-        </div>
-
-        {/* Core info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-            <span className="font-mono text-gold-400 font-semibold text-sm">{resolveOrderId(item)}</span>
-            <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${isCustom ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' : 'bg-gold-500/10 border-gold-500/20 text-gold-400'}`}>
-              <FiTag size={8} /> {isCustom ? 'Custom' : 'Regular'}
-            </span>
-            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full border ${meta.bg} ${meta.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${stage === 'shipped' ? 'animate-pulse' : ''}`} /> {meta.label}
-            </span>
-            {delivID && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-mono bg-gold-500/10 border border-gold-500/30 text-gold-300 px-1.5 py-0.5 rounded-full">
-                <FiShield size={8} /> {delivID}
-              </span>
+        <div className="flex items-start gap-3">
+          {/* Thumbnail */}
+          <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-dark-800 flex-shrink-0 overflow-hidden border border-white/10">
+            {mainItem?.image
+              ? <img src={resolveImageUrl(mainItem.image)} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
+              : <span className="absolute inset-0 flex items-center justify-center text-dark-600"><FiPackage size={18} /></span>}
+            {itemCount > 1 && (
+              <span className="absolute bottom-0.5 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-dark-950/90 border border-white/15 text-[9px] font-bold text-white flex items-center justify-center">×{itemCount}</span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-0 text-xs text-dark-400">
-            <span className="text-dark-300">{item.user?.name || item.shippingAddress?.fullName || '—'}</span>
-            <span>{item.shippingAddress?.city}, {item.shippingAddress?.state}</span>
-            <span className="text-dark-600">{formatDate(item.createdAt)}</span>
+
+          {/* Core info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-gold-400 font-semibold text-sm">{resolveOrderId(item)}</span>
+              <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${isCustom ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' : 'bg-gold-500/10 border-gold-500/20 text-gold-300'}`}>
+                <FiTag size={8} /> {isCustom ? 'Custom' : 'Regular'}
+              </span>
+              {delivID && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono bg-white/[0.04] border border-white/10 text-dark-200 px-1.5 py-0.5 rounded-full">
+                  <FiShield size={8} className="text-gold-400" /> {delivID}
+                </span>
+              )}
+            </div>
+            <p className="text-white text-sm font-medium truncate mt-1">
+              {item.user?.name || addr.fullName || '—'}
+              {addr.phone && <span className="text-dark-500 font-normal"> · {addr.phone}</span>}
+            </p>
+            <p className="text-dark-400 text-xs truncate mt-0.5 flex items-center gap-1">
+              <FiMapPin size={10} className="text-dark-500 flex-shrink-0" />
+              {[addr.city, addr.state].filter(Boolean).join(', ') || '—'}
+              {addr.pincode && <span className="font-mono text-dark-300 ml-1">{addr.pincode}</span>}
+            </p>
+          </div>
+
+          {/* Amount + chevron */}
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <p className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(item.totalAmount)}</p>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.bg} ${meta.color}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${stage === 'shipped' ? 'animate-pulse' : ''}`} /> {meta.label}
+            </span>
           </div>
         </div>
 
-        {/* Amount + chevron */}
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <p className="text-gold-500 font-semibold text-sm">{formatPrice(item.totalAmount)}</p>
-          {expanded ? <FiChevronUp size={14} className="text-dark-500" /> : <FiChevronDown size={14} className="text-dark-500" />}
+        {/* Pipeline + timing + quick actions */}
+        <div className="mt-3 pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          <ol className="flex items-center gap-1 min-w-0" aria-label={`Stage: ${PIPELINE[step]}`}>
+            {PIPELINE.map((label, i) => (
+              <li key={label} className="flex items-center gap-1">
+                <span className={`flex items-center gap-1 text-[10px] font-medium whitespace-nowrap ${i < step ? 'text-dark-300' : i === step ? meta.color : 'text-dark-600'}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${i < step ? 'bg-gold-500/70' : i === step ? meta.dot : 'bg-dark-600'}`} />
+                  <span className={i === step ? '' : 'hidden sm:inline'}>{label}</span>
+                </span>
+                {i < PIPELINE.length - 1 && <span className={`w-3 sm:w-5 h-px ${i < step ? 'bg-gold-500/50' : 'bg-white/10'}`} />}
+              </li>
+            ))}
+          </ol>
+          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${timing.cls}`}>{timing.text}</span>
+          <div className="ml-auto flex items-center gap-1.5" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Delivery actions">
+            {addr.phone && (
+              <a href={`tel:${addr.phone}`} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-gold-400 border border-white/10 hover:border-gold-500/40 rounded-lg px-2 py-1 transition-colors">
+                <FiPhone size={11} /> Call
+              </a>
+            )}
+            <button type="button" onClick={() => printInvoice(item)} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-gold-400 border border-white/10 hover:border-gold-500/40 rounded-lg px-2 py-1 transition-colors">
+              <FiDownload size={11} /> Invoice
+            </button>
+            <button type="button" onClick={toggle} aria-label={expanded ? 'Hide details' : 'Show details'} className="p-1.5 rounded-lg border border-white/10 text-dark-400 hover:text-white hover:border-white/25 transition-colors">
+              {expanded ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />}
+            </button>
+          </div>
         </div>
-      </button>
+      </div>
 
       {/* ── Expanded Detail Panel ── */}
       <AnimatePresence initial={false}>
@@ -279,12 +373,6 @@ function DeliveryCard({ item }) {
                     <span className="font-mono opacity-70">({item.deliveredByPartnerId})</span>
                   </span>
                 )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); printInvoice(item); }}
-                  className="ml-auto flex items-center gap-1.5 text-[10px] bg-gold-500/10 border border-gold-500/30 text-gold-400 hover:bg-gold-500/20 rounded-lg px-2.5 py-1 transition-colors"
-                >
-                  <FiDownload size={10} /> Invoice PDF
-                </button>
               </div>
 
               {/* Tracking — compact, last 4 only */}
@@ -487,7 +575,7 @@ function DeliveryPartnerManager({ onRefreshOrders }) {
           {allUsers.length > 0 && (
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wider mb-2">Assign Delivery Role</p>
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-64 overflow-y-auto overscroll-contain pr-1" data-lenis-prevent="true">
                 {allUsers.map(u => (
                   <div key={u._id} className="bg-dark-900 rounded-lg border border-white/5 overflow-hidden">
                     <div className="flex items-center justify-between px-3 py-2.5">
@@ -666,17 +754,29 @@ export default function AdminDelivery() {
 
   const renderDeliveryList = () => {
     if (loading) {
-      return <div className="flex items-center justify-center py-20 text-dark-400 text-sm">Loading deliveries…</div>;
+      return (
+        <div className="space-y-3">
+          {[0, 1, 2].map((n) => <div key={n} className="card !rounded-2xl p-4"><div className="skeleton h-14 rounded-xl" /><div className="skeleton h-4 rounded mt-3 w-2/3" /></div>)}
+        </div>
+      );
     }
     if (filtered.length === 0) {
-      return <div className="card p-10 text-center text-dark-400 text-sm">No deliveries in this stage</div>;
+      return (
+        <div className="card !rounded-2xl py-14 text-center">
+          <span className="mx-auto mb-3 w-12 h-12 rounded-full bg-white/[0.04] border border-white/10 flex items-center justify-center text-dark-400"><FiInbox size={20} /></span>
+          <p className="text-dark-300 text-sm font-medium">{search ? 'No deliveries match your search' : `Nothing ${STAGE_META[tab].label.toLowerCase()} right now`}</p>
+          {search && <button type="button" onClick={() => setSearch('')} className="text-gold-400 text-xs mt-2 hover:text-gold-300">Clear search</button>}
+        </div>
+      );
     }
     return (
-      <AnimatePresence initial={false}>
-        {filtered.map(item => (
-          <DeliveryCard key={item._id} item={item} />
-        ))}
-      </AnimatePresence>
+      <div className="space-y-3">
+        <AnimatePresence initial={false}>
+          {filtered.map(item => (
+            <DeliveryCard key={item._id} item={item} />
+          ))}
+        </AnimatePresence>
+      </div>
     );
   };
 
@@ -686,7 +786,7 @@ export default function AdminDelivery() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-xl text-white">Delivery Management</h1>
+          <h1 className="text-xl sm:text-2xl text-white">Delivery Management</h1>
           <p className="text-dark-400 text-sm mt-0.5 flex items-center gap-2">
             {loading ? 'Loading…' : `${counts.progress + counts.shipped} active · ${counts.delivered} delivered`}
             {lastRefresh.current && !loading && (
@@ -704,19 +804,24 @@ export default function AdminDelivery() {
 
       {/* Stat Pills */}
       <div className="grid grid-cols-3 gap-3">
-        <StatPill label="In Progress" value={counts.progress} color="amber"  icon={FiClock}   active={tab==='progress'}  onClick={() => setTab('progress')} />
-        <StatPill label="Shipped"     value={counts.shipped}  color="blue"   icon={FiTruck}   active={tab==='shipped'}   onClick={() => setTab('shipped')} />
-        <StatPill label="Delivered"   value={counts.delivered} color="emerald" icon={FiCheck} active={tab==='delivered'} onClick={() => setTab('delivered')} />
+        <StatPill label="In Progress" hint="Processing & packed" value={counts.progress} color="amber"  icon={FiClock}   active={tab==='progress'}  onClick={() => setTab('progress')} />
+        <StatPill label="Shipped"     hint="Out with partners"   value={counts.shipped}  color="blue"   icon={FiTruck}   active={tab==='shipped'}   onClick={() => setTab('shipped')} />
+        <StatPill label="Delivered"   hint="Recently completed"  value={counts.delivered} color="emerald" icon={FiCheck} active={tab==='delivered'} onClick={() => setTab('delivered')} />
       </div>
 
       {/* Search */}
-      <div className="relative">
+      <div className="relative group">
         <input
           value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search order ID, customer, city…"
-          className="w-full bg-dark-800 border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-violet-500/50"
+          placeholder="Search order ID, customer, city, PIN, delivery ID…"
+          className="w-full bg-dark-800 border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-colors"
         />
-        <FiSearch size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-500" />
+        <FiSearch size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-500 group-focus-within:text-gold-400 transition-colors" />
+        {search && (
+          <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-dark-400 hover:text-white hover:bg-white/5">
+            <FiX size={13} />
+          </button>
+        )}
       </div>
 
       {/* Error */}

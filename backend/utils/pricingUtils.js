@@ -1,12 +1,34 @@
 /**
- * calcDynamicPrice — computes the final retail price for a dynamic (metal) product.
- * Formula: livePrice × weightValue × (1 + makingCharges%) × (1 + gst%)
+ * calcDynamicPrice — computes the retail price (EXCLUDING GST) for a dynamic (metal) product.
+ * Formula: livePrice × weightValue × (1 + makingCharges%)
+ * GST is added once, at checkout (orderController.computePricing), per item using
+ * getGstRate(). Shop pages therefore show "price + GST".
  * Result is rounded to the nearest rupee.
- * All four params must be numbers; pass 0 for makingCharges/gst if not applicable.
  */
-function calcDynamicPrice(weightValue, livePrice, makingCharges, gst) {
-  const withMaking = livePrice * weightValue * (1 + makingCharges / 100);
-  return Math.round(withMaking * (1 + gst / 100));
+function calcDynamicPrice(weightValue, livePrice, makingCharges) {
+  return Math.round(livePrice * weightValue * (1 + makingCharges / 100));
+}
+
+/**
+ * discountFraction — the product's discount as a fraction of its price (0 … <1).
+ * Prefers the stored discountPercent; legacy products only have discountedPrice, so the
+ * ratio discountedPrice / price (both stored together) is used for them.
+ */
+function discountFraction(product) {
+  const pct = Number(product.discountPercent);
+  if (pct > 0 && pct < 100) return pct / 100;
+  const price = Number(product.price);
+  const disc = product.discountedPrice;
+  if (disc != null && price > 0 && Number(disc) >= 0 && Number(disc) < price) {
+    return 1 - Number(disc) / price;
+  }
+  return 0;
+}
+
+/** applyDiscount — discounted price for a given base price, or null when no discount. */
+function applyDiscount(price, fraction) {
+  if (!(fraction > 0)) return null;
+  return Math.round(price * (1 - fraction));
 }
 
 /**
@@ -46,9 +68,10 @@ function resolvePricingEntry(pricingMap, material, purity, unit, weightValue) {
 }
 
 // Applies live global pricing to a plain product object.
-// Returns the same object (or a new one with updated price) — never mutates.
-// Falls back to stored price if no matching global rate exists.
-// Product-level makingCharges/gst take priority over the global entry defaults.
+// Returns a new object with the live price + live discounted price — never mutates.
+// Falls back to stored price (and stored discount) if no matching global rate exists.
+// Product-level makingCharges take priority over the global entry default.
+// This is the ONE price used by shop pages AND checkout, so what is shown is what is charged.
 function applyLivePrice(product, pricingMap) {
   if (product.pricingType !== 'dynamic' || !(product.weightValue > 0)) {
     return product;
@@ -59,12 +82,29 @@ function applyLivePrice(product, pricingMap) {
   );
   if (!pricing) return product;
   const mc = product.makingCharges != null ? product.makingCharges : pricing.makingCharges;
-  const gst = product.gst != null ? product.gst : pricing.gst;
+  const price = calcDynamicPrice(effectiveWeight, pricing.livePrice, mc);
   return {
     ...product,
-    price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, gst),
-    discountedPrice: null,
+    price,
+    discountedPrice: applyDiscount(price, discountFraction(product)),
   };
 }
 
-module.exports = { calcDynamicPrice, buildPricingKey, buildGlobalPricingMap, resolvePricingEntry, applyLivePrice };
+/**
+ * getGstRate — GST % for a product: product override → matching global rate → 3%.
+ */
+function getGstRate(product, pricingMap) {
+  if (product.gst != null && Number.isFinite(Number(product.gst))) return Number(product.gst);
+  if (pricingMap) {
+    const { pricing } = resolvePricingEntry(
+      pricingMap, product.material, product.purity, product.unit || 'gram', product.weightValue || 0
+    );
+    if (pricing?.gst != null) return Number(pricing.gst);
+  }
+  return 3;
+}
+
+module.exports = {
+  calcDynamicPrice, discountFraction, applyDiscount,
+  buildPricingKey, buildGlobalPricingMap, resolvePricingEntry, applyLivePrice, getGstRate,
+};

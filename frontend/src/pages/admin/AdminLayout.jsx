@@ -8,6 +8,7 @@ import {
 } from 'react-icons/fi';
 import { MdCurrencyRupee } from 'react-icons/md';
 import { logoutUser } from '../../store/authSlice';
+import BrandLogo from '../../components/common/BrandLogo';
 import { orderService, customOrderService } from '../../services/services';
 import toast from 'react-hot-toast';
 
@@ -32,7 +33,7 @@ function NavItem({ item, isActive, hasAttention, expanded, onClick }) {
       } ${
         isActive
           ? 'bg-gold-500/15 text-gold-400 shadow-[0_0_10px_rgba(212,175,55,0.15)]'
-          : 'text-dark-500 hover:text-white hover:bg-white/8'
+          : 'text-dark-500 hover:text-white hover:bg-white/[0.08]'
       }`}
     >
       <div className="relative flex-shrink-0 flex items-center justify-center w-5 h-5">
@@ -97,15 +98,9 @@ export default function AdminLayout() {
       {/* Header: logo + toggle button */}
       <div className={`flex items-center mb-3 ${isExpanded ? 'px-3 justify-between' : 'flex-col gap-2 justify-center'}`}>
         <Link to="/" className="group relative flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gold-gradient flex-shrink-0 flex items-center justify-center shadow-[0_0_14px_rgba(212,175,55,0.2)] hover:shadow-[0_0_20px_rgba(212,175,55,0.35)] transition-shadow">
-            <span className="text-dark-900 font-bold text-[11px] tracking-tight">MB</span>
-          </div>
-          {isExpanded && (
-            <div className="min-w-0">
-              <p className="text-white font-display text-xs tracking-wide leading-none">M.B. JEWELLERS</p>
-              <p className="text-gold-500 text-[10px] mt-0.5">Admin Panel</p>
-            </div>
-          )}
+          {isExpanded
+            ? <BrandLogo size="sm" subtitle="Admin Panel" />
+            : <BrandLogo size="md" showText={false} />}
           {!isExpanded && (
             <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-lg bg-dark-800 border border-white/10 px-2.5 py-1.5 text-xs text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity select-none">
               M.B. Jewellers
@@ -116,7 +111,7 @@ export default function AdminLayout() {
         {/* Hamburger / collapse button */}
         <button
           onClick={onToggle}
-          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-dark-500 hover:text-white hover:bg-white/8 transition-all"
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-dark-500 hover:text-white hover:bg-white/[0.08] transition-all"
           title={isExpanded ? 'Collapse' : 'Expand'}
         >
           {isExpanded ? <FiChevronsLeft size={15} /> : <FiMenu size={15} />}
@@ -144,7 +139,7 @@ export default function AdminLayout() {
       </nav>
 
       {/* Bottom */}
-      <div className={`flex flex-col gap-0.5 mt-1 pt-2 border-t border-white/8 ${isExpanded ? 'px-2' : 'w-full items-center'}`}>
+      <div className={`flex flex-col gap-0.5 mt-1 pt-2 border-t border-white/[0.08] ${isExpanded ? 'px-2' : 'w-full items-center'}`}>
 
         {/* Profile widget */}
         <Link
@@ -203,7 +198,7 @@ export default function AdminLayout() {
       <motion.aside
         animate={{ width: expanded ? 224 : 64 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="hidden lg:flex flex-col glass border-r border-white/8 sticky top-0 h-screen flex-shrink-0 overflow-hidden"
+        className="hidden lg:flex flex-col glass border-r border-white/[0.08] sticky top-0 h-screen flex-shrink-0 overflow-hidden"
       >
         <SidebarContent
           isExpanded={expanded}
@@ -222,7 +217,7 @@ export default function AdminLayout() {
               animate={{ x: 0 }}
               exit={{ x: -224 }}
               transition={{ type: 'spring', stiffness: 350, damping: 32 }}
-              className="relative h-full glass border-r border-white/8 flex flex-col overflow-hidden"
+              className="relative h-full glass border-r border-white/[0.08] flex flex-col overflow-hidden"
               style={{ width: 224 }}
             >
               <SidebarContent
@@ -239,19 +234,14 @@ export default function AdminLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Mobile top bar */}
-        <div className="lg:hidden flex items-center gap-3 p-3 glass border-b border-white/8 sticky top-0 z-30">
+        <div className="lg:hidden flex items-center gap-3 p-3 glass border-b border-white/[0.08] sticky top-0 z-30">
           <button
             onClick={() => setMobileOpen(true)}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-dark-400 hover:text-white hover:bg-white/8 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-lg text-dark-400 hover:text-white hover:bg-white/[0.08] transition-colors"
           >
             <FiMenu size={18} />
           </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-gold-gradient flex items-center justify-center">
-              <span className="text-dark-900 font-bold text-[9px]">MB</span>
-            </div>
-            <span className="text-white font-display text-sm">Admin Panel</span>
-          </div>
+          <BrandLogo size="sm" subtitle="Admin Panel" />
         </div>
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8">

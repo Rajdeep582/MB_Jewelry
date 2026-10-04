@@ -113,6 +113,15 @@ const deleteCategory = async (req, res) => {
     return res.status(404).json({ success: false, message: 'Category not found' });
   }
 
+  // Products must keep a valid category (shop filters, product page breadcrumbs)
+  const inUse = await require('../models/Product').countDocuments({ category: category._id });
+  if (inUse > 0) {
+    return res.status(409).json({
+      success: false,
+      message: `Category has ${inUse} product(s). Move or delete them first.`,
+    });
+  }
+
   if (category.image?.publicId) {
     try { await cloudinary.uploader.destroy(category.image.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
   }

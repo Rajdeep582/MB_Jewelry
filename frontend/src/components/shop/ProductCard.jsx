@@ -2,11 +2,11 @@ import { Link } from 'react-router-dom';
 import jewelryImg from '../../assets/necklace.webp';
 import { motion } from 'framer-motion';
 import { FiShoppingBag, FiStar, FiHeart } from 'react-icons/fi';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToCart, openCart } from '../../store/cartSlice';
 import { formatPrice, discountPercent, resolveImageUrl } from '../../utils/helpers';
-import { selectIsAuthenticated, selectUser, setCredentials } from '../../store/authSlice';
+import { selectIsAuthenticated, selectUser, setUser } from '../../store/authSlice';
 import { userService } from '../../services/services';
 import toast from 'react-hot-toast';
 import PropTypes from 'prop-types';
@@ -26,24 +26,27 @@ function getDiscountBadgeClass(isList) {
   return 'absolute z-10 badge badge-red text-[10px] sm:text-xs font-bold top-3 left-3';
 }
 
-function getWishlistBtnClass(isList) {
-  const pos = isList ? 'top-2 right-2 sm:top-3 sm:right-3' : 'top-3 right-3';
-  return `absolute z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm flex items-center justify-center text-dark-400 hover:text-velvet-400 transition-all duration-200 opacity-0 group-hover:opacity-100 ${pos}`;
+// Wishlist heart: always visible on touch screens (no hover there) and once saved;
+// on desktop it fades in on hover.
+function getWishlistBtnClass(isList, saved) {
+  const pos = isList ? 'top-2 right-2 sm:top-3 sm:right-3' : 'top-2.5 right-2.5 sm:top-3 sm:right-3';
+  const vis = saved ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100';
+  return `absolute z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm border border-white/10 flex items-center justify-center text-dark-300 hover:text-velvet-400 hover:scale-110 transition-all duration-200 ${vis} ${pos}`;
 }
 
 function getInfoClass(isList) {
   if (isList) return 'flex flex-col flex-1 py-1 sm:py-3 pr-2 sm:pr-4 h-32 sm:h-48';
-  return 'flex flex-col flex-1 p-4';
+  return 'flex flex-col flex-1 p-3 sm:p-4';
 }
 
 function getNameClass(isList) {
-  if (isList) return 'font-sans text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm sm:text-lg mb-1 sm:mb-2';
-  return 'font-sans text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-400 transition-colors text-sm mb-1 min-h-[2.5rem]';
+  if (isList) return 'font-jakarta text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-300 transition-colors text-sm sm:text-lg mb-1 sm:mb-2';
+  return 'font-jakarta text-white font-medium line-clamp-2 leading-snug group-hover:text-gold-300 transition-colors text-[13px] sm:text-sm min-h-[2.4rem] sm:min-h-[2.5rem]';
 }
 
 function getCartBtnClass(isList) {
-  const size = isList ? 'px-4 sm:px-6 py-2 sm:py-2.5 w-max' : 'w-full py-2.5';
-  return `flex items-center justify-center gap-2 rounded-xl text-xs sm:text-sm font-medium bg-dark-700 text-dark-300 hover:bg-gold-500 hover:text-dark-900 border border-white/10 hover:border-transparent transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed ${size}`;
+  const size = isList ? 'px-4 sm:px-6 py-2 sm:py-2.5 w-max' : 'w-full py-2 sm:py-2.5';
+  return `flex items-center justify-center gap-2 rounded-xl font-jakarta text-xs sm:text-sm font-semibold bg-white/[0.04] text-gold-300 border border-gold-500/25 hover:bg-gold-500 hover:text-dark-900 hover:border-transparent active:scale-[0.98] transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed disabled:text-dark-400 disabled:border-white/10 disabled:hover:bg-white/[0.04] ${size}`;
 }
 
 export default function ProductCard({ product, view = 'grid' }) {
@@ -54,14 +57,14 @@ export default function ProductCard({ product, view = 'grid' }) {
   const wishlist = user?.wishlist || [];
   const isWishlisted = wishlist.some(item => resolveWishlistItemId(item) === product._id);
 
-  const [wishlisted, setWishlisted] = useState(isWishlisted);
+  // Optimistic value while the wishlist request is in flight; otherwise follow the store
+  const [pendingWish, setPendingWish] = useState(null);
+  const wishlisted = pendingWish ?? isWishlisted;
   const [imgError, setImgError] = useState(false);
 
-  useEffect(() => {
-    setWishlisted(isWishlisted);
-  }, [isWishlisted]);
-
-  const { _id, name, price, discountedPrice, images, material, averageRating, numReviews, stock } = product;
+  const { _id, name, price, discountedPrice, images, material, purity, averageRating, numReviews, stock } = product;
+  const shownPrice = discountedPrice || price;
+  const meta = [material, purity && purity !== 'Normal' ? purity : null].filter(Boolean).join(' · ');
 
   const mainImage = images?.[0]?.url ? resolveImageUrl(images[0].url) : null;
   const hoverImage = images?.[1]?.url ? resolveImageUrl(images[1].url) : null;
@@ -83,15 +86,16 @@ export default function ProductCard({ product, view = 'grid' }) {
     
     // Optimistic update
     const newValue = !wishlisted;
-    setWishlisted(newValue);
-    
+    setPendingWish(newValue);
+
     try {
       const res = await userService.toggleWishlist(_id);
-      dispatch(setCredentials({ user: res.data.user, accessToken: localStorage.getItem('mb_access_token') }));
+      dispatch(setUser(res.data.user)); // keep the in-memory access token
       toast.success(newValue ? 'Added to wishlist' : 'Removed from wishlist');
     } catch {
-      setWishlisted(!newValue); // Revert
-      toast.error('Failed to update wishlist');
+      toast.error('Failed to update wishlist'); // store unchanged → reverts
+    } finally {
+      setPendingWish(null);
     }
   };
 
@@ -125,8 +129,9 @@ export default function ProductCard({ product, view = 'grid' }) {
           {/* Wishlist */}
           <button
             onClick={handleWishlist}
-            className={getWishlistBtnClass(isList)}
-            aria-label="Add to wishlist"
+            className={getWishlistBtnClass(isList, wishlisted)}
+            aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+            aria-pressed={wishlisted}
           >
             <FiHeart size={14} className={wishlisted ? 'fill-velvet-400 text-velvet-400' : ''} />
           </button>
@@ -152,30 +157,32 @@ export default function ProductCard({ product, view = 'grid' }) {
 
         {/* Info */}
         <div className={getInfoClass(isList)}>
-          <p className="text-dark-400 text-[10px] sm:text-xs mb-1 uppercase tracking-wider">{material}</p>
+          <p className="font-jakarta text-gold-500/80 text-[10px] sm:text-[11px] font-semibold mb-1 uppercase tracking-[0.16em] truncate">{meta}</p>
           <h3 className={getNameClass(isList)}>
             {name}
           </h3>
 
-          {/* Rating — reserve a fixed slot in grid so all cards match height */}
-          {numReviews > 0 ? (
-            <div className={`flex items-center gap-1 ${isList ? 'mb-1 sm:mb-2' : 'mb-2 h-[18px]'}`}>
-              <FiStar size={11} className="fill-gold-400 text-gold-400" />
-              <span className="text-gold-400 text-xs">{averageRating}</span>
-              <span className="text-dark-500 text-xs">({numReviews})</span>
-            </div>
-          ) : (
-            !isList && <div className="mb-2 h-[18px]" aria-hidden="true" />
-          )}
-
-          <div className={isList ? 'mt-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3' : 'mt-auto'}>
-            {/* Price */}
-            <div className={`flex items-center gap-2 ${isList ? '' : 'mb-3'}`}>
-              <span className="price-tag text-sm sm:text-base">
-                {formatPrice(discountedPrice || price)}
-              </span>
-              {discountedPrice && (
-                <span className="price-original text-xs sm:text-sm">{formatPrice(price)}</span>
+          <div className={isList ? 'mt-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3' : 'mt-auto pt-2'}>
+            {/* Price + rating */}
+            <div className={`flex items-end justify-between gap-2 ${isList ? '' : 'mb-2.5 sm:mb-3'}`}>
+              <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
+                {shownPrice > 0 ? (
+                  <>
+                    <span className="price-tag text-sm sm:text-base">{formatPrice(shownPrice)}</span>
+                    {discountedPrice && (
+                      <span className="price-original text-[11px] sm:text-xs">{formatPrice(price)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="font-jakarta text-dark-300 text-xs sm:text-sm">Price on request</span>
+                )}
+              </div>
+              {numReviews > 0 && (
+                <span className="flex items-center gap-1 flex-shrink-0 font-jakarta text-[11px] text-dark-400">
+                  <FiStar size={11} className="fill-gold-400 text-gold-400" />
+                  <span className="text-gold-300">{averageRating}</span>
+                  <span className="hidden sm:inline">({numReviews})</span>
+                </span>
               )}
             </div>
 
@@ -208,6 +215,7 @@ ProductCard.propTypes = {
       })
     ),
     material: PropTypes.string,
+    purity: PropTypes.string,
     averageRating: PropTypes.number,
     numReviews: PropTypes.number,
     stock: PropTypes.number.isRequired,

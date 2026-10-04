@@ -63,6 +63,12 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  /* Admin headings: tight line-height (the storefront's tall cursive line-height isn't needed here) */
+  .admin-panel h1,
+  .admin-panel h2 {
+    line-height: 1.25;
+    padding-top: 0;
+  }
 
 
 

@@ -32,8 +32,10 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
 
     if (staleOrders.length > 0) {
       const staleIds = staleOrders.map((o) => o._id);
+      // Re-check payment.status in the write: an order confirmed between find and update
+      // (webhook / verify) must never be flipped to failed.
       const orderResult = await Order.updateMany(
-        { _id: { $in: staleIds } },
+        { _id: { $in: staleIds }, 'payment.status': 'pending' },
         { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': expiredMsg }
       );
       const txResult = await Transaction.updateMany(
@@ -51,16 +53,18 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
 
   // Custom Orders - advance payment
   try {
+    // Only payments that were actually started (Razorpay order exists) and idle since cutoff
     const staleAdvance = await CustomOrder.find({
       'advancePayment.status': 'pending',
+      'advancePayment.razorpayOrderId': { $exists: true, $nin: [null, ''] },
       status: 'quoted',
-      createdAt: { $lt: cutoff },
+      updatedAt: { $lt: cutoff },
     }).select('_id').lean();
 
     if (staleAdvance.length > 0) {
       const ids = staleAdvance.map((o) => o._id);
       await CustomOrder.updateMany(
-        { _id: { $in: ids } },
+        { _id: { $in: ids }, 'advancePayment.status': 'pending' },
         { 'advancePayment.status': 'failed', 'advancePayment.failReason': expiredMsg }
       );
       await Transaction.updateMany(
@@ -77,14 +81,15 @@ async function cleanupStaleOrders(maxAgeMinutes = 30) {
   try {
     const staleFinal = await CustomOrder.find({
       'finalPayment.status': 'pending',
+      'finalPayment.razorpayOrderId': { $exists: true, $nin: [null, ''] },
       status: 'shipped',
-      createdAt: { $lt: cutoff },
+      updatedAt: { $lt: cutoff },
     }).select('_id').lean();
 
     if (staleFinal.length > 0) {
       const ids = staleFinal.map((o) => o._id);
       await CustomOrder.updateMany(
-        { _id: { $in: ids } },
+        { _id: { $in: ids }, 'finalPayment.status': 'pending' },
         { 'finalPayment.status': 'failed', 'finalPayment.failReason': expiredMsg }
       );
       await Transaction.updateMany(

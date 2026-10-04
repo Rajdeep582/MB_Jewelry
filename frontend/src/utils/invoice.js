@@ -15,12 +15,14 @@ export function downloadInvoice(order) {
   const fmtDate = (d) =>
     d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '—';
 
-  const orderId = order.orderId || `#${(order._id || '').slice(-8).toUpperCase()}`;
-  const addr    = order.shippingAddress || {};
+  // Every customer/admin-entered value is HTML-escaped before it goes into the print window
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const orderId = esc(order.orderId || `#${(order._id || '').slice(-8).toUpperCase()}`);
+  const addr    = Object.fromEntries(Object.entries(order.shippingAddress || {}).map(([k, v]) => [k, esc(v)]));
 
   const itemRows = (order.items || []).map(item => `
     <tr>
-      <td class="td">${item.name || '—'}</td>
+      <td class="td">${esc(item.name) || '—'}</td>
       <td class="td" style="text-align:center">${item.quantity ?? 1}</td>
       <td class="td" style="text-align:right">${fmt(item.price)}</td>
       <td class="td" style="text-align:right;font-weight:600">${fmt((item.price || 0) * (item.quantity || 1))}</td>
@@ -55,7 +57,14 @@ export function downloadInvoice(order) {
       border-bottom: 2.5px solid #B8860B;
       margin-bottom: 36px;
     }
-    .brand { line-height: 1; }
+    .brand { line-height: 1; display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: linear-gradient(135deg, #D4AF37 0%, #F2C94C 50%, #C5973B 100%);
+      display: flex; align-items: center; justify-content: center;
+      color: #0D0D0D; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 13px;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
     .brand-name {
       font-size: 24px;
       font-weight: 800;
@@ -218,8 +227,11 @@ export function downloadInvoice(order) {
   <!-- Header -->
   <div class="header">
     <div class="brand">
-      <div class="brand-name">M.B. Jewellers</div>
-      <div class="brand-tag">Fine Jewellery · Est. 2024</div>
+      <div class="brand-mark">MB</div>
+      <div>
+        <div class="brand-name">M.B. Jewellers</div>
+        <div class="brand-tag">Fine Jewellery · Est. 2024</div>
+      </div>
     </div>
     <div class="invoice-label">
       <h2>Invoice</h2>
@@ -233,7 +245,7 @@ export function downloadInvoice(order) {
   <div class="info-grid">
     <div class="info-box">
       <div class="info-title">Bill To</div>
-      <div class="info-name">${addr.fullName || order.user?.name || '—'}</div>
+      <div class="info-name">${addr.fullName || esc(order.user?.name) || '—'}</div>
       <div class="info-line">
         ${addr.addressLine1 || ''}
         ${addr.addressLine2 ? '<br/>' + addr.addressLine2 : ''}
@@ -254,7 +266,7 @@ export function downloadInvoice(order) {
       ${order.payment?.razorpayPaymentId ? `
       <div class="info-line" style="margin-top:8px">
         <strong style="color:#1a1a1a">Transaction ID:</strong><br/>
-        <span style="font-size:11px;word-break:break-all;color:#777">${order.payment.razorpayPaymentId}</span>
+        <span style="font-size:11px;word-break:break-all;color:#777">${esc(order.payment.razorpayPaymentId)}</span>
       </div>` : ''}
     </div>
   </div>

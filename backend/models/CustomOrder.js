@@ -139,6 +139,8 @@ const customOrderSchema = new mongoose.Schema(
 
     // ── Delivery Partner ─────────────────────────────────────────────────────
     deliveryAgent: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner', default: null },
+    deliveredByPartnerId:   { type: String, default: '' }, // same contract as Order
+    deliveredByPartnerName: { type: String, default: '' },
     dpConfirmedAt: { type: Date },
     dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
     dpNote:        { type: String, default: '' },

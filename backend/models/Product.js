@@ -23,6 +23,14 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Discount as % of the price. Source of truth for dynamic products: the live
+    // discounted price is recomputed from the live rate (pricingUtils.applyLivePrice).
+    discountPercent: {
+      type: Number,
+      default: null,
+      min: [0, 'Discount cannot be negative'],
+      max: [99, 'Discount must be below 100%'],
+    },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Category',
@@ -44,6 +52,7 @@ const productSchema = new mongoose.Schema(
       required: [true, 'Stock is required'],
       min: [0, 'Stock cannot be negative'],
       default: 0,
+      validate: { validator: Number.isInteger, message: 'Stock must be a whole number' },
     },
     sold: { type: Number, default: 0 },
     isFeatured: { type: Boolean, default: false },
@@ -108,7 +117,8 @@ productSchema.index({ name: 'text', description: 'text', tags: 'text' });
  * Dynamic pricing note:
  *   pricingType = 'dynamic' → price is NOT stored as ground truth.
  *   At read time, applyLivePrice() (pricingUtils.js) recomputes from GlobalPricing livePrice.
- *   Formula: livePrice × weightValue × (1 + makingCharges%) × (1 + gst%)
+ *   Formula: livePrice × weightValue × (1 + makingCharges%)   (price EXCLUDES GST)
+ *   GST (product.gst, default 3%) is added once at checkout.
  *   Product-level makingCharges/gst override global defaults when set.
  */
 productSchema.pre('save', function (next) {

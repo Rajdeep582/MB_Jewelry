@@ -5,6 +5,7 @@ import { registerAdmin, selectAuthLoading, selectAuthError, clearError } from '.
 import { FiMail, FiLock, FiUser, FiKey, FiEye, FiEyeOff, FiShield } from 'react-icons/fi';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import BrandLogo from '../../components/common/BrandLogo';
 
 export default function AdminRegister() {
   const dispatch  = useDispatch();
@@ -68,10 +69,12 @@ export default function AdminRegister() {
 
   if (step === 'done') {
     return (
-      <div className="min-h-screen bg-dark-950 flex items-center justify-center px-4">
-        <div className="w-full max-w-md text-center card p-8">
+      <div className="relative min-h-screen bg-dark-950 flex items-center justify-center px-4 py-10 overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(212,175,55,0.14),transparent_70%)]" aria-hidden="true" />
+        <div className="relative w-full max-w-sm text-center card p-8">
+          <div className="flex justify-center mb-5"><BrandLogo size="md" to="/" /></div>
           <div className="text-4xl mb-4">✅</div>
-          <h2 className="text-white font-semibold text-lg mb-2">Email verified!</h2>
+          <h2 className="font-jakarta text-white font-semibold text-lg leading-tight pt-0 mb-2">Email verified!</h2>
           <p className="text-dark-400 text-sm mb-5">Your admin account is ready. Sign in to continue.</p>
           <Link to="/admin/login" className="btn-gold py-2.5 px-6 text-sm font-semibold">
             Go to Login
@@ -83,17 +86,19 @@ export default function AdminRegister() {
 
   if (step === 'otp') {
     return (
-      <div className="min-h-screen bg-dark-950 flex items-center justify-center px-4">
-        <div className="w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gold-gradient shadow-[0_0_24px_rgba(212,175,55,0.3)] mb-4">
-              <FiShield size={22} className="text-dark-900" />
-            </div>
-            <h1 className="font-display text-2xl text-white">Verify Email</h1>
+      <div className="relative min-h-screen bg-dark-950 flex items-center justify-center px-4 py-10 overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(212,175,55,0.14),transparent_70%)]" aria-hidden="true" />
+        <div className="relative w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="flex justify-center mb-5"><BrandLogo size="md" to="/" /></div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gold-500/25 bg-gold-500/[0.06] text-gold-400 text-[10px] uppercase tracking-[0.25em] font-semibold">
+              <FiShield size={11} /> Admin Portal
+            </span>
+            <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-[1.75rem] font-semibold leading-tight pt-0 mt-3">Verify Email</h1>
             <p className="text-dark-500 text-sm mt-1">OTP sent to <span className="text-gold-400">{pendingEmail}</span></p>
           </div>
 
-          <div className="card p-6 border border-white/8">
+          <div className="card p-6 border border-white/[0.08]">
             <p className="text-dark-400 text-sm mb-5">Enter the 6-digit code from your email. Valid for 10 minutes.</p>
 
             {otpError && (
@@ -136,18 +141,19 @@ export default function AdminRegister() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-950 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gold-gradient shadow-[0_0_24px_rgba(212,175,55,0.3)] mb-4">
-            <span className="text-dark-900 font-bold text-lg tracking-tight">MB</span>
-          </div>
-          <h1 className="font-display text-2xl text-white">Admin Portal</h1>
-          <p className="text-dark-500 text-sm mt-1">Create Admin Account</p>
+    <div className="relative min-h-screen bg-dark-950 flex items-center justify-center px-4 py-10 overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,rgba(212,175,55,0.14),transparent_70%)]" aria-hidden="true" />
+      <div className="relative w-full max-w-md">
+        <div className="text-center mb-6">
+          <div className="flex justify-center mb-5"><BrandLogo size="md" to="/" /></div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gold-500/25 bg-gold-500/[0.06] text-gold-400 text-[10px] uppercase tracking-[0.25em] font-semibold">
+            <FiShield size={11} /> Admin Portal
+          </span>
+          <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-[1.75rem] font-semibold leading-tight pt-0 mt-3">Create Admin Account</h1>
         </div>
 
-        <div className="card p-6 border border-white/8">
-          <h2 className="text-white font-semibold text-lg mb-5">Register</h2>
+        <div className="card p-6 border border-white/[0.08]">
+          <h2 className="font-jakarta text-white font-semibold text-base leading-tight pt-0 mb-4">Register</h2>
 
           {authError && (
             <div className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

@@ -669,7 +669,7 @@ export default function DeliveryPartnerPage() {
               <FiTruck size={18} className="text-gold-400" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-white font-semibold text-sm leading-tight truncate">My Deliveries</h1>
+              <h1 className="font-jakarta text-white font-semibold text-sm leading-tight pt-0 truncate">My Deliveries</h1>
               <p className="text-dark-500 text-xs truncate">{user?.name} · Partner</p>
             </div>
           </div>

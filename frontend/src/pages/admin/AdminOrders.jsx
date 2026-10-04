@@ -264,7 +264,7 @@ function UpdateModal({ order, onClose, onSaved }) {
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="w-full max-w-md glass rounded-2xl p-5 shadow-2xl"
+        className="w-full max-w-md max-h-[92vh] overflow-y-auto overscroll-contain glass rounded-2xl p-5 shadow-2xl" data-lenis-prevent="true"
       >
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -278,7 +278,7 @@ function UpdateModal({ order, onClose, onSaved }) {
           </button>
         </div>
 
-        <div className="mb-4 flex items-center gap-3 bg-dark-900/60 border border-white/8 px-4 py-3 rounded-xl text-xs">
+        <div className="mb-4 flex items-center gap-3 bg-dark-900/60 border border-white/[0.08] px-4 py-3 rounded-xl text-xs">
           <div className="flex-1">
             <p className="text-dark-500 mb-0.5">Current Status</p>
             <span className={getOrderStatusColor(order.orderStatus)}>
@@ -444,7 +444,7 @@ function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
               ))}
             </div>
 
-            <div className="border-t border-white/8 mt-4 pt-3 space-y-1.5 text-xs">
+            <div className="border-t border-white/[0.08] mt-4 pt-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-dark-500">
                 <span>Subtotal</span><span className="text-dark-300">{formatPrice(order.itemsPrice)}</span>
               </div>
@@ -455,7 +455,7 @@ function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
               <div className="flex justify-between text-dark-500">
                 <span>Tax (GST)</span><span className="text-dark-300">{formatPrice(order.taxPrice)}</span>
               </div>
-              <div className="flex justify-between font-semibold border-t border-white/8 pt-2 mt-1 text-sm">
+              <div className="flex justify-between font-semibold border-t border-white/[0.08] pt-2 mt-1 text-sm">
                 <span className="text-white">Total</span>
                 <span className="text-gold-500">{formatPrice(order.totalAmount)}</span>
               </div>
@@ -657,8 +657,50 @@ function OrderRow({ order, onUpdate, expanded, onToggle, onRefresh }) {
 
   return (
     <div className={`border-b border-white/5 last:border-0 transition-all duration-150 ${expanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}>
+      {/* Mobile: compact stacked row (the 6-column grid is unreadable on phones) */}
       <div
-        className="grid items-center gap-3 py-4 px-5 cursor-pointer select-none w-full text-left hover:bg-white/[0.015]"
+        className="md:hidden px-4 py-3.5 cursor-pointer select-none"
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        tabIndex={0}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-gold-400 font-mono text-xs font-semibold tracking-wide truncate">
+              {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
+            </p>
+            <p className="text-white text-sm font-medium truncate mt-0.5">{order.user?.name || '—'}</p>
+            <p className="text-dark-500 text-[11px] flex items-center gap-1 mt-0.5">
+              <FiCalendar size={10} strokeWidth={2} /> {formatDate(order.createdAt)}
+            </p>
+          </div>
+          <p className="text-gold-400 font-semibold text-sm tabular-nums flex-shrink-0">{formatPrice(order.totalAmount)}</p>
+        </div>
+        <div className="flex items-center justify-between gap-2 mt-2.5">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize`}>{order.payment?.status || '—'}</span>
+            <span className={`${getOrderStatusColor(order.orderStatus)} capitalize`}>
+              {STATUS_LABELS[order.orderStatus] || order.orderStatus || '—'}
+            </span>
+            {order.dpConfirmedAt && order.orderStatus !== 'delivered' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" title="Delivery partner confirmed — awaiting admin" />
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Order actions">
+            {order.orderStatus !== 'delivered' && (
+              <button onClick={onUpdate} className="btn-gold px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 rounded-lg">
+                <FiEdit2 size={11} /> Update
+              </button>
+            )}
+            <button onClick={onToggle} aria-label={expanded ? 'Collapse' : 'Expand'} className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.08] border border-white/5">
+              {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="hidden md:grid items-center gap-3 py-4 px-5 cursor-pointer select-none w-full text-left hover:bg-white/[0.015]"
         style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
@@ -709,7 +751,7 @@ function OrderRow({ order, onUpdate, expanded, onToggle, onRefresh }) {
           )}
           <button
             onClick={onToggle}
-            className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/8 border border-white/5"
+            className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.08] border border-white/5"
           >
             {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
           </button>
@@ -742,6 +784,7 @@ export default function AdminOrders() {
   const [paymentFilter,   setPaymentFilter]   = useState('all');
   const [activeQuick,     setActiveQuick]     = useState(0);
   const [search,          setSearch]          = useState('');
+  const [query,           setQuery]           = useState(''); // debounced search sent to the server
   const [page,            setPage]            = useState(1);
   const [total,           setTotal]           = useState(0);
   const [pages,           setPages]           = useState(1);
@@ -762,6 +805,13 @@ export default function AdminOrders() {
     }
   }, [stats, statusFilter]);
 
+  // Server-side search (all pages): order ID, tracking no. MB-XXXXXXXX, customer name/email/phone,
+  // product, PIN, city, Razorpay payment ID — what a customer quotes when they call support.
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const loadOrders = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
@@ -769,6 +819,7 @@ export default function AdminOrders() {
       const res = await orderService.getAllOrders({
         status:        statusFilter || undefined,
         paymentStatus: paymentFilter,
+        search:        query || undefined,
         page,
         limit: 20,
       });
@@ -780,7 +831,7 @@ export default function AdminOrders() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [statusFilter, paymentFilter, page]);
+  }, [statusFilter, paymentFilter, query, page]);
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
@@ -814,21 +865,10 @@ export default function AdminOrders() {
     setActiveQuick(match);
   };
 
-  const displayed = orders
-    .filter(o => !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus))
-    .filter(o => {
-      if (!search.trim()) return true;
-      const q = search.toLowerCase();
-      return (
-        (o.orderId || '').toLowerCase().includes(q) ||
-        o._id.toLowerCase().includes(q) ||
-        (o.user?.name  || '').toLowerCase().includes(q) ||
-        (o.user?.email || '').toLowerCase().includes(q) ||
-        (o.shippingAddress?.city    || '').toLowerCase().includes(q) ||
-        (o.shippingAddress?.pincode || '').toLowerCase().includes(q) ||
-        o.items?.some(i => (i.name || '').toLowerCase().includes(q))
-      );
-    });
+  // Failed-payment records stay hidden in normal views, but are shown when the admin is
+  // explicitly looking at failed payments or searching for a specific customer's order.
+  const showFailed = paymentFilter === 'failed' || statusFilter === 'needs_attention' || !!query;
+  const displayed = orders.filter(o => showFailed || !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus));
 
   return (
     <div className="space-y-4">
@@ -885,7 +925,7 @@ export default function AdminOrders() {
               ref={searchRef}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search order ID, customer, item, city…"
+              placeholder="Search order ID, tracking no., customer, phone, item, PIN…"
               className="input-dark pl-8 text-xs py-2 w-full"
             />
             {search && (
@@ -929,7 +969,7 @@ export default function AdminOrders() {
 
       <div className="card overflow-hidden">
         <div
-          className="grid gap-3 py-3 px-5 border-b border-white/8 text-dark-500 text-[10px] uppercase tracking-widest font-semibold"
+          className="hidden md:grid gap-3 py-3 px-5 border-b border-white/[0.08] text-dark-500 text-[10px] uppercase tracking-widest font-semibold"
           style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
         >
           <span>Order</span>

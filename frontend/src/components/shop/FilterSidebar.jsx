@@ -3,26 +3,48 @@ import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiFilter, FiX, FiChevronDown } from 'react-icons/fi';
-import { selectProductsFilter } from '../../store/productSlice';
+import { FiX, FiChevronDown, FiCheck, FiSliders } from 'react-icons/fi';
+import { selectProductsFilter, selectProductsPagination, selectProductsLoading } from '../../store/productSlice';
 import { categoryService } from '../../services/services';
 import { debounce } from '../../utils/helpers';
 
 const MATERIALS = ['Gold', 'Silver', 'Diamond'];
 const PURITIES = ['22K', '18K', '14K', 'Normal', 'Hallmarked'];
+// Quick price ranges (₹) — one tap instead of typing min/max
+const PRICE_PRESETS = [
+  { label: 'Under ₹10k',   min: '',       max: '10000' },
+  { label: '₹10k – ₹50k',  min: '10000',  max: '50000' },
+  { label: '₹50k – ₹1L',   min: '50000',  max: '100000' },
+  { label: 'Above ₹1L',    min: '100000', max: '' },
+];
 
-function FilterSection({ title, children }) {
+/** Number of active filters (search excluded — it has its own box). */
+function countActiveFilters(f) {
+  return (f.category ? 1 : 0)
+    + (f.material ? 1 : 0)
+    + (f.purity ? f.purity.split(',').filter(Boolean).length : 0)
+    + (f.minPrice || f.maxPrice ? 1 : 0);
+}
+
+function FilterSection({ title, children, badge = 0 }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="border-b border-white/10 py-4">
+    <div className="border-b border-white/[0.07] py-4 last:border-b-0">
       <button
+        type="button"
         onClick={() => setOpen(!open)}
-        className="flex items-center justify-between w-full text-left"
+        aria-expanded={open}
+        className="group flex items-center justify-between w-full text-left"
       >
-        <span className="text-sm font-semibold text-white uppercase tracking-wider">{title}</span>
+        <span className="flex items-center gap-2 font-jakarta text-[11px] font-semibold text-dark-200 uppercase tracking-[0.18em] group-hover:text-white transition-colors">
+          {title}
+          {badge > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-gold-500 text-dark-900 text-[10px] font-bold flex items-center justify-center tracking-normal">{badge}</span>
+          )}
+        </span>
         <FiChevronDown
           size={14}
-          className={`text-dark-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          className={`text-dark-500 group-hover:text-gold-400 transition-all duration-200 ${open ? 'rotate-180' : ''}`}
         />
       </button>
       <AnimatePresence>
@@ -34,7 +56,7 @@ function FilterSection({ title, children }) {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="mt-3 space-y-1">{children}</div>
+            <div className="pt-3 space-y-0.5">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -45,21 +67,66 @@ function FilterSection({ title, children }) {
 FilterSection.propTypes = {
   title: PropTypes.string.isRequired,
   children: PropTypes.node.isRequired,
+  badge: PropTypes.number,
 };
 
-export default function FilterSidebar() {
+/** One selectable row — radio (single choice) or checkbox (multi choice) look. */
+function OptionRow({ label, selected, onClick, multi = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`group flex items-center gap-2.5 w-full text-left px-2.5 py-2 rounded-lg font-jakarta text-sm transition-colors duration-200 ${
+        selected ? 'text-gold-300 bg-gold-500/[0.08]' : 'text-dark-300 hover:text-white hover:bg-white/[0.04]'
+      }`}
+    >
+      <span className={`flex-shrink-0 flex items-center justify-center w-4 h-4 border transition-all duration-200 ${multi ? 'rounded' : 'rounded-full'} ${
+        selected ? 'bg-gold-500 border-gold-500' : 'border-dark-500 group-hover:border-white/50'
+      }`}>
+        {selected && (multi
+          ? <FiCheck size={11} className="text-dark-900" strokeWidth={3} />
+          : <span className="w-1.5 h-1.5 rounded-full bg-dark-900" />)}
+      </span>
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+OptionRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  selected: PropTypes.bool.isRequired,
+  onClick: PropTypes.func.isRequired,
+  multi: PropTypes.bool,
+};
+
+/**
+ * FilterSidebar — desktop sticky panel + mobile bottom-sheet drawer.
+ * The mobile drawer is opened by the "Filters" button in the Shop toolbar (mobileOpen / onMobileClose).
+ */
+export default function FilterSidebar({ mobileOpen = false, onMobileClose = () => {} }) {
   const filters = useSelector(selectProductsFilter);
+  const pagination = useSelector(selectProductsPagination);
+  const loading = useSelector(selectProductsLoading);
   const [, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const activeCount = countActiveFilters(filters);
 
   const [minPrice, setMinPrice] = useState(filters.minPrice || '');
   const [maxPrice, setMaxPrice] = useState(filters.maxPrice || '');
 
   useEffect(() => {
-    categoryService.getCategories().then((res) => setCategories(res.data.categories));
+    categoryService.getCategories().then((res) => setCategories(res.data.categories || [])).catch(() => {});
   }, []);
+
+  // Close the mobile drawer with Escape
+  useEffect(() => {
+    if (!mobileOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onMobileClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen, onMobileClose]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -107,8 +174,30 @@ export default function FilterSidebar() {
     debouncedPriceChange('maxPrice', e.target.value);
   };
 
+  // Clears filters but keeps the search term and sort order
   const handleReset = () => {
-    setSearchParams(new URLSearchParams());
+    setSearchParams((prev) => {
+      const next = new URLSearchParams();
+      if (prev.get('search')) next.set('search', prev.get('search'));
+      if (prev.get('sort')) next.set('sort', prev.get('sort'));
+      return next;
+    });
+  };
+
+  const applyPricePreset = (preset) => {
+    const isActive = (filters.minPrice || '') === preset.min && (filters.maxPrice || '') === preset.max;
+    setMinPrice(isActive ? '' : preset.min);
+    setMaxPrice(isActive ? '' : preset.max);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      ['minPrice', 'maxPrice'].forEach((k) => next.delete(k));
+      if (!isActive) {
+        if (preset.min) next.set('minPrice', preset.min);
+        if (preset.max) next.set('maxPrice', preset.max);
+      }
+      next.delete('page');
+      return next;
+    });
   };
 
   const handlePurityChange = (purity) => {
@@ -127,129 +216,112 @@ export default function FilterSidebar() {
     });
   };
 
+  const currentPurities = filters.purity ? filters.purity.split(',') : [];
+
   const renderFilterContent = () => (
     <div>
       {/* Price Range */}
-      <FilterSection title="Price Range">
-        <div className="flex gap-2">
-          <input
-            type="number"
-            placeholder="Min ₹"
-            value={minPrice}
-            onChange={handleMinChange}
-            className="input-dark text-sm py-2 flex-1"
-          />
-          <input
-            type="number"
-            placeholder="Max ₹"
-            value={maxPrice}
-            onChange={handleMaxChange}
-            className="input-dark text-sm py-2 flex-1"
-          />
-        </div>
-      </FilterSection>
-
-      {/* Category */}
-      <FilterSection title="Category">
-        {categories.map((cat) => (
-          <button
-            key={cat._id}
-            onClick={() => handleChange('category', cat._id)}
-            className={`flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors ${
-              filters.category === cat._id
-                ? 'text-gold-400 bg-gold-500/10'
-                : 'text-dark-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <span className={`w-3 h-3 rounded-full border flex-shrink-0 transition-all ${
-              filters.category === cat._id
-                ? 'bg-gold-500 border-gold-500'
-                : 'border-dark-500'
-            }`} />
-            {cat.name}
-          </button>
-        ))}
-      </FilterSection>
-
-      {/* Material */}
-      <FilterSection title="Material">
-        {MATERIALS.map((m) => (
-          <button
-            key={m}
-            onClick={() => handleChange('material', m)}
-            className={`flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-lg text-sm transition-colors ${
-              filters.material === m
-                ? 'text-gold-400 bg-gold-500/10'
-                : 'text-dark-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <span className={`w-3 h-3 rounded-full border flex-shrink-0 transition-all ${
-              filters.material === m ? 'bg-gold-500 border-gold-500' : 'border-dark-500'
-            }`} />
-            {m}
-          </button>
-        ))}
-      </FilterSection>
-
-      {/* Purity */}
-      <FilterSection title="Purity">
-        <div className="space-y-2">
-          {PURITIES.map((purity) => {
-            const currentPurities = filters.purity ? filters.purity.split(',') : [];
-            const isChecked = currentPurities.includes(purity);
+      <FilterSection title="Price Range" badge={filters.minPrice || filters.maxPrice ? 1 : 0}>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {PRICE_PRESETS.map((preset) => {
+            const active = (filters.minPrice || '') === preset.min && (filters.maxPrice || '') === preset.max;
             return (
               <button
+                key={preset.label}
                 type="button"
-                key={purity}
-                className="flex items-center gap-2 cursor-pointer w-fit group"
-                onClick={() => handlePurityChange(purity)}
+                onClick={() => applyPricePreset(preset)}
+                aria-pressed={active}
+                className={`font-jakarta px-2.5 py-1 rounded-full text-xs border transition-all duration-200 ${
+                  active
+                    ? 'bg-gold-500/15 border-gold-500/60 text-gold-300'
+                    : 'border-white/10 text-dark-300 hover:border-gold-500/40 hover:text-white'
+                }`}
               >
-                <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
-                  isChecked ? 'bg-gold-500 border-gold-500' : 'border-dark-500 group-hover:border-white/50 bg-dark-900'
-                }`}>
-                  {isChecked && <svg className="w-3 h-3 text-dark-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                </div>
-                <span className={`text-sm transition-colors ${isChecked ? 'text-white' : 'text-dark-400'} group-hover:text-white`}>
-                  {purity}
-                </span>
+                {preset.label}
               </button>
             );
           })}
         </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            inputMode="numeric"
+            min="0"
+            placeholder="Min ₹"
+            aria-label="Minimum price"
+            value={minPrice}
+            onChange={handleMinChange}
+            className="input-dark !bg-dark-900/60 text-sm py-2 px-3 flex-1 min-w-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <span className="text-dark-600 text-xs">–</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="0"
+            placeholder="Max ₹"
+            aria-label="Maximum price"
+            value={maxPrice}
+            onChange={handleMaxChange}
+            className="input-dark !bg-dark-900/60 text-sm py-2 px-3 flex-1 min-w-0 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+        </div>
       </FilterSection>
 
-      {/* Reset */}
-      <button
-        onClick={handleReset}
-        className="mt-4 text-sm text-dark-400 hover:text-red-400 flex items-center gap-1.5 transition-colors"
-      >
-        <FiX size={14} /> Clear all filters
-      </button>
+      {/* Material */}
+      <FilterSection title="Material" badge={filters.material ? 1 : 0}>
+        {MATERIALS.map((m) => (
+          <OptionRow key={m} label={m === 'Diamond' ? 'Diamond · soon' : m} selected={filters.material === m} onClick={() => handleChange('material', m)} />
+        ))}
+      </FilterSection>
+
+      {/* Category */}
+      {categories.length > 0 && (
+        <FilterSection title="Category" badge={filters.category ? 1 : 0}>
+          {categories.map((cat) => (
+            <OptionRow key={cat._id} label={cat.name} selected={filters.category === cat._id} onClick={() => handleChange('category', cat._id)} />
+          ))}
+        </FilterSection>
+      )}
+
+      {/* Purity */}
+      <FilterSection title="Purity" badge={currentPurities.length}>
+        {PURITIES.map((purity) => (
+          <OptionRow key={purity} multi label={purity} selected={currentPurities.includes(purity)} onClick={() => handlePurityChange(purity)} />
+        ))}
+      </FilterSection>
+    </div>
+  );
+
+  const header = (
+    <div className="flex items-center justify-between gap-3">
+      <h2 className="flex items-center gap-2 font-jakarta text-white text-base font-semibold pt-0 leading-tight">
+        <FiSliders size={15} className="text-gold-500" />
+        Filters
+        {activeCount > 0 && (
+          <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-gold-500 text-dark-900 text-[11px] font-bold flex items-center justify-center">{activeCount}</span>
+        )}
+      </h2>
+      {activeCount > 0 && (
+        <button type="button" onClick={handleReset} className="font-jakarta text-xs text-dark-400 hover:text-gold-400 transition-colors">
+          Clear all
+        </button>
+      )}
     </div>
   );
 
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:block w-64 flex-shrink-0">
-        <div className="card p-5 sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto" data-lenis-prevent="true">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-white text-lg">Filters</h2>
-            <FiFilter size={16} className="text-gold-500" />
+      <aside className="hidden lg:block w-64 xl:w-[17rem] flex-shrink-0">
+        <div className="sticky top-24 rounded-2xl border border-white/[0.06] bg-gradient-to-b from-dark-800 to-dark-900 shadow-card">
+          <div className="px-5 pt-5 pb-3 border-b border-white/[0.07]">{header}</div>
+          <div className="px-5 pb-2 max-h-[calc(100vh-11rem)] overflow-y-auto scrollbar-hide" data-lenis-prevent="true">
+            {renderFilterContent()}
           </div>
-          {renderFilterContent()}
         </div>
       </aside>
 
-      {/* Mobile Filter Button */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-30 btn-gold shadow-gold-lg flex items-center gap-2 text-sm"
-      >
-        <FiFilter size={14} /> Filters
-      </button>
-
-      {/* Mobile Drawer */}
+      {/* Mobile bottom sheet */}
       <AnimatePresence>
         {mobileOpen && (
           <>
@@ -257,30 +329,34 @@ export default function FilterSidebar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setMobileOpen(false)}
-              className="fixed inset-0 bg-black/60 z-40 lg:hidden"
+              onClick={onMobileClose}
+              className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40 lg:hidden"
             />
             <motion.div
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              className="fixed left-0 top-0 bottom-0 w-80 z-50 glass overflow-y-auto p-5 lg:hidden"
-              data-lenis-prevent="true"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Filters"
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+              className="fixed inset-x-0 bottom-0 z-50 lg:hidden max-h-[85vh] flex flex-col rounded-t-3xl border-t border-gold-500/20 bg-dark-900 shadow-[0_-20px_60px_rgba(0,0,0,0.6)]"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-display text-white text-lg">Filters</h2>
-                <button onClick={() => setMobileOpen(false)} className="p-1 text-dark-400 hover:text-white">
-                  <FiX size={20} />
+              <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-white/15" aria-hidden="true" />
+              <div className="flex items-center justify-between gap-3 px-5 pt-3 pb-3 border-b border-white/[0.07]">
+                <div className="flex-1">{header}</div>
+                <button type="button" onClick={onMobileClose} aria-label="Close filters" className="p-1.5 -mr-1.5 rounded-full text-dark-400 hover:text-white hover:bg-white/5">
+                  <FiX size={18} />
                 </button>
               </div>
-              {renderFilterContent()}
-              <button
-                onClick={() => setMobileOpen(false)}
-                className="btn-gold w-full mt-6"
-              >
-                Apply Filters
-              </button>
+              <div className="flex-1 overflow-y-auto px-5" data-lenis-prevent="true">
+                {renderFilterContent()}
+              </div>
+              <div className="px-5 py-3.5 border-t border-white/[0.07] bg-dark-900 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
+                <button type="button" onClick={onMobileClose} className="btn-gold w-full py-3 text-sm">
+                  {loading ? 'Updating…' : `Show ${pagination.total ?? 0} piece${pagination.total === 1 ? '' : 's'}`}
+                </button>
+              </div>
             </motion.div>
           </>
         )}
@@ -288,3 +364,8 @@ export default function FilterSidebar() {
     </>
   );
 }
+
+FilterSidebar.propTypes = {
+  mobileOpen: PropTypes.bool,
+  onMobileClose: PropTypes.func,
+};

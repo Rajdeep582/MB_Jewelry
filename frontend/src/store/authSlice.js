@@ -91,6 +91,9 @@ export const fetchCurrentUser = createAsyncThunk('auth/me', async (_, { getState
   }
 });
 
+// Rejects with { message, status }. status 401/403 = session really over; 0 (network), 429 or 5xx
+// = temporary problem (server restarting, offline) → the user must NOT be signed out for that.
+// Call through refreshSession() in services/api.js so only one refresh is ever in flight.
 export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { getState, rejectWithValue }) => {
   try {
     const role = getState().auth.user?.role;
@@ -100,38 +103,67 @@ export const refreshAccessToken = createAsyncThunk('auth/refresh', async (_, { g
     const res = await api.post(endpoint);
     return res.data;
   } catch (err) {
-    return rejectWithValue(err.response?.data?.message);
+    return rejectWithValue({ message: err.response?.data?.message, status: err.response?.status ?? 0 });
   }
 });
 
+const isSessionOver = (payload) => payload?.status === 401 || payload?.status === 403;
+
 // ─── Helpers (single source of truth for localStorage) ───────────────────────
 
-const USER_KEY = 'mb_user';
+// One key per portal (customer / admin / delivery), matching the per-portal refresh cookies,
+// so signing in to the admin panel in another tab never replaces the shop's signed-in user.
+const STORAGE_KEYS = { user: 'mb_user', admin: 'mb_admin_user', delivery: 'mb_dp_user' };
+const portalOf = (role) => (role === 'admin' || role === 'delivery' ? role : 'user');
+const keyFor = (role) => STORAGE_KEYS[portalOf(role)];
+const portalFromPath = () => {
+  const path = typeof window === 'undefined' ? '/' : window.location.pathname;
+  if (path.startsWith('/admin')) return 'admin';
+  if (path.startsWith('/delivery')) return 'delivery';
+  return 'user';
+};
 
 // Access token is NEVER persisted to localStorage (XSS risk).
 // Only user metadata is stored for UI persistence across reloads.
 // The real access token lives in Redux memory only; a silent /refresh
-// call on first 401 restores it from the httpOnly refresh cookie.
+// call on page load restores it from the httpOnly refresh cookie.
 const persistUser = (user) => {
+  if (!user) return;
   try {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem(keyFor(user.role), JSON.stringify(user));
   } catch {
     // Storage quota exceeded or private mode — silently ignore
   }
 };
 
-const clearAuth = () => {
-  localStorage.removeItem(USER_KEY);
+const clearAuth = (role) => {
+  try { localStorage.removeItem(keyFor(role)); } catch { /* ignore */ }
+};
+
+const readKey = (key) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+    return null;
+  }
 };
 
 const loadUserFromStorage = () => {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    localStorage.removeItem(USER_KEY);
+  const portal = portalFromPath();
+  let stored = readKey(STORAGE_KEYS[portal]);
+  if (stored && portalOf(stored.role) !== portal) stored = null;
+  // Migrate admin/delivery users saved under the old shared 'mb_user' key
+  if (!stored && portal !== 'user') {
+    const legacy = readKey(STORAGE_KEYS.user);
+    if (legacy && portalOf(legacy.role) === portal) {
+      stored = legacy;
+      persistUser(legacy);
+      try { localStorage.removeItem(STORAGE_KEYS.user); } catch { /* ignore */ }
+    }
   }
-  return null;
+  return stored;
 };
 
 const user = loadUserFromStorage();
@@ -159,14 +191,14 @@ const authSlice = createSlice({
       persistUser(payload.user);
     },
     clearCredentials: (state) => {
+      clearAuth(state.user?.role);
       state.user = null;
       state.accessToken = null;
-      clearAuth();
     },
     // Update user profile only — does not touch accessToken
     setUser: (state, { payload }) => {
       state.user = payload;
-      try { localStorage.setItem(USER_KEY, JSON.stringify(payload)); } catch { /* ignore */ }
+      persistUser(payload);
     },
     setInitialized: (state) => {
       state.initialized = true;
@@ -237,26 +269,22 @@ const authSlice = createSlice({
 
       // Logout — always clear regardless of server response
       .addCase(logoutUser.fulfilled, (state) => {
+        clearAuth(state.user?.role);
         state.user = null;
         state.accessToken = null;
-        clearAuth();
       })
       .addCase(logoutUser.rejected, (state) => {
         // Server logout failed (maybe already expired), but clear client state anyway
+        clearAuth(state.user?.role);
         state.user = null;
         state.accessToken = null;
-        clearAuth();
       })
 
       // Fetch current user
       .addCase(fetchCurrentUser.fulfilled, (state, { payload }) => {
         state.user = payload.user;
         state.initialized = true;
-        try {
-          localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
-        } catch {
-          // Storage quota — silently ignore
-        }
+        persistUser(payload.user);
       })
       .addCase(fetchCurrentUser.rejected, (state) => {
         state.initialized = true;
@@ -267,12 +295,14 @@ const authSlice = createSlice({
         state.accessToken = payload.accessToken;
         state.initialized = true;
       })
-      .addCase(refreshAccessToken.rejected, (state) => {
-        // Refresh failed — session truly expired, force logout
+      .addCase(refreshAccessToken.rejected, (state, { payload }) => {
+        // Only a definite auth failure ends the session. A network error / server restart / 429
+        // keeps the user signed in (the app retries); signing out there caused random logouts.
+        if (!isSessionOver(payload)) return;
+        clearAuth(state.user?.role);
         state.user = null;
         state.accessToken = null;
         state.initialized = true;
-        clearAuth();
       });
   },
 });

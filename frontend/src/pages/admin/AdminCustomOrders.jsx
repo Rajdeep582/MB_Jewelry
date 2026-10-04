@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
-import { FiX, FiChevronDown, FiChevronUp, FiImage, FiRadio, FiDownload, FiLock, FiAlertTriangle, FiUser, FiMail, FiPhone, FiMapPin, FiTruck, FiClock, FiPackage, FiCreditCard } from 'react-icons/fi';
+import { FiX, FiSearch, FiChevronDown, FiChevronUp, FiImage, FiRadio, FiDownload, FiLock, FiAlertTriangle, FiUser, FiMail, FiPhone, FiMapPin, FiTruck, FiClock, FiPackage, FiCreditCard } from 'react-icons/fi';
 import { customOrderService, adminService } from '../../services/services';
-import { formatPrice, formatDate, formatDateTime, getCustomOrderStatusColor } from '../../utils/helpers';
+import { formatPrice, formatDate, formatDateTime, formatCalendarDate, todayInputValue, getCustomOrderStatusColor } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// Escape customer-supplied text before writing it into a print window (stored-XSS guard)
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Simplified filter tabs for admin
 const FILTER_OPTIONS = [
   { value: '',               label: 'All' },
   { value: 'pending',        label: 'Order Placed' },
-  { value: 'in_production',  label: 'In Production' },
+  { value: 'confirmed',      label: 'In Production' }, // backend: advance_paid + confirmed
   { value: 'shipped',        label: 'Shipped' },
   { value: 'delivered',      label: 'Delivered' },
   { value: 'cancelled',      label: 'Cancelled' },
@@ -43,7 +46,7 @@ function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) 
         initial={{ opacity: 0, scale: 0.92, y: 16 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.92, y: 16 }}
-        className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-red-500/30 bg-dark-800 shadow-[0_0_60px_rgba(200,30,30,0.18)]"
+        className="w-full max-w-lg max-h-[92vh] overflow-y-auto overscroll-contain rounded-2xl border border-red-500/30 bg-dark-800 shadow-[0_0_60px_rgba(200,30,30,0.18)]" data-lenis-prevent="true"
       >
         {/* Header */}
         <div className="p-6 pb-0">
@@ -67,7 +70,7 @@ function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) 
         </div>
 
         {/* Order Info */}
-        <div className="mx-6 mt-4 bg-dark-900/70 border border-white/8 rounded-xl p-4">
+        <div className="mx-6 mt-4 bg-dark-900/70 border border-white/[0.08] rounded-xl p-4">
           <p className="text-dark-500 text-[10px] uppercase tracking-wider font-semibold mb-3">Order Details</p>
           <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
             <div>
@@ -90,7 +93,7 @@ function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) 
             {form.expectedDeliveryDate && (
               <div>
                 <p className="text-dark-500 text-[10px] uppercase tracking-wider">Expected Delivery</p>
-                <p className="text-emerald-400 font-medium">{new Date(form.expectedDeliveryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                <p className="text-emerald-400 font-medium">{formatCalendarDate(form.expectedDeliveryDate)}</p>
               </div>
             )}
             {form.quoteNote && (
@@ -110,7 +113,7 @@ function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) 
               <span className="text-dark-400">Base Quote</span>
               <span className="text-white font-semibold">{formatPrice(quoteAmt)}</span>
             </div>
-            <div className="flex justify-between items-center pb-2 border-b border-white/8">
+            <div className="flex justify-between items-center pb-2 border-b border-white/[0.08]">
               <span className="text-dark-500">{Math.round(gstRate * 100)}% GST</span>
               <span className="text-dark-400">{formatPrice(taxAmt)}</span>
             </div>
@@ -120,7 +123,7 @@ function QuoteConfirmModal({ order, form, gstRate, onConfirm, onBack, saving }) 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/8">
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-white/[0.08]">
             <div className="bg-dark-800/60 rounded-lg p-3">
               <p className="text-dark-500 text-[10px] uppercase tracking-wider mb-1">70% Advance</p>
               <p className="text-white font-bold text-base">{formatPrice(advanceAmt)}</p>
@@ -177,9 +180,10 @@ function QuoteModal({ order, onClose, onSaved }) {
   useEffect(() => {
     adminService.getGlobalPricing()
       .then(res => {
-        const match = (res.data.pricing || []).find(
-          p => p.material === order.material && (p.purity === order.purity || order.purity === 'None')
-        ) || (res.data.pricing || []).find(p => p.material === order.material);
+        // Same rate selection as the backend (setQuote): exact purity (Hallmark ≙ Hallmarked) → material → 18%
+        const purity = order.purity === 'Hallmark' ? 'Hallmarked' : order.purity;
+        const match = (res.data.pricing || []).find(p => p.material === order.material && p.purity === purity)
+          || (res.data.pricing || []).find(p => p.material === order.material);
         if (match) setGstRate(match.gst / 100);
       })
       .catch(() => {/* keep default */});
@@ -191,7 +195,7 @@ function QuoteModal({ order, onClose, onSaved }) {
     const html = `
       <html>
         <head>
-          <title>Order Request - ${order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</title>
+          <title>Order Request - ${esc(order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`)}</title>
           <style>
             body { font-family: system-ui, -apple-system, sans-serif; color: #111; padding: 40px; line-height: 1.6; max-width: 800px; margin: 0 auto; }
             h1 { font-size: 24px; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
@@ -206,18 +210,18 @@ function QuoteModal({ order, onClose, onSaved }) {
         <body>
           <h1>Custom Order Request</h1>
           <div class="grid">
-            <div class="field"><div class="label">Order ID</div><div class="value">${order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}</div></div>
+            <div class="field"><div class="label">Order ID</div><div class="value">${esc(order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`)}</div></div>
             <div class="field"><div class="label">Date Created</div><div class="value">${new Date(order.createdAt).toLocaleDateString()}</div></div>
-            <div class="field"><div class="label">Customer Name</div><div class="value">${order.user?.name || 'N/A'}</div></div>
-            <div class="field"><div class="label">Customer Email</div><div class="value">${order.user?.email || 'N/A'}</div></div>
-            <div class="field"><div class="label">Product Type</div><div class="value">${order.type} — ${order.material}</div></div>
-            <div class="field"><div class="label">Purity</div><div class="value">${order.purity !== 'None' ? order.purity : 'N/A'}</div></div>
-            ${order.budget ? `<div class="field"><div class="label">Budget</div><div class="value">${order.budget}</div></div>` : ''}
-            ${order.weight ? `<div class="field"><div class="label">Expected Weight</div><div class="value">${order.weight}</div></div>` : ''}
-            ${order.fingerSize ? `<div class="field"><div class="label">Finger Size</div><div class="value">${order.fingerSize}</div></div>` : ''}
-            ${order.neckSize ? `<div class="field"><div class="label">Neck Size</div><div class="value">${order.neckSize}</div></div>` : ''}
-            ${order.wristSize ? `<div class="field"><div class="label">Wrist Size</div><div class="value">${order.wristSize}</div></div>` : ''}
-            <div class="field full-width"><div class="label">Design Description</div><div class="value desc">${order.description}</div></div>
+            <div class="field"><div class="label">Customer Name</div><div class="value">${esc(order.user?.name || 'N/A')}</div></div>
+            <div class="field"><div class="label">Customer Email</div><div class="value">${esc(order.user?.email || 'N/A')}</div></div>
+            <div class="field"><div class="label">Product Type</div><div class="value">${esc(order.type)} — ${esc(order.material)}</div></div>
+            <div class="field"><div class="label">Purity</div><div class="value">${esc(order.purity !== 'None' ? order.purity : 'N/A')}</div></div>
+            ${order.budget ? `<div class="field"><div class="label">Budget</div><div class="value">${esc(order.budget)}</div></div>` : ''}
+            ${order.weight ? `<div class="field"><div class="label">Expected Weight</div><div class="value">${esc(order.weight)}</div></div>` : ''}
+            ${order.fingerSize ? `<div class="field"><div class="label">Finger Size</div><div class="value">${esc(order.fingerSize)}</div></div>` : ''}
+            ${order.neckSize ? `<div class="field"><div class="label">Neck Size</div><div class="value">${esc(order.neckSize)}</div></div>` : ''}
+            ${order.wristSize ? `<div class="field"><div class="label">Wrist Size</div><div class="value">${esc(order.wristSize)}</div></div>` : ''}
+            <div class="field full-width"><div class="label">Design Description</div><div class="value desc">${esc(order.description)}</div></div>
           </div>
         </body>
       </html>
@@ -262,7 +266,7 @@ function QuoteModal({ order, onClose, onSaved }) {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="w-full max-w-md max-h-[90vh] overflow-y-auto glass rounded-2xl p-6"
+          className="w-full max-w-md max-h-[90vh] overflow-y-auto overscroll-contain glass rounded-2xl p-6" data-lenis-prevent="true"
         >
           <div className="flex items-center justify-between mb-5">
             <div>
@@ -279,7 +283,7 @@ function QuoteModal({ order, onClose, onSaved }) {
             </div>
           </div>
 
-          <div className="mb-4 text-sm text-dark-300 bg-dark-900 border border-white/10 p-4 rounded-lg space-y-3 max-h-[40vh] overflow-y-auto">
+          <div className="mb-4 text-sm text-dark-300 bg-dark-900 border border-white/10 p-4 rounded-lg space-y-3 max-h-[40vh] overflow-y-auto overscroll-contain" data-lenis-prevent="true">
             <div className="grid grid-cols-2 gap-3 pb-3 border-b border-white/10">
               <div>
                 <p className="text-dark-500 text-[10px] uppercase tracking-wider">Order ID</p>
@@ -346,7 +350,7 @@ function QuoteModal({ order, onClose, onSaved }) {
             </div>
             <div>
               <label className="label-dark">Expected Delivery Date <span className="text-dark-500 font-normal">(visible to customer)</span></label>
-              <input type="date" value={form.expectedDeliveryDate} onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })} className="input-dark" min={new Date().toISOString().split('T')[0]} />
+              <input type="date" value={form.expectedDeliveryDate} onChange={(e) => setForm({ ...form, expectedDeliveryDate: e.target.value })} className="input-dark" min={todayInputValue()} />
             </div>
             <div>
               <label className="label-dark">Admin Notes <span className="text-dark-500 font-normal">(internal only)</span></label>
@@ -453,7 +457,7 @@ function StatusModal({ order, onClose, onSaved }) {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-md max-h-[90vh] overflow-y-auto glass rounded-2xl p-6"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto overscroll-contain glass rounded-2xl p-6" data-lenis-prevent="true"
       >
         <div className="flex items-center justify-between mb-5">
           <h2 className="font-display text-xl text-white">Update Order</h2>
@@ -522,9 +526,23 @@ function StatusModal({ order, onClose, onSaved }) {
                 value={form.estimatedDelivery}
                 onChange={(e) => setForm({ ...form, estimatedDelivery: e.target.value })}
                 className="input-dark"
-                min={new Date().toISOString().split('T')[0]}
+                min={todayInputValue()}
               />
-              <p className="text-dark-500 text-xs mt-1">Shown to customer as estimated delivery date</p>
+              <p className="text-dark-500 text-xs mt-1">Shown to customer as estimated delivery date (replaces the quoted date on their page)</p>
+              {order.expectedDeliveryDate && (
+                <p className="text-dark-500 text-xs mt-1 flex flex-wrap items-center gap-1.5">
+                  Quoted to customer: <span className="text-emerald-400">{formatCalendarDate(order.expectedDeliveryDate)}</span>
+                  {form.estimatedDelivery !== new Date(order.expectedDeliveryDate).toISOString().split('T')[0] && (
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, estimatedDelivery: new Date(order.expectedDeliveryDate).toISOString().split('T')[0] })}
+                      className="text-gold-400 hover:text-gold-300 underline underline-offset-2"
+                    >
+                      Use quoted date
+                    </button>
+                  )}
+                </p>
+              )}
             </div>
           )}
 
@@ -573,13 +591,13 @@ function StatusModal({ order, onClose, onSaved }) {
 function ImagesModal({ images, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-2xl glass rounded-2xl p-6">
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-2xl max-h-[90vh] overflow-y-auto overscroll-contain glass rounded-2xl p-6" data-lenis-prevent="true">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg text-white">Reference Images ({images.length})</h2>
           <button onClick={onClose} className="p-1 text-dark-400 hover:text-white"><FiX /></button>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {images.map((img) => (
+          {images.map((img, i) => (
             <a key={img.url} href={img.url} target="_blank" rel="noopener noreferrer">
               <div className="aspect-square rounded-xl overflow-hidden bg-dark-700 hover:ring-2 ring-gold-500 transition-all">
                 <img src={img.url} alt={`ref-${i}`} className="w-full h-full object-cover" />
@@ -673,7 +691,7 @@ function CustomOrderDetailDrawer({ order, onQuote, onStatus, onImage }) {
                       <span>Tax (GST)</span><span className="text-dark-300">{formatPrice(order.taxAmount)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-semibold border-t border-white/8 pt-2 mt-1 text-sm">
+                  <div className="flex justify-between font-semibold border-t border-white/[0.08] pt-2 mt-1 text-sm">
                     <span className="text-white">Total</span><span className="text-gold-500">{formatPrice(order.totalAmount)}</span>
                   </div>
                   <div className="flex justify-between text-dark-500 pt-1">
@@ -751,7 +769,10 @@ function CustomOrderDetailDrawer({ order, onQuote, onStatus, onImage }) {
                     <div><p className="text-dark-500">Dispatched</p><p className="text-dark-300">{formatDateTime(order.dispatchedAt)}</p></div>
                   )}
                   {order.estimatedDelivery && (
-                    <div><p className="text-dark-500">Est. Delivery</p><p className="text-dark-300">{formatDateTime(order.estimatedDelivery)}</p></div>
+                    <div><p className="text-dark-500">Est. Delivery</p><p className="text-dark-300">{formatCalendarDate(order.estimatedDelivery, 'short')}</p></div>
+                  )}
+                  {order.expectedDeliveryDate && (
+                    <div><p className="text-dark-500">Quoted Delivery</p><p className="text-dark-300">{formatCalendarDate(order.expectedDeliveryDate, 'short')}</p></div>
                   )}
                   {order.deliveredAt && (
                     <div><p className="text-dark-500">Delivered</p><p className="text-green-400 font-medium">{formatDateTime(order.deliveredAt)}</p></div>
@@ -832,8 +853,16 @@ export default function AdminCustomOrders() {
   const [dpInput, setDpInput]   = useState('');
   const [dpBusy,  setDpBusy]    = useState(false);
   const [expandedRow, setExpandedRow] = useState(null);
+  const [search,      setSearch]      = useState('');
+  const [query,       setQuery]       = useState(''); // debounced, sent to the server
 
   useEffect(() => { document.title = 'Custom Orders — Admin'; }, []);
+
+  // Support lookup across all pages: CUS-… id, tracking MB-…, customer, phone, PIN, item type
+  useEffect(() => {
+    const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   useEffect(() => {
     if (stats?.statusCounts && filter) {
@@ -845,7 +874,7 @@ export default function AdminCustomOrders() {
     if (!isBackground) setLoading(true);
     setError('');
     try {
-      const res = await customOrderService.getAllOrders({ status: filter, page, limit: 15 });
+      const res = await customOrderService.getAllOrders({ status: filter, search: query || undefined, page, limit: 15 });
       setOrders(res.data.orders);
       setTotal(res.data.total);
       setPages(res.data.pages);
@@ -858,12 +887,12 @@ export default function AdminCustomOrders() {
     }
   };
 
-  useEffect(() => { loadOrders(); }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadOrders(); }, [filter, page, query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const interval = setInterval(() => { loadOrders(true); }, 30000);
     return () => clearInterval(interval);
-  }, [filter, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [filter, page, query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="space-y-4">
@@ -894,12 +923,27 @@ export default function AdminCustomOrders() {
           ))}
         </div>
 
+        <div className="relative mb-3">
+          <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500 pointer-events-none" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search CUS ID, tracking no., customer, phone, PIN, item…"
+            className="input-dark pl-8 pr-8 text-xs py-2 w-full"
+          />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-dark-500 hover:text-white">
+              <FiX size={12} />
+            </button>
+          )}
+        </div>
+
         {error && (
           <div className="text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>
         )}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[880px] text-sm">
             <thead className="border-b border-white/10">
               <tr className="text-dark-500 text-xs uppercase tracking-wider">
                 <th className="text-left py-2 pr-4">ID</th>
@@ -918,6 +962,10 @@ export default function AdminCustomOrders() {
                 Array.from({ length: 8 }, (_, i) => i).map((n) => (
                   <tr key={n}><td colSpan={9} className="py-3"><div className="skeleton h-8 rounded-lg" /></td></tr>
                 ))
+              ) : orders.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-16 text-center text-dark-500 text-sm">{query ? `No custom orders match "${query}".` : 'No custom orders for this filter.'}</td>
+                </tr>
               ) : orders.flatMap((order) => {
                 const isExpanded = expandedRow === order._id;
                 return [
@@ -939,7 +987,7 @@ export default function AdminCustomOrders() {
                     </td>
                     <td className="py-3 pr-4">
                       {order.quoteAmount
-                        ? <span className="text-gold-500 font-medium">{formatPrice(order.quoteAmount)}</span>
+                        ? <span className="text-gold-500 font-medium">{formatPrice(order.totalAmount > 0 ? order.totalAmount : order.quoteAmount)}</span>
                         : <span className="text-dark-600 text-xs italic">Not set</span>}
                     </td>
                     <td className="py-3 pr-4">{getPaymentAmountCell(order)}</td>

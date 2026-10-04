@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const crypto = require('node:crypto');
 
 /**
  * generateAccessToken — creates a short-lived JWT for API authorization.
@@ -22,38 +23,75 @@ const generateAccessToken = (userId, role, userType = 'user') => {
 const generateRefreshToken = (userId, userType = 'user') => {
   return jwt.sign({ id: userId, userType }, process.env.JWT_REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRE || '7d',
+    jwtid: crypto.randomUUID(), // unique per token — two tokens issued in the same second must differ
   });
 };
 
 /**
- * sendRefreshTokenCookie — sets the refreshToken as an httpOnly cookie.
+ * Refresh-token cookie names — one per portal.
+ * A shared name meant that signing in to the admin or delivery portal in the same browser
+ * overwrote the customer's refresh cookie (and logging out of one portal deleted the other's),
+ * so the other tab was silently signed out on its next token refresh.
+ */
+const REFRESH_COOKIE = Object.freeze({
+  user: 'refreshToken',
+  admin: 'adminRefreshToken',
+  delivery: 'dpRefreshToken',
+});
+const LEGACY_REFRESH_COOKIE = 'refreshToken'; // name previously shared by all portals
+
+const cookieOptions = () => {
+  const isProd = process.env.NODE_ENV === 'production';
+  return {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? 'none' : 'strict',
+  };
+};
+
+/**
+ * sendRefreshTokenCookie — sets the portal's refresh token as an httpOnly cookie.
  * httpOnly: JS cannot read it → XSS-safe.
  * secure: true in production (HTTPS only).
  * sameSite: 'none' in production (allows cross-origin for deployed frontend/backend on different domains),
  *           'strict' in development (same-origin only).
  * maxAge: 7 days (matches JWT_REFRESH_EXPIRE).
  */
-const sendRefreshTokenCookie = (res, token) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  res.cookie('refreshToken', token, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'strict',
+const sendRefreshTokenCookie = (res, token, userType = 'user') => {
+  res.cookie(REFRESH_COOKIE[userType] || REFRESH_COOKIE.user, token, {
+    ...cookieOptions(),
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 };
 
 /**
- * clearRefreshTokenCookie — removes the refreshToken cookie on logout.
+ * clearRefreshTokenCookie — removes the portal's refresh cookie on logout.
  * Must use same options (secure, sameSite) as sendRefreshTokenCookie to match the Set-Cookie header.
  */
-const clearRefreshTokenCookie = (res) => {
-  const isProd = process.env.NODE_ENV === 'production';
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: isProd ? 'none' : 'strict',
-  });
+const clearRefreshTokenCookie = (res, userType = 'user') => {
+  res.clearCookie(REFRESH_COOKIE[userType] || REFRESH_COOKIE.user, cookieOptions());
 };
 
-module.exports = { generateAccessToken, generateRefreshToken, sendRefreshTokenCookie, clearRefreshTokenCookie };
+/**
+ * readRefreshToken — returns the refresh token for a portal.
+ * Admin/delivery sessions created before the per-portal cookies still live in the legacy
+ * shared cookie; those are accepted once (legacy: true) so callers can migrate them.
+ */
+const readRefreshToken = (req, userType = 'user') => {
+  const name = REFRESH_COOKIE[userType] || REFRESH_COOKIE.user;
+  const token = req.cookies?.[name];
+  if (token) return { token, legacy: false };
+  if (name !== LEGACY_REFRESH_COOKIE && req.cookies?.[LEGACY_REFRESH_COOKIE]) {
+    return { token: req.cookies[LEGACY_REFRESH_COOKIE], legacy: true };
+  }
+  return { token: null, legacy: false };
+};
+
+module.exports = {
+  generateAccessToken,
+  generateRefreshToken,
+  sendRefreshTokenCookie,
+  clearRefreshTokenCookie,
+  readRefreshToken,
+  REFRESH_COOKIE,
+};

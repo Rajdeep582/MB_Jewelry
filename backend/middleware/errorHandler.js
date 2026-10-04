@@ -40,6 +40,12 @@ const errorHandler = (err, req, res, next) => {
     message = `Invalid ${err.path}: ${err.value}`;
   }
 
+  // Multer upload errors (file too large, too many files, unexpected field) → client error
+  if (err.name === 'MulterError') {
+    statusCode = 400;
+    message = err.code === 'LIMIT_FILE_SIZE' ? 'Image is too large. Please upload a smaller file.' : err.message;
+  }
+
   // JWT errors
   if (err.name === 'JsonWebTokenError') {
     statusCode = 401;
@@ -52,6 +58,11 @@ const errorHandler = (err, req, res, next) => {
   }
 
   logger.error(`${statusCode} - ${message} - ${req.originalUrl} - ${req.method} - ${req.ip} - correlationId=${req.correlationId || 'none'}`);
+
+  // Never leak internal error text (DB/driver messages) to clients in production
+  if (statusCode >= 500 && process.env.NODE_ENV === 'production') {
+    message = 'Something went wrong. Please try again.';
+  }
 
   res.status(statusCode).json({
     success: false,

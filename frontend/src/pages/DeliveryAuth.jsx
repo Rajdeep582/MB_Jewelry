@@ -10,6 +10,7 @@ import {
   loginDP, registerDP, selectAuthLoading, selectAuthError, clearError,
 } from '../store/authSlice';
 import toast from 'react-hot-toast';
+import BrandLogo from '../components/common/BrandLogo';
 
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
 
@@ -147,7 +148,7 @@ function DeliveryAuthPage({ type }) {
           <div className="w-16 h-16 rounded-full bg-gold-500/10 flex items-center justify-center mx-auto mb-5">
             <FiTruck size={28} className="text-gold-500" />
           </div>
-          <h2 className="text-2xl font-bold text-dark-100 mb-3">Registration Submitted!</h2>
+          <h2 className="font-jakarta text-2xl font-bold text-dark-100 leading-tight pt-0 mb-3">Registration Submitted!</h2>
           <p className="text-dark-400 text-sm leading-relaxed mb-6">
             Your delivery partner account is pending admin approval.<br />
             You'll be able to log in once approved.
@@ -172,14 +173,7 @@ function DeliveryAuthPage({ type }) {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <Link to="/" className="inline-block">
-            <div className="text-2xl font-bold tracking-widest text-gold-500 font-serif">
-              M.B. JEWELLERS
-            </div>
-            <div className="text-xs text-dark-500 tracking-[4px] uppercase mt-1">
-              Delivery Partner Portal
-            </div>
-          </Link>
+          <BrandLogo size="lg" to="/" subtitle="Delivery Partner Portal" />
         </motion.div>
 
         <AnimatePresence mode="wait">
@@ -197,7 +191,7 @@ function DeliveryAuthPage({ type }) {
                 <FiTruck size={18} className="text-gold-500" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-dark-100">
+                <h1 className="font-jakarta text-lg font-bold text-dark-100 leading-tight pt-0">
                   {type === 'login' ? 'Partner Sign In' : 'Partner Registration'}
                 </h1>
                 <p className="text-xs text-dark-500">

@@ -2,28 +2,146 @@ const mongoose = require('mongoose');
 const crypto = require('node:crypto');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const { razorpay, isRazorpayConfigured } = require('../config/razorpay');
 const { verifyRazorpaySignature } = require('../utils/razorpayHelper');
 
 const logger = require('../utils/logger');
 const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
+const { getShippingForPincode, getSupportedZones } = require('../utils/shippingRates');
+const { applyLivePrice, getGstRate } = require('../utils/pricingUtils');
+const { getPricingMap } = require('../utils/pricingCache');
+const { buildOrderSearch } = require('../utils/orderSearch');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 /**
  * Compute server-side pricing from validated items.
  * NEVER trust the client for prices.
+ * shippingCharge comes ONLY from the backend PIN-code mapping (utils/shippingRates.js).
  */
-function computePricing(orderItems) {
+function computePricing(orderItems, shippingCharge) {
   const itemsPrice = orderItems.reduce(
     (sum, item) => sum + item.price * item.quantity,
     0
   );
-  const shippingPrice = itemsPrice > 999 ? 0 : 99;
-  const taxPrice = Math.round(itemsPrice * 0.03 * 100) / 100; // 3% GST
+  const shippingPrice = shippingCharge;
+  // GST is charged ONCE, here: product prices exclude GST. Rate per item (product.gst, default 3%).
+  const taxRaw = orderItems.reduce(
+    (sum, item) => sum + item.price * item.quantity * ((item.gstRate ?? 3) / 100),
+    0
+  );
+  const taxPrice = Math.round(taxRaw * 100) / 100;
   const totalAmount = Math.round((itemsPrice + shippingPrice + taxPrice) * 100) / 100;
   return { itemsPrice, shippingPrice, taxPrice, totalAmount };
+}
+
+const REQUIRED_ADDR_FIELDS = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'pincode'];
+const ADDRESS_FIELDS = ['fullName', 'phone', 'addressLine1', 'addressLine2', 'city', 'state', 'pincode', 'country'];
+const CLIENT_FINANCIAL_FIELDS = ['shippingPrice', 'shipping', 'shippingCharge', 'taxPrice', 'itemsPrice', 'totalAmount', 'amount', 'pricing'];
+
+/**
+ * resolveShippingAddress — pick the delivery address for this checkout.
+ *   • shippingAddressId → load the user's SAVED address from the database (trusted copy;
+ *     any address object sent alongside it is ignored).
+ *   • otherwise         → a new address typed at checkout (only known fields are kept).
+ * Returns { address } or { status, message }.
+ */
+async function loadSavedAddress(userId, addressId) {
+  if (!mongoose.isValidObjectId(addressId)) {
+    return { status: 400, message: 'Invalid saved address' };
+  }
+  const owner = await User.findById(userId).select('addresses').lean();
+  const saved = owner?.addresses?.find((a) => String(a._id) === String(addressId));
+  return saved ? { saved } : { status: 404, message: 'Saved address not found' };
+}
+
+async function resolveShippingAddress(userId, body, { requireComplete = true } = {}) {
+  let source = body.shippingAddress;
+  if (body.shippingAddressId) {
+    const found = await loadSavedAddress(userId, body.shippingAddressId);
+    if (!found.saved) return found;
+    source = found.saved;
+  }
+
+  if (!source || typeof source !== 'object' || Array.isArray(source)) {
+    return { status: 400, message: 'Shipping address is missing: pincode' };
+  }
+
+  const address = {};
+  for (const field of ADDRESS_FIELDS) {
+    if (source[field] !== undefined && source[field] !== null) address[field] = String(source[field]).trim();
+  }
+  if (requireComplete) {
+    for (const field of REQUIRED_ADDR_FIELDS) {
+      if (!address[field]) {
+        return { status: 400, message: `Shipping address is missing: ${field}` };
+      }
+    }
+  }
+  return { address };
+}
+
+/**
+ * buildCheckoutQuote — the ONE place an order total is calculated.
+ * Used by both the checkout quote (display) and create-payment (charge),
+ * so the amount shown to the customer is exactly the amount charged.
+ *   PIN code → delivery area → shipping charge → server-side item prices → GST → total
+ * Any financial values sent by the client are ignored.
+ * Returns { quote } or { status, body } (error response).
+ */
+async function buildCheckoutQuote(userId, body, { requireCompleteAddress = true } = {}) {
+  const { items } = body;
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return { status: 400, body: { success: false, message: 'Cart is empty' } };
+  }
+
+  // 1. Delivery address (saved address from DB, or validated new address)
+  const addr = await resolveShippingAddress(userId, body, { requireComplete: requireCompleteAddress });
+  if (addr.message) {
+    return { status: addr.status, body: { success: false, message: addr.message } };
+  }
+
+  // 2. PIN code → delivery area → shipping charge (backend mapping only)
+  const shipping = getShippingForPincode(addr.address.pincode);
+  if (!shipping.ok) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        code: shipping.code,
+        message: shipping.message,
+        pincode: shipping.pincode,
+        supportedZones: getSupportedZones(),
+      },
+    };
+  }
+  addr.address.pincode = shipping.pincode;
+
+  // 3. Items + prices from the database
+  const { orderItems, errors } = await validateAndBuildItems(items);
+  if (errors.length > 0) {
+    return { status: 400, body: { success: false, message: errors[0], errors } };
+  }
+
+  // 4. Totals
+  const pricing = computePricing(orderItems, shipping.charge);
+  if (!Number.isFinite(pricing.totalAmount) || pricing.totalAmount <= 0
+      || pricing.shippingPrice !== shipping.charge) {
+    logger.error(`Checkout quote produced an invalid total: ${JSON.stringify(pricing)}`);
+    return { status: 400, body: { success: false, message: 'Could not calculate the order total. Please try again.' } };
+  }
+
+  return {
+    quote: {
+      orderItems,
+      shippingAddress: addr.address,
+      delivery: { pincode: shipping.pincode, area: shipping.area, charge: shipping.charge },
+      pricing,
+    },
+  };
 }
 
 /**
@@ -35,16 +153,27 @@ async function validateAndBuildItems(items) {
   const errors = [];
 
   // Pre-fetch every referenced product in ONE query (avoids N+1: was 1 findById per item).
-  // Validation logic below is unchanged — it now reads from this map instead of hitting the DB per loop.
   const validIds = items
-    .map((i) => i.productId)
+    .map((i) => i?.productId)
     .filter((id) => id && mongoose.isValidObjectId(id));
-  const products = await Product.find({ _id: { $in: validIds } }).lean();
+  const [products, pricingMap] = await Promise.all([
+    Product.find({ _id: { $in: validIds } }).lean(),
+    getPricingMap(),
+  ]);
   const productMap = new Map(products.map((p) => [String(p._id), p]));
 
+  // Same product on several lines → stock must cover the combined quantity
+  const qtyByProduct = new Map();
   for (const item of items) {
-    if (!item.productId || !mongoose.isValidObjectId(item.productId)) {
-      errors.push(`Invalid product ID: ${item.productId}`);
+    const qty = Number(item?.quantity);
+    if (item?.productId && Number.isInteger(qty) && qty > 0) {
+      qtyByProduct.set(String(item.productId), (qtyByProduct.get(String(item.productId)) || 0) + qty);
+    }
+  }
+
+  for (const item of items) {
+    if (!item || !item.productId || !mongoose.isValidObjectId(item.productId)) {
+      errors.push(`Invalid product ID: ${item?.productId}`);
       continue;
     }
     const qty = Number(item.quantity);
@@ -58,18 +187,26 @@ async function validateAndBuildItems(items) {
       errors.push(`Product not found: ${item.productId}`);
       continue;
     }
-    if (product.stock < qty) {
+    const totalQty = qtyByProduct.get(String(item.productId)) || qty;
+    if (product.stock < totalQty) {
       errors.push(`Insufficient stock for "${product.name}" (available: ${product.stock})`);
       continue;
     }
 
-    const price = product.discountedPrice ?? product.price;
+    // Same live price (and live discount) the shop pages show — what is shown is what is charged
+    const live = applyLivePrice(product, pricingMap);
+    const price = live.discountedPrice ?? live.price;
+    if (!Number.isFinite(price) || price <= 0) {
+      errors.push(`"${product.name}" is not available for online purchase right now (price on request)`);
+      continue;
+    }
     orderItems.push({
       product: product._id,
       name: product.name,
       image: product.images?.[0]?.url || '',
       price,
       quantity: qty,
+      gstRate: getGstRate(product, pricingMap),
     });
   }
 
@@ -79,13 +216,53 @@ async function validateAndBuildItems(items) {
 /**
  * Core atomic commit: decrement stock, confirm order, update transaction.
  * Shared by verifyPayment, handleWebhook, and retryVerifyPayment.
+ *
+ * IDEMPOTENT + RACE-SAFE: browser verify, the Razorpay webhook and retry-verify can all fire
+ * for the same payment at the same moment. The order is CLAIMED first with a conditional
+ * update (payment.status != 'paid'); only one caller can win. A loser (claim returns null,
+ * or a WriteConflict from the parallel transaction) re-reads the order and reports success
+ * if it is now paid — it never overwrites a confirmed order with 'failed' and never
+ * decrements stock twice.
  */
 async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId) {
+  const alreadyPaid = async () => {
+    const fresh = await Order.findById(pendingOrder._id);
+    return fresh?.payment?.status === 'paid' ? fresh : null;
+  };
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // 1. Decrement stock atomically — single findOneAndUpdate with stock >= quantity guard
+    // 1. Claim + confirm the order (only if not already paid)
+    const confirmedOrder = await Order.findOneAndUpdate(
+      { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
+      {
+        orderStatus: 'confirmed',
+        'payment.razorpayPaymentId': razorpayPaymentId,
+        'payment.razorpaySignature': razorpaySignature,
+        'payment.status': 'paid',
+        'payment.paidAt': new Date(),
+        'payment.failReason': '',
+        $push: {
+          trackingHistory: {
+            status: 'confirmed',
+            comment: 'Payment verified successfully online.',
+            timestamp: new Date(),
+          },
+        },
+      },
+      { new: true, session }
+    );
+    if (!confirmedOrder) {
+      await session.abortTransaction();
+      session.endSession();
+      const paid = await alreadyPaid();
+      if (paid) return { success: true, order: paid, alreadyPaid: true };
+      return { success: false, error: 'Order not found' };
+    }
+
+    // 2. Decrement stock atomically — single findOneAndUpdate with stock >= quantity guard
     //    Prevents TOCTOU race condition where two concurrent payments both pass the read check
     for (const item of pendingOrder.items) {
       const updated = await Product.findOneAndUpdate(
@@ -99,26 +276,6 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
         throw new Error(`Insufficient stock for "${p.name}" (available: ${p.stock})`);
       }
     }
-
-    // 2. Confirm the order
-    const confirmedOrder = await Order.findByIdAndUpdate(
-      pendingOrder._id,
-      {
-        orderStatus: 'confirmed',
-        'payment.razorpayPaymentId': razorpayPaymentId,
-        'payment.razorpaySignature': razorpaySignature,
-        'payment.status': 'paid',
-        'payment.paidAt': new Date(),
-        $push: {
-          trackingHistory: {
-            status: 'confirmed',
-            comment: 'Payment verified successfully online.',
-            timestamp: new Date(),
-          },
-        },
-      },
-      { new: true, session }
-    );
 
     // 3. Update Transaction to success
     await Transaction.findOneAndUpdate(
@@ -140,18 +297,29 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
     logger.info(`Order confirmed atomically: order=${pendingOrder._id}, payment=${razorpayPaymentId}`);
     return { success: true, order: confirmedOrder };
   } catch (err) {
-    await session.abortTransaction();
+    await session.abortTransaction().catch(() => {});
     session.endSession();
 
-    // Mark order & transaction as failed so user can retry
-    await Order.findByIdAndUpdate(pendingOrder._id, {
-      'payment.status': 'failed',
-      'payment.failReason': err.message,
-    });
+    // A parallel caller (webhook / second verify) may have confirmed it — that is success.
+    const paid = await alreadyPaid();
+    if (paid) {
+      logger.info(`atomicConfirmOrder: order=${pendingOrder._id} already confirmed by a parallel call`);
+      return { success: true, order: paid, alreadyPaid: true };
+    }
+
+    // Genuine failure (e.g. stock ran out after payment) — record it, never touching a paid order
+    await Order.findOneAndUpdate(
+      { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
+      { 'payment.status': 'failed', 'payment.failReason': err.message }
+    );
     await Transaction.findOneAndUpdate(
-      { razorpayOrderId },
+      { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
       { status: 'failed', failReason: err.message }
     );
+
+    // The winning transaction may have committed while we were writing the failure
+    const paidLate = await alreadyPaid();
+    if (paidLate) return { success: true, order: paidLate, alreadyPaid: true };
 
     logger.error(`atomicConfirmOrder rollback: order=${pendingOrder._id}, ${err.message}`);
     return { success: false, error: err.message };
@@ -162,34 +330,40 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
 // @route   POST /api/orders/create-payment
 // @access  Private
 const createPayment = async (req, res) => {
-  const { items, shippingAddress, method = 'razorpay' } = req.body;
+  const { method = 'razorpay' } = req.body;
 
   // --- Guard: COD is no longer supported ---
   if (method === 'cod') {
     return res.status(400).json({ success: false, message: 'Cash on Delivery is no longer available. Please use online payment.' });
   }
 
-  // --- Guard: empty cart ---
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ success: false, message: 'Cart is empty' });
+  // Client-supplied money values are never used — log them for monitoring.
+  const sentFinancials = CLIENT_FINANCIAL_FIELDS.filter((f) => req.body[f] !== undefined);
+  if (sentFinancials.length > 0) {
+    logger.warn(`create-payment: ignoring client-supplied financial fields [${sentFinancials.join(', ')}] from user=${req.user._id}`);
   }
 
-  // --- Validate shipping address fields ---
-  const requiredAddrFields = ['fullName', 'phone', 'addressLine1', 'city', 'state', 'pincode'];
-  for (const field of requiredAddrFields) {
-    if (!shippingAddress?.[field]) {
-      return res.status(400).json({ success: false, message: `Shipping address is missing: ${field}` });
+  // --- Address → PIN code → shipping, DB prices, GST, total (all server-side) ---
+  const result = await buildCheckoutQuote(req.user._id, req.body);
+  if (!result.quote) {
+    return res.status(result.status).json(result.body);
+  }
+  const { orderItems, shippingAddress, delivery, pricing } = result.quote;
+
+  // --- Consistency check: the total the customer saw must equal the server total ---
+  if (req.body.expectedTotal !== undefined) {
+    const expected = Number(req.body.expectedTotal);
+    if (!Number.isFinite(expected) || Math.round(expected * 100) !== Math.round(pricing.totalAmount * 100)) {
+      logger.warn(`create-payment: expectedTotal mismatch user=${req.user._id} expected=${req.body.expectedTotal} server=${pricing.totalAmount}`);
+      return res.status(409).json({
+        success: false,
+        code: 'PRICE_CHANGED',
+        message: 'Your order total has changed. Please review the updated amount before paying.',
+        pricing,
+        delivery,
+      });
     }
   }
-
-  // --- Validate items against DB (server-side prices) ---
-  const { orderItems, errors } = await validateAndBuildItems(items);
-  if (errors.length > 0) {
-    return res.status(400).json({ success: false, message: errors[0], errors });
-  }
-
-  // --- Compute server-side pricing ---
-  const pricing = computePricing(orderItems);
 
   // --- Razorpay Flow ---
   // --- Guard early: Razorpay not configured ---
@@ -288,6 +462,32 @@ const createPayment = async (req, res) => {
     currency: razorpayOrder.currency,
     keyId: process.env.RAZORPAY_KEY_ID,
     pricing,
+    delivery,
+  });
+};
+
+// ─── Checkout Quote (display only — same calculation as create-payment) ──────
+// @route   POST /api/orders/quote
+// @access  Private (users)
+// Body: { items: [{ productId, quantity }], shippingAddressId? , shippingAddress?: { pincode, ... } }
+// ─── Public: serviceable delivery areas ───────────────────────────────────────
+// @route   GET /api/orders/shipping-zones
+// @access  Public — display only (product page PIN checker). Checkout/payment still price on the server.
+const getShippingZones = (req, res) => {
+  res.json({ success: true, zones: getSupportedZones() });
+};
+
+const getCheckoutQuote = async (req, res) => {
+  const result = await buildCheckoutQuote(req.user._id, req.body, { requireCompleteAddress: false });
+  if (!result.quote) {
+    return res.status(result.status).json(result.body);
+  }
+  const { orderItems, delivery, pricing } = result.quote;
+  return res.json({
+    success: true,
+    delivery,
+    pricing,
+    items: orderItems.map((i) => ({ product: i.product, name: i.name, price: i.price, quantity: i.quantity })),
   });
 };
 
@@ -477,8 +677,9 @@ const failPayment = async (req, res) => {
   failSession.startTransaction();
 
   try {
-    await Order.findByIdAndUpdate(
-      pendingOrderId,
+    // Conditional: never flip an order that was confirmed in the meantime (webhook/verify race)
+    await Order.findOneAndUpdate(
+      { _id: pendingOrderId, 'payment.status': { $ne: 'paid' } },
       { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': failReason },
       { session: failSession }
     );
@@ -505,13 +706,61 @@ const failPayment = async (req, res) => {
 
 // ─── Webhook Helpers ──────────────────────────────────────────────────────────
 
+/**
+ * Find which custom order + phase a Razorpay order belongs to. Our own pending Transaction
+ * record is the source of truth (it survives a second checkout attempt overwriting the
+ * Razorpay order id stored on the custom order).
+ */
+async function findCustomPaymentTarget(razorpayOrderId) {
+  const tx = await Transaction.findOne({ razorpayOrderId: String(razorpayOrderId), orderType: 'CustomOrder' }).lean();
+  if (!tx?.order || !['advance', 'final'].includes(tx.phase)) return null;
+  return { customOrderId: tx.order, phase: tx.phase };
+}
+
+/** payment.captured for a custom order → same confirm path as the browser verify. */
+async function reconcileCustomOrderPayment(payment) {
+  const target = await findCustomPaymentTarget(payment.order_id);
+  if (!target) return false;
+  const { confirmCustomPayment } = require('./customOrderController'); // lazy: avoids a require cycle
+  const result = await confirmCustomPayment({
+    ...target,
+    razorpayOrderId: payment.order_id,
+    razorpayPaymentId: payment.id,
+    razorpaySignature: '',
+    actorId: undefined,
+    via: 'webhook',
+    anyRazorpayOrder: true,
+  });
+  if (result.ok) logger.info(`Webhook: custom order ${target.customOrderId} ${target.phase} payment reconciled`);
+  else logger.error(`Webhook: custom order ${target.customOrderId} reconcile failed: ${result.error}`);
+  return true;
+}
+
+/** payment.failed for a custom order → mark that phase failed unless it was already paid. */
+async function failCustomOrderPayment(razorpayOrderId, failReason) {
+  const target = await findCustomPaymentTarget(razorpayOrderId);
+  if (!target) return;
+  const CustomOrder = require('../models/CustomOrder');
+  const statusPath = `${target.phase}Payment.status`;
+  await CustomOrder.updateOne(
+    { _id: target.customOrderId, [statusPath]: { $ne: 'paid' }, [`${target.phase}Payment.razorpayOrderId`]: String(razorpayOrderId) },
+    { [statusPath]: 'failed', [`${target.phase}Payment.failReason`]: failReason }
+  );
+  await Transaction.updateOne(
+    { razorpayOrderId: String(razorpayOrderId), status: 'pending' },
+    { status: 'failed', failReason }
+  );
+}
+
 async function processWebhookCaptured(payment) {
   const razorpayOrderId = payment.order_id;
   const razorpayPaymentId = payment.id;
 
   const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': String(razorpayOrderId) });
   if (!pendingOrder) {
-    logger.warn(`Webhook: No order found for razorpayOrder=${razorpayOrderId}`);
+    // Not a shop order — maybe a custom-order advance/final payment
+    const handled = await reconcileCustomOrderPayment(payment);
+    if (!handled) logger.warn(`Webhook: No order found for razorpayOrder=${razorpayOrderId}`);
     return;
   }
 
@@ -533,17 +782,21 @@ async function processWebhookFailed(payment) {
   const failReason = payment.error_description || 'Payment failed (Razorpay event)';
 
   const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': String(razorpayOrderId) });
-  if (!pendingOrder) return;
+  if (!pendingOrder) {
+    await failCustomOrderPayment(razorpayOrderId, failReason);
+    return;
+  }
 
   if (pendingOrder.payment.status === 'paid') return;
 
-  await Order.findByIdAndUpdate(pendingOrder._id, {
-    orderStatus: 'failed',
-    'payment.status': 'failed',
-    'payment.failReason': failReason,
-  });
+  // Conditional: a later 'captured' event for the same Razorpay order may already have won
+  const flipped = await Order.findOneAndUpdate(
+    { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
+    { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': failReason }
+  );
+  if (!flipped) return;
   await Transaction.findOneAndUpdate(
-    { razorpayOrderId: String(razorpayOrderId) },
+    { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
     { status: 'failed', failReason }
   );
 
@@ -679,7 +932,7 @@ const getOrder = async (req, res) => {
   }
 
   const ownerId = order.user?._id ?? order.user;
-  if (ownerId?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  if (ownerId?.toString() !== req.user._id.toString() && req.userType !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorized' });
   }
 
@@ -690,41 +943,49 @@ const getOrder = async (req, res) => {
 // @route   GET /api/orders
 // @access  Admin
 const getAllOrders = async (req, res) => {
-  const { page = 1, limit = 20, status, paymentStatus = 'all' } = req.query;
+  const { status, paymentStatus = 'all', search } = req.query;
+  const pageNum = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
 
-  const query = {};
+  const filter = {};
 
   if (status === 'needs_attention') {
     // Only flag orders that genuinely need admin intervention:
     // Payment failed but order is still actionable (not already marked failed)
-    query.$or = [
+    filter.$or = [
       { 'payment.status': 'failed', orderStatus: { $ne: 'failed' } },
     ];
   } else {
-    if (status) query.orderStatus = String(status);
+    if (status) filter.orderStatus = String(status);
 
     if (paymentStatus === 'paid') {
-      query['payment.status'] = 'paid';
+      filter['payment.status'] = 'paid';
     } else if (paymentStatus === 'pending') {
-      query['payment.status'] = 'pending';
+      filter['payment.status'] = 'pending';
     } else if (paymentStatus === 'failed') {
-      query['payment.status'] = 'failed';
+      filter['payment.status'] = 'failed';
     } else {
       // Default: exclude in-flight pending-payment orders — only show confirmed (paid) orders.
       // Pending orders are transient records created during Razorpay checkout flow.
-      query['payment.status'] = 'paid';
+      filter['payment.status'] = 'paid';
     }
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  // Support lookup: order ID, tracking number (MB-XXXXXXXX), customer name/email/phone,
+  // product name, PIN code, city or Razorpay payment/order ID — searched across ALL pages.
+  const searchOr = await buildOrderSearch(search, {
+    idField: 'orderId',
+    extra: (rx) => [{ 'items.name': rx }],
+  });
+  const query = searchOr ? { $and: [filter, { $or: searchOr }] } : filter;
 
   const [orders, total] = await Promise.all([
     Order.find(query)
       .select('-payment.razorpaySignature')
-      .populate('user', 'name email')
+      .populate('user', 'name email phone')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
       .lean(),
     Order.countDocuments(query),
   ]);
@@ -733,8 +994,8 @@ const getAllOrders = async (req, res) => {
     success: true,
     orders,
     total,
-    pages: Math.ceil(total / Number(limit)),
-    page: Number(page),
+    pages: Math.ceil(total / limitNum),
+    page: pageNum,
   });
 };
 
@@ -848,6 +1109,7 @@ const updateOrderStatus = async (req, res) => {
     if (status === 'shipped' && estimatedDelivery) {
       order.estimatedDelivery = new Date(estimatedDelivery);
       await order.save();
+      await writeOrderSnapshot(order); // keep the Delivery record's ETA in sync
       logger.info(`Order ${order._id} estimatedDelivery updated (status unchanged: shipped)`);
       return res.json({ success: true, order, message: 'Estimated delivery date updated' });
     }
@@ -868,11 +1130,35 @@ const updateOrderStatus = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Payment must be confirmed (via Razorpay webhook) before marking as delivered.' });
   }
 
+  await commitOrderStatus(order, status, { comment, estimatedDelivery, adminId: req.user._id });
+
+  res.json({ success: true, order });
+};
+
+/**
+ * commitOrderStatus — the ONE place a regular order's status is written after validation.
+ * Used by updateOrderStatus and adminController.adminConfirmDelivery so both produce the same
+ * deliveryId, timestamps, tracking history entry, partner attribution and Delivery snapshot.
+ * Caller must have validated the transition.
+ */
+async function commitOrderStatus(order, status, { comment = '', estimatedDelivery, adminId } = {}) {
+  const previous = order.orderStatus;
+
+  // Claim the transition atomically: two admin tabs / double-clicks cannot both apply it
+  // (prevents duplicate history entries and double "delivered" writes).
+  const claimed = await Order.updateOne({ _id: order._id, orderStatus: previous }, { $set: { orderStatus: status } });
+  if (claimed.modifiedCount === 0) {
+    const err = new Error('This order was just updated by someone else. Refresh and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   applyOrderTransition(order, status, estimatedDelivery);
 
   // ── Store delivery partner ID when marked delivered ────────────────────────
+  // The partner who physically confirmed delivery takes precedence over the assigned one.
   if (status === 'delivered' && !order.deliveredByPartnerId) {
-    const agentRef = order.deliveryAgent || order.dpConfirmedBy;
+    const agentRef = order.dpConfirmedBy || order.deliveryAgent;
     if (agentRef) {
       const DeliveryPartner = require('../models/DeliveryPartner');
       const dp = await DeliveryPartner.findById(agentRef).select('partnerId name').lean();
@@ -884,41 +1170,42 @@ const updateOrderStatus = async (req, res) => {
   order.trackingHistory.push({
     status,
     comment: comment || '',
-    updatedBy: req.user._id,
+    updatedBy: adminId,
     timestamp: new Date(),
   });
 
   await order.save();
 
-  logger.info(`Order ${order._id} transitioned "${current}" → "${status}" by admin ${req.user._id}` + (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : ''));
+  logger.info(`Order ${order._id} transitioned "${previous}" → "${status}" by admin ${adminId}` + (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : ''));
 
-  // ── Persist delivery snapshot (independent collection) ────────────────────
-  if (status === 'shipped' || status === 'delivered') {
-    const populatedUser = order.user?.name ? order.user : await require('../models/User').findById(order.user).select('name email').lean();
-    const itemsSummary = (order.items || []).map(i => i.name).join(', ');
-    await upsertDeliverySnapshot({
-      sourceType:          'order',
-      sourceId:            order._id,
-      orderId:             order.orderId || '',
-      deliveryId:          order.deliveryId || '',
-      customerName:        populatedUser?.name  || '',
-      customerEmail:       populatedUser?.email || '',
-      shippingAddress:     order.shippingAddress,
-      itemsSummary,
-      totalAmount:         order.totalAmount || 0,
-      status,
-      dispatchedAt:        order.dispatchedAt,
-      estimatedDelivery:   order.estimatedDelivery,
-      deliveredAt:         order.deliveredAt,
-      deliveryAgent:       order.deliveryAgent,
-      deliveredByPartnerId:   order.deliveredByPartnerId   || '',
-      deliveredByPartnerName: order.deliveredByPartnerName || '',
-      trackingHistory:        order.trackingHistory,
-    });
-  }
+  if (status === 'shipped' || status === 'delivered') await writeOrderSnapshot(order);
+  return order;
+}
 
-  res.json({ success: true, order });
-};
+/** writeOrderSnapshot — persist the order's current delivery state to the Delivery collection. */
+async function writeOrderSnapshot(order) {
+  const populatedUser = order.user?.name ? order.user : await User.findById(order.user).select('name email').lean();
+  const itemsSummary = (order.items || []).map(i => i.name).join(', ');
+  await upsertDeliverySnapshot({
+    sourceType:          'order',
+    sourceId:            order._id,
+    orderId:             order.orderId || '',
+    deliveryId:          order.deliveryId || '',
+    customerName:        populatedUser?.name  || '',
+    customerEmail:       populatedUser?.email || '',
+    shippingAddress:     order.shippingAddress,
+    itemsSummary,
+    totalAmount:         order.totalAmount || 0,
+    status:              order.orderStatus,
+    dispatchedAt:        order.dispatchedAt,
+    estimatedDelivery:   order.estimatedDelivery,
+    deliveredAt:         order.deliveredAt,
+    deliveryAgent:       order.deliveryAgent,
+    deliveredByPartnerId:   order.deliveredByPartnerId   || '',
+    deliveredByPartnerName: order.deliveredByPartnerName || '',
+    trackingHistory:        order.trackingHistory,
+  });
+}
 
 // ─── Admin Stats ─────────────────────────────────────────────────────────────
 // @route   GET /api/orders/stats
@@ -1021,6 +1308,8 @@ const getDeliveryStats = async (req, res) => {
 
 module.exports = {
   createPayment,
+  getCheckoutQuote,
+  getShippingZones,
   verifyPayment,
   retryVerifyPayment,
   failPayment,
@@ -1031,4 +1320,6 @@ module.exports = {
   updateOrderStatus,
   getStats,
   getDeliveryStats,
+  // internal helper shared with adminController.adminConfirmDelivery
+  commitOrderStatus,
 };

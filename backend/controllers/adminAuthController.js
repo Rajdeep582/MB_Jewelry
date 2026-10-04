@@ -8,7 +8,9 @@ const {
   generateRefreshToken,
   sendRefreshTokenCookie,
   clearRefreshTokenCookie,
+  readRefreshToken,
 } = require('../utils/generateToken');
+const { rotateRefreshSession } = require('../utils/refreshSessions');
 const { sendVerificationEmail } = require('../utils/email');
 const logger = require('../utils/logger');
 
@@ -257,18 +259,19 @@ const login = async (req, res) => {
   admin.markModified('sessions');
   await admin.save({ validateBeforeSave: false });
 
-  sendRefreshTokenCookie(res, refreshToken);
+  sendRefreshTokenCookie(res, refreshToken, 'admin');
   res.json({ success: true, accessToken, user: adminPayload(admin) });
 };
 
 // POST /api/admin-auth/logout
 const logout = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const { token, legacy } = readRefreshToken(req, 'admin');
   if (token) {
     const hashed = hashToken(token);
     await Admin.findByIdAndUpdate(req.user._id, { $pull: { sessions: { tokenHash: hashed } } });
   }
-  clearRefreshTokenCookie(res);
+  clearRefreshTokenCookie(res, 'admin');
+  if (legacy) clearRefreshTokenCookie(res, 'user'); // legacy shared cookie held this admin session
   res.json({ success: true, message: 'Logged out.' });
 };
 
@@ -278,8 +281,10 @@ const getMe = async (req, res) => {
 };
 
 // POST /api/admin-auth/refresh
+// Reads the admin portal's own cookie (falls back once to the legacy shared cookie).
+// Rotation + replay detection: utils/refreshSessions.js
 const refreshToken = async (req, res) => {
-  const token = req.cookies.refreshToken;
+  const { token, legacy } = readRefreshToken(req, 'admin');
   if (!token) return res.status(401).json({ success: false, message: 'No refresh token.' });
 
   let decoded;
@@ -289,6 +294,7 @@ const refreshToken = async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid refresh token.' });
   }
 
+  // A legacy cookie holding a customer token belongs to the shop session — leave it untouched.
   if (decoded.userType !== 'admin') {
     return res.status(401).json({ success: false, message: 'Invalid token type.' });
   }
@@ -298,31 +304,19 @@ const refreshToken = async (req, res) => {
     return res.status(401).json({ success: false, message: 'Admin not found or inactive.' });
   }
 
-  admin.sessions = pruneExpiredSessions(admin.sessions);
-  const hashed = hashToken(token);
-  const idx = admin.sessions.findIndex((s) => s.tokenHash === hashed);
+  const result = await rotateRefreshSession({ Model: Admin, doc: admin, token, userType: 'admin', req, newSessionId: true });
 
-  if (idx === -1) {
+  if (result.status === 'replay') {
     admin.sessions = [];
     await admin.save({ validateBeforeSave: false });
     return res.status(401).json({ success: false, message: 'Session expired. Please log in again.' });
   }
 
-  const newAccess  = generateAccessToken(admin._id, 'admin', 'admin');
-  const newRefresh = generateRefreshToken(admin._id, 'admin');
-
-  admin.sessions[idx] = {
-    sessionId: crypto.randomUUID(),
-    tokenHash: hashToken(newRefresh),
-    deviceId:  req.headers['user-agent']?.substring(0, 50) || 'Unknown',
-    ipAddress: req.ip,
-    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  };
-  admin.markModified('sessions');
-  await admin.save({ validateBeforeSave: false });
-
-  sendRefreshTokenCookie(res, newRefresh);
-  res.json({ success: true, accessToken: newAccess });
+  if (result.status === 'rotated') {
+    sendRefreshTokenCookie(res, result.refreshToken, 'admin');
+    if (legacy) clearRefreshTokenCookie(res, 'user'); // migrate off the legacy shared cookie
+  }
+  res.json({ success: true, accessToken: generateAccessToken(admin._id, 'admin', 'admin') });
 };
 
 // PATCH /api/admin-auth/profile/name

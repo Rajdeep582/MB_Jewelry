@@ -3,7 +3,7 @@ import jewelryImg from '../../assets/necklace.webp';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
-import { FiX, FiShoppingBag, FiMinus, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiX, FiShoppingBag, FiMinus, FiPlus, FiTrash2, FiTruck, FiLock } from 'react-icons/fi';
 import {
   selectCartItems, selectCartTotal, selectCartOpen,
   closeCart, removeFromCart, updateQuantity,
@@ -53,7 +53,7 @@ export default function CartDrawer() {
             <div className="flex items-center justify-between p-5 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <FiShoppingBag className="text-gold-500" size={20} />
-                <span className="font-display text-lg text-white">Your Cart</span>
+                <span className="font-['Cormorant_Garamond',Georgia,serif] text-2xl font-semibold text-white leading-none">Your Cart</span>
                 <span className="badge badge-gold">{items.length}</span>
               </div>
               <button
@@ -92,7 +92,8 @@ export default function CartDrawer() {
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="flex gap-3 p-3 bg-dark-800 rounded-xl border border-white/5"
+                      layout
+                      className="flex gap-3 p-3 bg-dark-800 rounded-xl border border-white/5 hover:border-gold-500/25 transition-colors"
                     >
                       {/* Image */}
                       <Link to={`/products/${item._id}`} onClick={() => dispatch(closeCart())}>
@@ -118,21 +119,24 @@ export default function CartDrawer() {
                         <div className="flex items-center gap-2 mt-2">
                           <button
                             onClick={() => dispatch(updateQuantity({ id: item._id, quantity: item.quantity - 1 }))}
-                            className="w-6 h-6 rounded-md bg-dark-700 hover:bg-dark-600 flex items-center justify-center text-dark-300 hover:text-white transition-colors"
+                            aria-label="Decrease quantity"
+                            className="w-7 h-7 rounded-lg bg-dark-700 hover:bg-gold-500 hover:text-dark-900 flex items-center justify-center text-dark-300 transition-colors active:scale-90"
                           >
-                            <FiMinus size={10} />
+                            <FiMinus size={11} />
                           </button>
                           <span className="text-white text-sm w-6 text-center">{item.quantity}</span>
                           <button
                             onClick={() => dispatch(updateQuantity({ id: item._id, quantity: item.quantity + 1 }))}
                             disabled={item.quantity >= item.stock}
-                            className="w-6 h-6 rounded-md bg-dark-700 hover:bg-dark-600 flex items-center justify-center text-dark-300 hover:text-white transition-colors disabled:opacity-40"
+                            aria-label="Increase quantity"
+                            className="w-7 h-7 rounded-lg bg-dark-700 hover:bg-gold-500 hover:text-dark-900 flex items-center justify-center text-dark-300 transition-colors active:scale-90 disabled:opacity-40 disabled:hover:bg-dark-700 disabled:hover:text-dark-300"
                           >
-                            <FiPlus size={10} />
+                            <FiPlus size={11} />
                           </button>
                           <button
                             onClick={() => dispatch(removeFromCart(item._id))}
-                            className="ml-auto p-1 text-dark-500 hover:text-red-400 transition-colors"
+                            aria-label="Remove item"
+                            className="ml-auto p-1.5 rounded-lg text-dark-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
                           >
                             <FiTrash2 size={14} />
                           </button>
@@ -147,6 +151,11 @@ export default function CartDrawer() {
             {/* Footer */}
             {items.length > 0 && (
               <div className="p-5 border-t border-white/10 space-y-3">
+                {/* Shipping note (display only — the server prices shipping by delivery PIN at checkout) */}
+                <p className="text-xs text-dark-300 flex items-center gap-1.5 p-3 rounded-xl bg-dark-900/60 border border-white/5">
+                  <FiTruck size={12} className="text-gold-500 flex-shrink-0" />
+                  Shipping charge is based on your delivery PIN code
+                </p>
                 <div className="flex justify-between items-center">
                   <span className="text-dark-400">Subtotal</span>
                   <span className="text-white font-semibold text-lg">{formatPrice(total)}</span>
@@ -157,7 +166,7 @@ export default function CartDrawer() {
                   onClick={handleCheckout}
                   className="btn-gold w-full py-3.5 text-sm font-semibold"
                 >
-                  Proceed to Checkout
+                  <FiLock size={14} /> Proceed to Checkout
                 </button>
                 <Link
                   to="/shop"

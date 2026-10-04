@@ -75,6 +75,27 @@ export const formatDateTime = (date) =>
   });
 
 /**
+ * formatCalendarDate — for date-only values picked with <input type="date">
+ * (e.g. expectedDeliveryDate, estimatedDelivery), which are stored as UTC midnight.
+ * Formatting in UTC keeps the exact day the admin picked, in every timezone,
+ * and never shows a meaningless "05:30 am" time.
+ */
+export const formatCalendarDate = (date, month = 'long') =>
+  new Date(date).toLocaleDateString('en-IN', {
+    day: 'numeric', month, year: 'numeric', timeZone: 'UTC',
+  });
+
+/** todayInputValue — today's LOCAL date as YYYY-MM-DD (for <input type="date" min>). */
+export const todayInputValue = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** formatTrackingNumber — internal deliveryId (UUID) → customer-facing MB-XXXXXXXX. */
+export const formatTrackingNumber = (id) =>
+  id ? `MB-${String(id).replaceAll('-', '').slice(-8).toUpperCase()}` : '';
+
+/**
  * Generate star array for rating display
  */
 export const generateStars = (rating) => {

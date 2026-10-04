@@ -2,26 +2,15 @@ const Product = require('../models/Product');
 const GlobalPricing = require('../models/GlobalPricing');
 const Review = require('../models/Review');
 const cloudinary = require('../config/cloudinary');
-const { calcDynamicPrice, buildGlobalPricingMap, applyLivePrice, resolvePricingEntry } = require('../utils/pricingUtils');
+const { calcDynamicPrice, buildGlobalPricingMap, applyLivePrice, resolvePricingEntry, discountFraction, applyDiscount } = require('../utils/pricingUtils');
+const { getCachedPricing } = require('../utils/pricingCache');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
 
 const invalidProductId = (res) => res.status(400).json({ success: false, message: 'Invalid product ID' });
 
-// ── GlobalPricing cache ───────────────────────────────────────────────────────
-// GlobalPricing.find({}) was read on EVERY public catalogue request (getProducts/getProduct).
-// It changes infrequently, so cache it in-memory with a short TTL. Bounded staleness: a price
-// edit is reflected within PRICING_TTL_MS. No API/logic change — same data, fewer DB reads.
-let _pricingCache = null;
-let _pricingCacheAt = 0;
-const PRICING_TTL_MS = 30 * 1000;
-async function getCachedPricing() {
-  const now = Date.now();
-  if (_pricingCache && now - _pricingCacheAt < PRICING_TTL_MS) return _pricingCache;
-  _pricingCache = await GlobalPricing.find({}).lean();
-  _pricingCacheAt = now;
-  return _pricingCache;
-}
+// GlobalPricing cache lives in utils/pricingCache.js — shared with checkout so the
+// shop and the order total always use the same live rates.
 
 // Helper: build public-facing image URL (Cloudinary or local disk)
 const buildImageUrl = (file, folder = 'products') => {
@@ -111,8 +100,8 @@ const getProducts = async (req, res) => {
   const query = buildProductQuery(req.query);
   const sortOption = buildSortOption(sort);
 
-  const pageNum = Math.max(1, Number(page));
-  const limitNum = Math.min(50, Math.max(1, Number(limit)));
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(50, Math.max(1, Number(limit) || 12));
   const skip = (pageNum - 1) * limitNum;
 
   const [products, total, pricingEntries] = await Promise.all([
@@ -175,10 +164,11 @@ const getProduct = async (req, res) => {
 /**
  * resolvePrice — fetches GlobalPricing and calculates final price for a dynamic product.
  * Falls back from the requested unit to gram/kg if exact unit entry doesn't exist
- * (via resolvePricingEntry). Per-product makingCharges/gst override global defaults.
+ * (via resolvePricingEntry). Per-product makingCharges override the global default.
+ * Price EXCLUDES GST (added at checkout).
  * Returns { price, error } — price is null if no matching rate found.
  */
-async function resolvePrice(material, purity, unit, weightValue, makingCharges, gst) {
+async function resolvePrice(material, purity, unit, weightValue, makingCharges) {
   const wv = Number(weightValue);
   if (!wv || wv <= 0) {
     return { price: null, error: 'Weight value must be a positive number' };
@@ -210,21 +200,21 @@ async function resolvePrice(material, purity, unit, weightValue, makingCharges, 
   }
 
   const mc = makingCharges != null ? Number(makingCharges) : pricing.makingCharges;
-  const g = gst != null ? Number(gst) : pricing.gst;
 
-  return { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, g), error: null };
+  return { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc), error: null };
 }
 
 /**
  * recalcPriceIfNeeded — called during product update.
- * Recalculates dynamic price only if weightValue, material, purity, or unit changed.
+ * Recalculates dynamic price if weightValue, material, purity, unit or makingCharges changed.
  * Returns resolvePrice result ({ price, error }) or null if no recalc needed.
  */
 async function recalcPriceIfNeeded(product, updates) {
   const pricingChanged = updates.weightValue !== undefined ||
     updates.material !== undefined ||
     updates.purity !== undefined ||
-    updates.unit !== undefined;
+    updates.unit !== undefined ||
+    updates.makingCharges !== undefined;
   if (!pricingChanged) return null;
 
   const wv = updates.weightValue ?? product.weightValue;
@@ -234,8 +224,7 @@ async function recalcPriceIfNeeded(product, updates) {
   const pur = updates.purity ?? product.purity;
   const u = updates.unit ?? product.unit;
   const mc = updates.makingCharges ?? product.makingCharges ?? 12;
-  const g = updates.gst ?? product.gst ?? 3;
-  return resolvePrice(mat, pur, u, wv, mc, g);
+  return resolvePrice(mat, pur, u, wv, mc);
 }
 
 /**
@@ -285,7 +274,7 @@ const createProduct = async (req, res) => {
   const g = gst != null ? Number(gst) : 3;
 
   const { price: resolvedPrice, error: priceError } = await resolvePrice(
-    material, purity, finalUnit, weightValue, mc, g
+    material, purity, finalUnit, weightValue, mc
   );
 
   if (priceError) {
@@ -349,7 +338,8 @@ function parseProductUpdates(body) {
  * @access Admin
  *
  * Updates product fields. If pricing-critical fields changed (weight/material/purity/unit),
- * recalculates price from GlobalPricing → sets pricingType = 'dynamic', clears discountedPrice.
+ * recalculates price from GlobalPricing → sets pricingType = 'dynamic' and re-applies the
+ * product's existing discount % (an edit no longer wipes the discount).
  * Image updates handled by applyImageUpdates (replace or append mode).
  */
 const updateProduct = async (req, res) => {
@@ -368,7 +358,7 @@ const updateProduct = async (req, res) => {
   if (priceResult?.price != null) {
     updates.price = priceResult.price;
     updates.pricingType = 'dynamic';
-    updates.discountedPrice = null;
+    updates.discountedPrice = applyDiscount(priceResult.price, discountFraction(product));
   }
 
   await applyImageUpdates(product, updates, req);
@@ -420,10 +410,13 @@ const addReview = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
   const { rating, comment, title } = req.body;
 
-  if (!rating || rating < 1 || rating > 5) {
-    return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+  if (!Number.isInteger(Number(rating)) || Number(rating) < 1 || Number(rating) > 5) {
+    return res.status(400).json({ success: false, message: 'Rating must be a whole number between 1 and 5' });
   }
-  if (!comment || comment.trim().length < 10) {
+  if (title !== undefined && typeof title !== 'string') {
+    return res.status(400).json({ success: false, message: 'Title must be text' });
+  }
+  if (typeof comment !== 'string' || comment.trim().length < 10) {
     return res.status(400).json({ success: false, message: 'Review comment must be at least 10 characters' });
   }
 

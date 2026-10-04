@@ -38,13 +38,19 @@ const normaliseCustom = (doc) => ({ ...doc, _source: 'custom_order' });
 const DELIVERY_ORDER_STATUSES  = ['shipped', 'delivered'];
 const DELIVERY_CUSTOM_STATUSES = ['shipped', 'delivered'];
 
+// Internal / payment fields a delivery partner never needs to see
+const DP_HIDDEN_ORDER  = '-payment.razorpaySignature -payment.razorpayPaymentId -payment.razorpayOrderId -payment.failReason';
+const DP_HIDDEN_CUSTOM = '-adminNotes -advancePayment -finalPayment -description -budget';
+
 const getMyDeliveries = async (req, res) => {
   const [orders, customOrders] = await Promise.all([
     Order.find({ orderStatus: { $in: DELIVERY_ORDER_STATUSES } })
+      .select(DP_HIDDEN_ORDER)
       .populate('user', 'name email phone')
       .sort({ createdAt: -1 })
       .lean(),
     CustomOrder.find({ status: { $in: DELIVERY_CUSTOM_STATUSES } })
+      .select(DP_HIDDEN_CUSTOM)
       .populate('user', 'name email phone')
       .sort({ createdAt: -1 })
       .lean(),
@@ -97,27 +103,35 @@ const confirmDelivery = async (req, res) => {
 
   const agentId = req.user._id;
 
-  if (source === 'custom_order') {
-    const co = await CustomOrder.findById(id);
-    if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
-    if (co.dpConfirmedAt) return res.status(409).json({ success: false, message: 'Already confirmed' });
+  // Atomic: only a SHIPPED order, not yet confirmed, and either unassigned or assigned to
+  // this partner. One conditional write also makes a double-tap / two partners safe.
+  const Model = source === 'custom_order' ? CustomOrder : Order;
+  const statusField = source === 'custom_order' ? 'status' : 'orderStatus';
+  const updated = await Model.findOneAndUpdate(
+    {
+      _id: id,
+      [statusField]: 'shipped',
+      dpConfirmedAt: { $exists: false },
+      $or: [{ deliveryAgent: null }, { deliveryAgent: { $exists: false } }, { deliveryAgent: agentId }],
+    },
+    { $set: { dpConfirmedAt: new Date(), dpConfirmedBy: agentId, dpNote: String(note || '').slice(0, 500) } },
+    { new: true }
+  ).select(source === 'custom_order' ? DP_HIDDEN_CUSTOM : DP_HIDDEN_ORDER);
 
-    co.dpConfirmedAt = new Date();
-    co.dpConfirmedBy = agentId;
-    co.dpNote        = note || '';
-    await co.save();
-    return res.json({ success: true, order: co, message: 'Delivery confirmation sent to admin' });
+  if (updated) {
+    return res.json({ success: true, order: updated, message: 'Delivery confirmation sent to admin' });
   }
 
-  const order = await Order.findById(id);
-  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
-  if (order.dpConfirmedAt) return res.status(409).json({ success: false, message: 'Already confirmed' });
-
-  order.dpConfirmedAt = new Date();
-  order.dpConfirmedBy = agentId;
-  order.dpNote        = note || '';
-  await order.save();
-  return res.json({ success: true, order, message: 'Delivery confirmation sent to admin' });
+  // Explain why nothing matched
+  const doc = await Model.findById(id).select(`${statusField} dpConfirmedAt deliveryAgent`).lean();
+  if (!doc) {
+    return res.status(404).json({ success: false, message: source === 'custom_order' ? 'Custom order not found' : 'Order not found' });
+  }
+  if (doc.dpConfirmedAt) return res.status(409).json({ success: false, message: 'Already confirmed' });
+  if (doc[statusField] !== 'shipped') {
+    return res.status(400).json({ success: false, message: `Only shipped orders can be confirmed as delivered (current: ${doc[statusField]}).` });
+  }
+  return res.status(403).json({ success: false, message: 'This order is assigned to another delivery partner.' });
 };
 
 module.exports = { getMyDeliveries, confirmDelivery };

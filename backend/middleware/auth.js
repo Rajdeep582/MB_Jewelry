@@ -51,6 +51,10 @@ const protect = async (req, res, next) => {
     if (!entity.isActive) {
       return res.status(403).json({ success: false, message: 'Account is deactivated' });
     }
+    // A delivery partner whose role was removed must lose access immediately
+    if (userType === 'delivery' && entity.isApproved === false) {
+      return res.status(403).json({ success: false, message: 'Delivery partner access has been revoked' });
+    }
 
     req.user = entity;
     // Only allow type upgrade from 'user' token if entity is NOT from the User model.

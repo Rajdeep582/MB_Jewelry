@@ -7,7 +7,7 @@
  * - Creates 20 production-style products across all material/purity/unit combos
  */
 
-require('dotenv').config({ path: require('node:path').join(__dirname, '../../.env') });
+require('dotenv').config({ path: require('node:path').join(__dirname, '../.env') });
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Category = require('../models/Category');

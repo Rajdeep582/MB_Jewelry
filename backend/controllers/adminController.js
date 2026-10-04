@@ -5,7 +5,45 @@ const DeliveryPartner = require('../models/DeliveryPartner');
 const Order = require('../models/Order');
 const CustomOrder = require('../models/CustomOrder');
 const logger = require('../utils/logger');
-const { calcDynamicPrice, buildGlobalPricingMap, resolvePricingEntry } = require('../utils/pricingUtils');
+const {
+  calcDynamicPrice, buildGlobalPricingMap, resolvePricingEntry, applyLivePrice, discountFraction, applyDiscount,
+} = require('../utils/pricingUtils');
+const { invalidatePricingCache } = require('../utils/pricingCache');
+
+/**
+ * repriceDynamicProducts — recompute the stored price (+ stored discounted price) of dynamic
+ * products from the current GlobalPricing rates. Unit-agnostic (gram↔kg via resolvePricingEntry),
+ * so a product in grams is updated when the rate is set per kg and vice-versa.
+ * Returns { updatedCount, skipped }.
+ */
+async function repriceDynamicProducts(productQuery) {
+  const pricingMap = buildGlobalPricingMap(await GlobalPricing.find({}).lean());
+  const products = await Product.find({ ...productQuery, pricingType: 'dynamic', weightValue: { $gt: 0 } })
+    .select('material purity unit weightValue makingCharges price discountedPrice discountPercent')
+    .lean();
+
+  const bulkOps = [];
+  let skipped = 0;
+  for (const p of products) {
+    const { pricing, effectiveWeight } = resolvePricingEntry(pricingMap, p.material, p.purity, p.unit || 'gram', p.weightValue);
+    if (!pricing) { skipped++; continue; }
+    const mc = p.makingCharges ?? pricing.makingCharges;
+    const price = calcDynamicPrice(effectiveWeight, pricing.livePrice, mc);
+    bulkOps.push({
+      updateOne: {
+        filter: { _id: p._id },
+        update: { $set: { price, discountedPrice: applyDiscount(price, discountFraction(p)) } },
+      },
+    });
+  }
+
+  let updatedCount = 0;
+  if (bulkOps.length > 0) {
+    const result = await Product.bulkWrite(bulkOps, { ordered: false });
+    updatedCount = result.modifiedCount;
+  }
+  return { updatedCount, skipped };
+}
 
 // Valid purity values per material for global pricing
 const VALID_PURITIES = {
@@ -58,6 +96,10 @@ const setGlobalPricing = async (req, res) => {
     });
   }
 
+  if (!['gram', 'kg'].includes(unit)) {
+    return res.status(400).json({ success: false, message: 'unit must be "gram" or "kg"' });
+  }
+
   const numLivePrice = Number(livePrice);
   if (!livePrice || Number.isNaN(numLivePrice) || numLivePrice < 0) {
     return res.status(400).json({ success: false, message: 'Invalid live price' });
@@ -72,35 +114,10 @@ const setGlobalPricing = async (req, res) => {
     { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
   );
 
-  // Always recalculate all dynamic products matching this material/purity/unit
-  const dynamicProducts = await Product.find({
-    pricingType: 'dynamic',
-    material: String(material),
-    purity: String(purity),
-    unit: String(unit),
-  }).select('weightValue makingCharges gst').lean();
+  invalidatePricingCache();
 
-  let updatedCount = 0;
-  const bulkOps = dynamicProducts
-    .filter((p) => p.weightValue > 0)
-    .map((p) => ({
-      updateOne: {
-        filter: { _id: p._id },
-        update: { $set: {
-          price: calcDynamicPrice(
-            p.weightValue,
-            numLivePrice,
-            p.makingCharges ?? numMaking,
-            p.gst ?? numGst
-          ),
-        } },
-      },
-    }));
-
-  if (bulkOps.length > 0) {
-    const result = await Product.bulkWrite(bulkOps, { ordered: false });
-    updatedCount = result.modifiedCount;
-  }
+  // Recalculate all dynamic products of this material/purity (either unit — gram/kg converted)
+  const { updatedCount } = await repriceDynamicProducts({ material: String(material), purity: String(purity) });
 
   logger.info(
     `Admin ${req.user._id} set global pricing [${material} ${purity} ${unit}] ` +
@@ -240,45 +257,49 @@ const bulkUpdateDiscounts = async (req, res) => {
   if (discountType !== 'remove' && (Number.isNaN(numValue) || numValue <= 0)) {
     return res.status(400).json({ success: false, message: 'discountValue must be a positive number' });
   }
+  if (discountType === 'percentage' && numValue >= 100) {
+    return res.status(400).json({ success: false, message: 'Percentage discount must be below 100%' });
+  }
 
   const query = {};
   if (targetType === 'category') {
-    if (!targetId) return res.status(400).json({ success: false, message: 'Category ID required' });
+    if (!targetId || !mongoose.isValidObjectId(targetId)) return res.status(400).json({ success: false, message: 'Category ID required' });
     query.category = String(targetId);
   } else if (targetType === 'product') {
-    if (!targetId) return res.status(400).json({ success: false, message: 'Product ID required' });
+    if (!targetId || !mongoose.isValidObjectId(targetId)) return res.status(400).json({ success: false, message: 'Product ID required' });
     query._id = String(targetId);
   }
 
-  const products = await Product.find(query).select('price').lean();
+  const products = await Product.find(query).lean();
   if (products.length === 0) {
     return res.status(404).json({ success: false, message: 'No products found matching criteria' });
   }
 
-  // Build single bulkWrite — atomic and efficient
-  const bulkOps = products.map((product) => {
-    let newDiscountedPrice;
-
-    if (discountType === 'remove') {
-      newDiscountedPrice = null;
-    } else if (discountType === 'percentage') {
-      newDiscountedPrice = product.price - product.price * (numValue / 100);
-    } else {
-      // flat
-      newDiscountedPrice = product.price - numValue;
+  // Discounts are stored as a % so they follow the live rate. The base is the LIVE price
+  // (what the shop shows), not the possibly stale stored price.
+  const pricingMap = buildGlobalPricingMap(await GlobalPricing.find({}).lean());
+  const bulkOps = [];
+  let tooLarge = 0;
+  for (const product of products) {
+    const live = applyLivePrice(product, pricingMap);
+    let pct = null;
+    if (discountType === 'percentage') pct = numValue;
+    else if (discountType === 'flat') {
+      if (!(live.price > 0) || numValue >= live.price) { tooLarge++; continue; }
+      pct = Math.round((numValue / live.price) * 10000) / 100; // 2 dp
     }
-
-    if (newDiscountedPrice !== null) {
-      newDiscountedPrice = Math.max(0, Math.round(newDiscountedPrice));
-    }
-
-    return {
+    const discountedPrice = pct == null ? null : applyDiscount(live.price, pct / 100);
+    bulkOps.push({
       updateOne: {
         filter: { _id: product._id },
-        update: { $set: { discountedPrice: newDiscountedPrice } },
+        update: { $set: { discountPercent: pct, discountedPrice } },
       },
-    };
-  });
+    });
+  }
+
+  if (bulkOps.length === 0) {
+    return res.status(400).json({ success: false, message: 'Flat discount must be lower than the product price.' });
+  }
 
   const result = await Product.bulkWrite(bulkOps, { ordered: false });
 
@@ -289,8 +310,10 @@ const bulkUpdateDiscounts = async (req, res) => {
 
   res.json({
     success: true,
-    message: `Successfully updated discounts for ${result.modifiedCount} products.`,
+    message: `Successfully updated discounts for ${result.modifiedCount} products.`
+      + (tooLarge ? ` ${tooLarge} skipped (flat discount ≥ price).` : ''),
     updatedCount: result.modifiedCount,
+    skipped: tooLarge,
   });
 };
 
@@ -311,35 +334,8 @@ const bulkUpdateDiscounts = async (req, res) => {
  *   5. Return updatedCount + skipped count
  */
 const resyncDynamicPrices = async (req, res) => {
-  const pricingEntries = await GlobalPricing.find({}).lean();
-  const pricingMap = buildGlobalPricingMap(pricingEntries);
-
-  const dynamicProducts = await Product.find({
-    pricingType: 'dynamic',
-    weightValue: { $gt: 0 },
-  }).select('material purity unit weightValue makingCharges gst').lean();
-
-  const bulkOps = [];
-  let skipped = 0;
-
-  for (const p of dynamicProducts) {
-    const { pricing, effectiveWeight } = resolvePricingEntry(pricingMap, p.material, p.purity, p.unit || 'gram', p.weightValue);
-    if (!pricing) { skipped++; continue; }
-    const mc = p.makingCharges ?? pricing.makingCharges;
-    const g = p.gst ?? pricing.gst;
-    bulkOps.push({
-      updateOne: {
-        filter: { _id: p._id },
-        update: { $set: { price: calcDynamicPrice(effectiveWeight, pricing.livePrice, mc, g) } },
-      },
-    });
-  }
-
-  let updatedCount = 0;
-  if (bulkOps.length > 0) {
-    const result = await Product.bulkWrite(bulkOps, { ordered: false });
-    updatedCount = result.modifiedCount;
-  }
+  invalidatePricingCache();
+  const { updatedCount, skipped } = await repriceDynamicProducts({});
 
   logger.info(
     `Admin ${req.user._id} resynced dynamic prices: updated=${updatedCount} skipped=${skipped}`
@@ -423,7 +419,9 @@ const removeDeliveryRole = async (req, res) => {
   const dp = await DeliveryPartner.findById(req.params.id);
   if (!dp) return res.status(404).json({ success: false, message: 'Delivery partner not found' });
   dp.isApproved = false;
+  dp.sessions = []; // sign the partner out everywhere — refresh tokens stop working at once
   await dp.save();
+  logger.info(`Admin ${req.user._id} removed delivery role from DP ${dp._id}`);
   res.json({ success: true, message: `${dp.name} removed from active delivery partners`, user: dp });
 };
 
@@ -496,31 +494,30 @@ const adminConfirmDelivery = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
   }
+  // Lazy require: these controllers are large and only needed here
   if (source === 'custom_order') {
-    const co = await CustomOrder.findById(req.params.id);
+    const { commitCustomOrderStatus } = require('./customOrderController');
+    const co = await CustomOrder.findById(req.params.id).populate('user', 'name email');
     if (!co) return res.status(404).json({ success: false, message: 'Custom order not found' });
+    if (co.status === 'delivered') return res.json({ success: true, order: co, message: 'Order already delivered' });
+    if (co.status !== 'shipped') return res.status(400).json({ success: false, message: 'Order must be shipped before it can be marked as delivered.' });
     if (!co.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
     if (co.finalPayment?.status !== 'paid') {
       return res.status(400).json({ success: false, message: 'Cannot mark as delivered. Final payment (30%) has not been received yet.' });
     }
-    if (co.status === 'delivered') return res.json({ success: true, order: co, message: 'Order already delivered' });
-    co.status = 'delivered';
-    co.deliveredAt = new Date();
-    co.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });
-    await co.save();
+    await commitCustomOrderStatus(co, 'delivered', { comment: 'Admin confirmed delivery', adminId: req.user._id });
     return res.json({ success: true, order: co, message: 'Order marked as delivered' });
   }
-  const order = await Order.findById(req.params.id);
+  const { commitOrderStatus } = require('./orderController');
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
   if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  if (order.orderStatus === 'delivered') return res.json({ success: true, order, message: 'Order already delivered' });
+  if (order.orderStatus !== 'shipped') return res.status(400).json({ success: false, message: 'Order must be shipped before it can be marked as delivered.' });
   if (!order.dpConfirmedAt) return res.status(400).json({ success: false, message: 'Delivery partner has not confirmed yet' });
   if (order.payment?.status !== 'paid') {
     return res.status(400).json({ success: false, message: 'Cannot mark as delivered. Payment has not been received.' });
   }
-  if (order.orderStatus === 'delivered') return res.json({ success: true, order, message: 'Order already delivered' });
-  order.orderStatus = 'delivered';
-  order.deliveredAt = new Date();
-  order.trackingHistory.push({ status: 'delivered', comment: 'Admin confirmed delivery', updatedBy: req.user._id });
-  await order.save();
+  await commitOrderStatus(order, 'delivered', { comment: 'Admin confirmed delivery', adminId: req.user._id });
   res.json({ success: true, order, message: 'Order marked as delivered' });
 };
 
@@ -540,6 +537,7 @@ const deleteGlobalPricing = async (req, res) => {
   }
   const entry = await GlobalPricing.findByIdAndDelete(req.params.id);
   if (!entry) return res.status(404).json({ success: false, message: 'Pricing entry not found' });
+  invalidatePricingCache();
   res.json({ success: true, message: 'Pricing entry deleted' });
 };
 

@@ -88,8 +88,6 @@ export default function CustomOrder() {
   const [sizeUnit, setSizeUnit] = useState('cm');
 
   // helpers
-  const cmToInch = (v) => { const n = Number.parseFloat(v); return Number.isNaN(n) ? v : (n / 2.54).toFixed(2); };
-  const inchToCm = (v) => { const n = Number.parseFloat(v); return Number.isNaN(n) ? v : (n * 2.54).toFixed(2); };
 
 // Step 1: Design
   const [form, setForm] = useState({
@@ -205,8 +203,12 @@ export default function CustomOrder() {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      // Fields
-      Object.entries(form).forEach(([k, v]) => { if (v) fd.append(k, v); });
+      // Fields — sizes are sent WITH their unit so the workshop knows what the number means
+      const SIZE_FIELDS = ['fingerSize', 'neckSize', 'wristSize'];
+      Object.entries(form).forEach(([k, v]) => {
+        if (!v) return;
+        fd.append(k, SIZE_FIELDS.includes(k) ? `${v} ${sizeUnit}` : v);
+      });
       // Shipping address
       Object.entries(addr).forEach(([k, v]) => fd.append(`shippingAddress[${k}]`, v));
       if (preferredDate) fd.append('preferredDeliveryDate', preferredDate);
@@ -217,7 +219,10 @@ export default function CustomOrder() {
       toast.success('Custom order submitted! We\'ll send you a quote within 24–48 hours. 💎', { duration: 6000 });
       navigate('/custom-orders');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to submit. Please try again.');
+      toast.error(
+        err.response?.data?.message
+          || (err.response ? 'Failed to submit. Please try again.' : 'Could not reach the server. Please check your connection and try again.')
+      );
     } finally {
       setSubmitting(false);
     }
@@ -236,18 +241,21 @@ export default function CustomOrder() {
     return form.wristSize;
   };
 
-  const convertSize = (val, toUnit) => {
-    if (!val) return val;
-    return toUnit === 'inch' ? cmToInch(val) : inchToCm(val);
+  // Convert through millimetres so every pair (cm / inch / mm) is correct
+  const MM_PER_UNIT = { mm: 1, cm: 10, inch: 25.4 };
+  const convertSize = (val, fromUnit, toUnit) => {
+    const n = Number.parseFloat(val);
+    if (!val || Number.isNaN(n) || fromUnit === toUnit) return val;
+    return String(Number(((n * MM_PER_UNIT[fromUnit]) / MM_PER_UNIT[toUnit]).toFixed(2)));
   };
 
   const handleSizeUnitChange = (e) => {
     const next = e.target.value;
     setForm((f) => ({
       ...f,
-      wristSize:  convertSize(f.wristSize, next),
-      neckSize:   convertSize(f.neckSize, next),
-      fingerSize: convertSize(f.fingerSize, next),
+      wristSize:  convertSize(f.wristSize, sizeUnit, next),
+      neckSize:   convertSize(f.neckSize, sizeUnit, next),
+      fingerSize: convertSize(f.fingerSize, sizeUnit, next),
     }));
     setSizeUnit(next);
   };

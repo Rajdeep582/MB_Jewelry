@@ -233,16 +233,16 @@ function OrderDetailView({ id }) {
   const reversed = [...(order.trackingHistory || [])].reverse();
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
       {/* ── Header Card ──────────────────────────────────────────────────────── */}
-      <div className="card p-6">
+      <div className="card p-5">
         <div className="flex flex-wrap items-start justify-between gap-4 mb-1">
           <div>
             <p className="text-dark-500 text-xs mb-1 flex items-center gap-1.5">
               <FiHash size={11} /> Order ID
             </p>
-            <h2 className="text-white font-semibold font-mono text-lg">
+            <h2 className="text-white font-semibold font-mono text-xl tracking-wide leading-tight pt-0">
               {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
             </h2>
             <p className="text-dark-500 text-xs mt-1 flex items-center gap-1">
@@ -251,7 +251,7 @@ function OrderDetailView({ id }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <span className={getPaymentStatusColor(order.payment?.status)}>
+            <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize`}>
               {order.payment?.status}
             </span>
             <span className={getOrderStatusColor(order.orderStatus)}>
@@ -323,7 +323,7 @@ function OrderDetailView({ id }) {
 
       {/* ── Payment Details ───────────────────────────────────────────────────── */}
       <div className="card p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+        <h3 className="font-serif text-white text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2.5">
           <FiCreditCard size={15} className="text-gold-400" />
           Payment Details
         </h3>
@@ -360,14 +360,14 @@ function OrderDetailView({ id }) {
 
       {/* ── Order Items ───────────────────────────────────────────────────────── */}
       <div className="card p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+        <h3 className="font-serif text-white text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2.5">
           <FiPackage size={15} className="text-gold-400" />
           Order Items
         </h3>
         <div className="space-y-4">
           {order.items.map((item) => (
             <div key={item._id || item.name} className="flex gap-4">
-              <div className="w-16 h-16 rounded-xl overflow-hidden bg-dark-700 flex-shrink-0 border border-white/5">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden bg-dark-700 flex-shrink-0 border border-gold-500/15">
                 <img
                   src={resolveImageUrl(item.image) || ''}
                   alt={item.name}
@@ -390,7 +390,7 @@ function OrderDetailView({ id }) {
         </div>
 
         {/* Price breakdown */}
-        <div className="border-t border-white/8 mt-5 pt-4 space-y-2 text-sm">
+        <div className="border-t border-white/10 mt-5 pt-4 space-y-2 text-sm">
           <div className="flex justify-between text-dark-400">
             <span>Subtotal</span>
             <span className="text-white">{formatPrice(order.itemsPrice)}</span>
@@ -403,7 +403,7 @@ function OrderDetailView({ id }) {
             <span>Tax (GST)</span>
             <span className="text-white">{formatPrice(order.taxPrice)}</span>
           </div>
-          <div className="flex justify-between font-semibold border-t border-white/8 pt-3 mt-1">
+          <div className="flex justify-between font-semibold border-t border-white/10 pt-3 mt-1">
             <span className="text-white">Total</span>
             <span className="text-gold-500 text-base">{formatPrice(order.totalAmount)}</span>
           </div>
@@ -412,7 +412,7 @@ function OrderDetailView({ id }) {
 
       {/* ── Shipping & Delivery ───────────────────────────────────────────────── */}
       <div className="card p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
+        <h3 className="font-serif text-white text-lg sm:text-xl font-semibold mb-4 flex items-center gap-2.5">
           <FiMapPin size={15} className="text-gold-400" />
           Shipping Details
         </h3>
@@ -468,12 +468,12 @@ function OrderDetailView({ id }) {
         <div className="card p-5">
           <button
             onClick={() => setShowTimeline(v => !v)}
-            className="w-full flex items-center justify-between text-white font-semibold mb-1 group"
+            className="w-full flex items-center justify-between text-white mb-1 group"
           >
-            <span className="flex items-center gap-2">
+            <span className="font-serif text-lg sm:text-xl font-semibold flex items-center gap-2.5">
               <FiClock size={15} className="text-gold-400" />
               Order Timeline
-              <span className="text-dark-500 text-xs font-normal">({reversed.length} events)</span>
+              <span className="font-jakarta text-dark-500 text-xs font-normal">({reversed.length} events)</span>
             </span>
             <FiChevronDown
               size={16}
@@ -515,7 +515,7 @@ function PayTag({ status }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold tracking-wide ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-      {status}
+      <span className="capitalize">{status}</span>
     </span>
   );
 }
@@ -553,69 +553,114 @@ function truncateWords(str, n = 4) {
   return words.length > n ? words.slice(0, n).join(' ') + '…' : str;
 }
 
+// ─── Decorative ornament (gold hairline · diamond · hairline) ──────────────────
+function GoldOrnament({ className = '' }) {
+  return (
+    <div className={`flex items-center gap-3 ${className}`} aria-hidden="true">
+      <span className="h-px w-12 bg-gradient-to-r from-transparent to-gold-500/70" />
+      <span className="w-1.5 h-1.5 rotate-45 bg-gold-400 shadow-[0_0_10px_rgba(212,175,55,0.7)]" />
+      <span className="h-px w-12 bg-gradient-to-l from-transparent to-gold-500/70" />
+    </div>
+  );
+}
+
+GoldOrnament.propTypes = {
+  className: PropTypes.string,
+};
+
 // ─── Order List Card ──────────────────────────────────────────────────────────
 function OrderCard({ order }) {
-  const firstImg   = order.items[0]?.image;
-  const extraCount = order.items.length - 1;
+  const firstImg    = order.items[0]?.image;
+  const extraCount  = order.items.length - 1;
   const productName = order.items[0]?.name || 'Unknown Product';
-  const allNames   = order.items.map(i => i.name).join(', ');
-  const description = truncateWords(allNames, 5);
+  const allNames    = order.items.map(i => i.name).join(', ');
+  const description = truncateWords(allNames, 6);
+  const itemCount   = order.items.reduce((n, i) => n + (i.quantity || 1), 0);
+  const orderRef    = order.orderId || `#${order._id.slice(-8).toUpperCase()}`;
 
   return (
-    <Link to={`/orders/${order._id}`} className="block card-hover group overflow-hidden">
-      <div className="flex items-stretch">
+    <Link
+      to={`/orders/${order._id}`}
+      className="group relative block overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-dark-800 via-dark-800 to-dark-900 shadow-card transition-all duration-500 hover:-translate-y-0.5 hover:border-gold-500/30 hover:shadow-card-hover"
+    >
+      {/* top gold sheen on hover */}
+      <span className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold-400/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      {/* soft corner glow */}
+      <span className="pointer-events-none absolute -right-24 -top-24 w-56 h-56 rounded-full bg-gold-500/[0.06] blur-3xl opacity-60 group-hover:opacity-100 transition-opacity duration-500" />
+
+      <div className="relative flex items-stretch">
         {/* Left: product image */}
-        <div className="w-24 sm:w-28 flex-shrink-0 relative bg-dark-900 min-h-[100px]">
+        <div className="relative w-24 sm:w-36 flex-shrink-0 overflow-hidden bg-dark-900 min-h-[128px] sm:min-h-[144px]">
           {firstImg ? (
             <img
               src={resolveImageUrl(firstImg)}
               alt={productName}
-              className="w-full h-full object-cover absolute inset-0"
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
               onError={e => { e.target.style.display = 'none'; }}
             />
           ) : (
-            <div className="w-full h-full absolute inset-0 flex items-center justify-center">
-              <FiPackage size={20} className="text-dark-600" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <FiPackage size={26} className="text-dark-600" />
             </div>
           )}
+          {/* fade into card */}
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-dark-800/90" />
+          <div className="absolute inset-0 ring-1 ring-inset ring-white/5" />
           {extraCount > 0 && (
-            <div className="absolute bottom-1.5 right-1.5 bg-dark-900/80 backdrop-blur-sm text-[10px] text-dark-300 font-medium px-1.5 py-0.5 rounded border border-white/10">
-              +{extraCount}
+            <div className="absolute bottom-2.5 left-2.5 bg-dark-950/80 backdrop-blur-md text-[11px] text-gold-300 font-semibold px-2 py-0.5 rounded-full border border-gold-500/30">
+              +{extraCount} more
             </div>
           )}
-          <div className="absolute inset-y-0 left-0 w-0.5 bg-gold-500/0 group-hover:bg-gold-500/70 transition-all duration-300" />
         </div>
 
         {/* Right: content */}
-        <div className="flex-1 min-w-0 px-4 py-3.5 flex flex-col justify-between gap-2">
-          {/* Product name + chevron */}
-          <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0 px-4 sm:px-6 py-4 flex flex-col justify-between gap-2.5">
+          {/* Order ref + chevron */}
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-white font-semibold text-sm leading-snug truncate font-display">
-                {truncateWords(productName, 4)}
+              <p className="font-jakarta text-[10px] sm:text-[11px] font-semibold tracking-[0.2em] text-gold-500/90 uppercase mb-1">
+                {orderRef}
               </p>
+              <h3 className="font-serif text-white text-base sm:text-xl font-semibold leading-snug line-clamp-2 sm:truncate">
+                {truncateWords(productName, 5)}
+              </h3>
               {order.items.length > 1 && (
-                <p className="text-dark-500 text-[11px] truncate mt-0.5">{description}</p>
+                <p className="font-jakarta text-dark-400 text-xs truncate mt-1">{description}</p>
               )}
             </div>
-            <FiChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors flex-shrink-0 mt-0.5" />
+            <span className="flex-shrink-0 w-8 h-8 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center text-dark-400 transition-all duration-300 group-hover:border-gold-500/50 group-hover:bg-gold-500/10 group-hover:text-gold-400">
+              <FiChevronRight size={16} className="transition-transform duration-300 group-hover:translate-x-0.5" />
+            </span>
           </div>
 
-          {/* Date row */}
-          <p className="text-dark-500 text-[11px] flex items-center gap-1">
-            <FiCalendar size={9} />
-            {formatDateTime(order.createdAt)}
-          </p>
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-jakarta text-dark-400 text-xs">
+            <span className="flex items-center gap-1.5">
+              <FiCalendar size={12} className="text-gold-600" />
+              {formatDateTime(order.createdAt)}
+            </span>
+            <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-dark-600" />
+            <span className="flex items-center gap-1.5">
+              <FiPackage size={12} className="text-gold-600" />
+              {itemCount} {itemCount === 1 ? 'item' : 'items'}
+            </span>
+          </div>
 
-          {/* Bottom: tags + price */}
-          <div className="flex items-center justify-between gap-2">
+          {/* Divider */}
+          <div className="h-px bg-gradient-to-r from-white/10 via-white/5 to-transparent" />
+
+          {/* Bottom: tags + progress + price */}
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="flex items-center gap-1.5 flex-wrap">
               <PayTag status={order.payment?.status} />
               <StatusTag status={order.orderStatus} />
             </div>
-            <span className="text-gold-400 font-bold text-sm font-jakarta flex-shrink-0">
-              {formatPrice(order.totalAmount)}
-            </span>
+            <div className="text-right flex-shrink-0">
+              <p className="font-jakarta text-dark-500 text-[10px] uppercase tracking-[0.18em]">Total</p>
+              <p className="font-jakarta text-base font-bold text-gold-400">
+                {formatPrice(order.totalAmount)}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -636,6 +681,7 @@ OrderCard.propTypes = {
     items: PropTypes.arrayOf(PropTypes.shape({
       name: PropTypes.string,
       image: PropTypes.string,
+      quantity: PropTypes.number,
     })).isRequired,
   }).isRequired,
 };
@@ -677,18 +723,22 @@ function OrdersListView() {
     }
     if (allOrders.length === 0) {
       return (
-        <div className="text-center py-20">
-          <div className="text-6xl mb-4">📦</div>
-          <h3 className="font-display text-2xl text-white mb-3">No orders yet</h3>
-          <p className="text-dark-400 mb-6">Shop our luxury collection and your orders will appear here</p>
-          <Link to="/shop" className="btn-gold">Start Shopping</Link>
+        <div className="relative overflow-hidden rounded-3xl border border-white/[0.06] bg-gradient-to-b from-dark-800 to-dark-900 text-center px-6 py-20">
+          <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 w-72 h-72 rounded-full bg-gold-500/[0.07] blur-3xl" />
+          <div className="relative mx-auto mb-6 w-20 h-20 rounded-full border border-gold-500/30 bg-gold-500/[0.06] flex items-center justify-center shadow-gold">
+            <FiPackage size={30} className="text-gold-400" />
+          </div>
+          <h3 className="relative font-serif text-2xl sm:text-3xl font-semibold text-white mb-3">No orders yet</h3>
+          <GoldOrnament className="relative justify-center mb-4" />
+          <p className="relative font-jakarta text-dark-400 mb-8 max-w-sm mx-auto">Explore our handcrafted collection — every piece you order will be waiting for you here.</p>
+          <Link to="/shop" className="relative btn-gold">Explore Collection</Link>
         </div>
       );
     }
     if (filtered.length === 0) {
       return (
         <div className="text-center py-16">
-          <p className="text-dark-400 text-sm">No orders with status &quot;{FILTER_OPTIONS.find(f => f.value === filter)?.label}&quot;</p>
+          <p className="font-jakarta text-dark-400 text-sm">No orders with status &quot;{FILTER_OPTIONS.find(f => f.value === filter)?.label}&quot;</p>
           <button onClick={() => setFilter('all')} className="text-gold-400 text-sm mt-2 hover:text-gold-300">
             Clear filter →
           </button>
@@ -696,7 +746,7 @@ function OrdersListView() {
       );
     }
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-3.5">
         {filtered.map(order => <OrderCard key={order._id} order={order} />)}
       </div>
     );
@@ -704,14 +754,34 @@ function OrdersListView() {
 
   return (
     <>
+      {/* Summary tiles */}
+      {!loading && allOrders.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-6">
+          {[
+            { label: 'Total Orders', value: allOrders.length,                                                   icon: <FiPackage size={14} /> },
+            { label: 'In Progress',  value: allOrders.filter(o => ['confirmed', 'in_production', 'ready_to_ship', 'shipped'].includes(o.orderStatus)).length, icon: <FiTruck size={14} /> },
+            { label: 'Delivered',    value: counts.delivered || 0,                                               icon: <FiCheck size={14} /> },
+          ].map(({ label, value, icon }) => (
+            <div key={label} className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-dark-800 to-dark-900 px-3 sm:px-5 py-3.5 sm:py-4">
+              <span className="pointer-events-none absolute -right-6 -bottom-6 w-20 h-20 rounded-full bg-gold-500/[0.07] blur-2xl" />
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-jakarta text-dark-400 text-[9px] sm:text-[11px] uppercase tracking-[0.1em] sm:tracking-[0.18em] font-semibold whitespace-nowrap">{label}</p>
+                <span className="text-gold-500/80 hidden sm:block">{icon}</span>
+              </div>
+              <p className="font-jakarta text-white text-2xl sm:text-[1.75rem] font-bold leading-none tabular-nums">{value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Filter bar */}
       {!loading && allOrders.length > 0 && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <FiFilter size={12} className="text-dark-500" />
-            <span className="text-dark-500 text-[11px] uppercase tracking-wider">Filter</span>
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-2.5">
+            <FiFilter size={12} className="text-gold-600" />
+            <span className="font-jakarta text-dark-400 text-[11px] uppercase tracking-[0.2em] font-semibold">Filter by status</span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {FILTER_OPTIONS.map(({ value, label }) => {
               const count = counts[value] || 0;
               if (value !== 'all' && count === 0) return null;
@@ -719,15 +789,15 @@ function OrdersListView() {
                 <button
                   key={value}
                   onClick={() => setFilter(value)}
-                  className={`px-3 py-1.5 rounded-full text-xs border transition-all flex items-center gap-1.5 ${
+                  className={`font-jakarta px-3.5 py-1.5 rounded-full text-[13px] font-medium border transition-all duration-300 flex items-center gap-2 ${
                     filter === value
-                      ? 'bg-gold-500/15 border-gold-500/50 text-gold-400'
-                      : 'border-white/10 text-dark-400 hover:border-white/25'
+                      ? 'bg-gradient-to-r from-gold-500/20 to-gold-600/10 border-gold-500/60 text-gold-300 shadow-[0_0_18px_rgba(212,175,55,0.15)]'
+                      : 'bg-white/[0.02] border-white/10 text-dark-300 hover:border-gold-500/30 hover:text-white'
                   }`}
                 >
                   {label}
-                  <span className={`text-xs font-bold rounded-full px-1 ${
-                    filter === value ? 'text-gold-300' : 'text-dark-600'
+                  <span className={`text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center ${
+                    filter === value ? 'bg-gold-500 text-dark-900' : 'bg-white/5 text-dark-400'
                   }`}>
                     {count}
                   </span>
@@ -748,20 +818,34 @@ export default function Orders() {
   const { id } = useParams();
 
   return (
-    <div className="min-h-screen pt-20 pb-16">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6">
-        <div className="mb-5">
+    <div className="relative min-h-screen pt-24 pb-20 overflow-hidden">
+      {/* Ambient background */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(60%_100%_at_50%_0%,rgba(212,175,55,0.10),transparent_70%)]" aria-hidden="true" />
+      <div className="pointer-events-none absolute -left-40 top-64 w-96 h-96 rounded-full bg-gold-500/[0.04] blur-3xl" aria-hidden="true" />
+
+      <div className="relative max-w-4xl mx-auto px-4 sm:px-6">
+        <div className="mb-8">
           {id && (
             <Link
               to="/orders"
-              className="text-xs text-dark-500 hover:text-gold-400 transition-colors flex items-center gap-1.5 mb-3 group"
+              className="font-jakarta text-xs text-dark-400 hover:text-gold-400 transition-colors inline-flex items-center gap-1.5 mb-4 group"
             >
               <FiArrowLeft size={12} className="group-hover:-translate-x-0.5 transition-transform" />
               Back to My Orders
             </Link>
           )}
-          <h1 className="section-title">{id ? 'Order Details' : 'My Orders'}</h1>
-          <div className="gold-divider mt-2 mx-0" />
+          <p className="font-jakarta text-[11px] font-semibold tracking-[0.3em] text-gold-500 uppercase mb-2">
+            {id ? 'My Orders' : 'My Account'}
+          </p>
+          <h1 className="font-serif text-3xl sm:text-4xl font-semibold text-white leading-tight pt-0">
+            {id ? 'Order Details' : 'My Orders'}
+          </h1>
+          <GoldOrnament className="mt-4" />
+          {!id && (
+            <p className="font-jakarta text-dark-400 text-sm mt-3 max-w-lg">
+              Track every piece from our atelier to your doorstep, and download invoices anytime.
+            </p>
+          )}
         </div>
 
         {id ? <OrderDetailView id={id} /> : <OrdersListView />}

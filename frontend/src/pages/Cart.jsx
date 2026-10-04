@@ -19,9 +19,9 @@ export default function Cart() {
   const total = useSelector(selectCartTotal);
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
-  const shipping = total > 999 ? 0 : 99;
+  // Shipping depends on the delivery PIN code and is calculated by the server at checkout.
   const tax = Math.round(total * 0.03);
-  const grandTotal = total + shipping + tax;
+  const grandTotal = total + tax;
 
   useEffect(() => { document.title = 'Cart — M.B. JEWELLERS'; }, []);
 
@@ -30,7 +30,7 @@ export default function Cart() {
       <div className="min-h-screen pt-28 flex items-center justify-center">
         <div className="text-center px-6">
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-8xl mb-6">🛒</motion.div>
-          <h2 className="font-display text-3xl text-white mb-3">Your cart is empty</h2>
+          <h2 className="font-['Cormorant_Garamond',Georgia,serif] text-3xl font-semibold text-white leading-tight pt-0 mb-3">Your cart is empty</h2>
           <p className="text-dark-400 mb-8">Discover our luxury jewelry collection</p>
           <Link to="/shop" className="btn-gold">Explore Shop <FiArrowRight size={16} /></Link>
         </div>
@@ -42,7 +42,7 @@ export default function Cart() {
     <div className="min-h-screen pt-24 pb-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <h1 className="section-title">Shopping Cart</h1>
+          <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-3xl sm:text-4xl font-semibold leading-tight pt-0">Shopping Cart</h1>
           <div className="gold-divider mt-3 mx-0" />
         </div>
 
@@ -123,7 +123,7 @@ export default function Cart() {
           {/* Summary */}
           <div className="lg:col-span-1">
             <div className="card p-6 sticky top-24">
-              <h2 className="font-display text-xl text-white mb-5">Order Summary</h2>
+              <h2 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-2xl font-semibold leading-tight pt-0 mb-5">Order Summary</h2>
 
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
@@ -132,21 +132,17 @@ export default function Cart() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-dark-400">Shipping</span>
-                  <span className={shipping === 0 ? 'text-green-400' : 'text-white'}>
-                    {shipping === 0 ? 'FREE' : formatPrice(shipping)}
-                  </span>
+                  <span className="text-dark-300 text-xs">Calculated at checkout</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-dark-400">GST (3%)</span>
                   <span className="text-white">{formatPrice(tax)}</span>
                 </div>
-                {shipping > 0 && (
-                  <p className="text-xs text-dark-500">
-                    Add {formatPrice(999 - total)} more for free shipping
-                  </p>
-                )}
+                <p className="text-xs text-dark-500">
+                  Shipping is based on your delivery PIN code.
+                </p>
                 <div className="border-t border-white/10 pt-3 flex justify-between font-semibold">
-                  <span className="text-white">Total</span>
+                  <span className="text-white">Total <span className="text-dark-500 text-xs font-normal">(excl. shipping)</span></span>
                   <span className="text-gold-500 text-lg">{formatPrice(grandTotal)}</span>
                 </div>
               </div>

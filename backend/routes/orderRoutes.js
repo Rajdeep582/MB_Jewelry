@@ -2,6 +2,7 @@
  * Order Routes — /api/orders
  *
  * Payment Flow (3-phase, userOnly + paymentLimiter):
+ *   POST /quote            — server-calculated checkout total (PIN-code shipping + GST) for display
  *   POST /create-payment   — create Razorpay order; returns razorpayOrderId for frontend checkout
  *   POST /verify-payment   — verify Razorpay signature after payment; sets payment.status = 'paid'
  *   POST /fail-payment     — mark payment as failed (called on Razorpay modal dismiss / timeout)
@@ -30,6 +31,8 @@ const express = require('express');
 const router = express.Router();
 const {
   createPayment,
+  getCheckoutQuote,
+  getShippingZones,
   verifyPayment,
   retryVerifyPayment,
   failPayment,
@@ -44,6 +47,8 @@ const { protect, adminOnly, userOnly } = require('../middleware/auth');
 const { paymentLimiter } = require('../middleware/rateLimiter');
 
 // Payment flow (3-phase) — users only
+router.get('/shipping-zones',    getShippingZones);                       // public: serviceable PIN codes (display only)
+router.post('/quote',            protect, userOnly, getCheckoutQuote);   // display-only total (same calc as create-payment)
 router.post('/create-payment',   paymentLimiter, protect, userOnly, createPayment);
 router.post('/verify-payment',   paymentLimiter, protect, userOnly, verifyPayment);
 router.post('/fail-payment',     protect, userOnly, failPayment);

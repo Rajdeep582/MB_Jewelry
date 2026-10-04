@@ -1,10 +1,15 @@
 import api from './api';
 
+// Image uploads go through the API to Cloudinary — allow more than the default 15s.
+const UPLOAD_OPTS = { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 };
+
 export const reviewService = {
   getFeatured: () => api.get('/products/reviews/featured'),
 };
 
 export const orderService = {
+  getShippingZones: () => api.get('/orders/shipping-zones'),           // public: serviceable PIN codes (display only)
+  getQuote: (data) => api.post('/orders/quote', data),               // server-side shipping (by PIN) + GST + total
   createPayment: (data) => api.post('/orders/create-payment', data),
   verifyPayment: (data) => api.post('/orders/verify-payment', data),
   failPayment: (data) => api.post('/orders/fail-payment', data),
@@ -33,9 +38,9 @@ export const productService = {
   getProducts: (params) => api.get('/products', { params }),
   getProduct: (id) => api.get(`/products/${id}`),
   createProduct: (formData) =>
-    api.post('/products', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.post('/products', formData, UPLOAD_OPTS),
   updateProduct: (id, formData) =>
-    api.put(`/products/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.put(`/products/${id}`, formData, UPLOAD_OPTS),
   deleteProduct: (id) => api.delete(`/products/${id}`),
   addReview: (id, data) => api.post(`/products/${id}/review`, data),
 };
@@ -44,9 +49,9 @@ export const categoryService = {
   getCategories: () => api.get('/categories'),
   getCategory: (id) => api.get(`/categories/${id}`),
   createCategory: (formData) =>
-    api.post('/categories', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.post('/categories', formData, UPLOAD_OPTS),
   updateCategory: (id, formData) =>
-    api.put(`/categories/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.put(`/categories/${id}`, formData, UPLOAD_OPTS),
 };
 
 export const adminService = {
@@ -78,7 +83,7 @@ export const deliveryService = {
 export const customOrderService = {
   // User
   create: (formData) =>
-    api.post('/custom-orders', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+    api.post('/custom-orders', formData, UPLOAD_OPTS),
   getMyOrders: () => api.get('/custom-orders/my-orders'),
   getOrder: (id) => api.get(`/custom-orders/${id}`),
   createPayment: (data) => api.post('/custom-orders/create-payment', data),

@@ -1,6 +1,9 @@
 const User = require('../models/User');
 const mongoose = require('mongoose');
 
+// Session token hashes, IPs and audit logs are never sent to the admin user list
+const ADMIN_USER_HIDDEN = '-sessions -auditLogs -loginAttempts -lockUntil';
+
 // @desc    Get user profile
 // @route   GET /api/users/profile
 // @access  Private
@@ -166,12 +169,24 @@ const deleteAddress = async (req, res) => {
 // @route   GET /api/users
 // @access  Admin
 const getAllUsers = async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
+  const pageNum = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+  const filter = { isVerified: true };
+  const q = String(req.query.search ?? '').trim().slice(0, 64);
+  if (q) {
+    const { escapeRegex } = require('../utils/orderSearch');
+    const rx = new RegExp(escapeRegex(q), 'i');
+    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { userId: rx }];
+  }
   const [users, total] = await Promise.all([
-    User.find({ isVerified: true }).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(Number(limit)),
-    User.countDocuments({ isVerified: true }),
+    User.find(filter)
+      .select(ADMIN_USER_HIDDEN)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum),
+    User.countDocuments(filter),
   ]);
-  res.json({ success: true, users, total, pages: Math.ceil(total / limit) });
+  res.json({ success: true, users, total, pages: Math.ceil(total / limitNum) });
 };
 
 // @desc    Toggle user active status (Admin)
@@ -184,8 +199,9 @@ const toggleUserActive = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
   user.isActive = !user.isActive;
+  if (!user.isActive) user.sessions = []; // deactivation signs the user out everywhere
   await user.save();
-  res.json({ success: true, user });
+  res.json({ success: true, user: await User.findById(user._id).select(ADMIN_USER_HIDDEN) });
 };
 
 // @desc    Update user role (Admin)

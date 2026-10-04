@@ -13,6 +13,7 @@ import {
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import BrandLogo from '../components/common/BrandLogo';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 const PASSWORD_REGEX  = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
@@ -445,10 +446,8 @@ function AuthPage({ type }) {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="text-center mb-8">
-            <div className="w-12 h-12 rounded-full bg-gold-gradient flex items-center justify-center mx-auto mb-4 shadow-gold">
-              <span className="text-dark-900 font-bold text-lg font-serif">M</span>
-            </div>
-            <h1 className="font-display text-2xl text-white">{stepTitle()}</h1>
+            <div className="flex justify-center mb-5"><BrandLogo size="md" to="/" /></div>
+            <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-3xl font-semibold text-white leading-tight pt-0">{stepTitle()}</h1>
 
             {/* Subtitle row */}
             {step === 'form' && (

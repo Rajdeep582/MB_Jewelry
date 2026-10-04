@@ -9,6 +9,29 @@ const { ORDER_STATUSES } = require('../utils/constants');
 const logger = require('../utils/logger');
 const GlobalPricing = require('../models/GlobalPricing');
 const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
+const { buildOrderSearch } = require('../utils/orderSearch');
+
+// Fields a customer must never receive (internal notes + payment signatures)
+const CUSTOMER_HIDDEN = '-advancePayment.razorpaySignature -finalPayment.razorpaySignature -adminNotes';
+const RAZORPAY_MAX_INR = 50000000; // ₹5 crore per-transaction limit
+const PAYMENT_PHASES = ['advance', 'final'];
+
+// Custom-order purity labels differ from GlobalPricing labels
+const PURITY_ALIASES = { Hallmark: 'Hallmarked' };
+
+/**
+ * getCustomGstRate — GST fraction for a custom order: exact material+purity rate,
+ * else any rate set for the material, else 18% (legacy fallback).
+ */
+async function getCustomGstRate(material, purity) {
+  const p = PURITY_ALIASES[purity] || purity;
+  const entry = await GlobalPricing.findOne({ material, purity: p }).lean()
+    || await GlobalPricing.findOne({ material }).lean();
+  return entry ? entry.gst / 100 : 0.18;
+}
+
+/** Fresh copy of a custom order that is safe to send to its customer. */
+const customerView = (id) => CustomOrder.findById(id).select(CUSTOMER_HIDDEN);
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -103,12 +126,12 @@ const getCustomOrder = async (req, res) => {
 
   // Owner or admin only
   const ownerId = order.user?._id ?? order.user;
-  if (ownerId?.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+  if (ownerId?.toString() !== req.user._id.toString() && req.userType !== 'admin') {
     return res.status(403).json({ success: false, message: 'Not authorised' });
   }
 
   // Hide internal admin notes from non-admins
-  if (req.user.role !== 'admin') {
+  if (req.userType !== 'admin') {
     order.adminNotes = undefined;
   }
 
@@ -151,7 +174,7 @@ const cancelCustomOrderUser = async (req, res) => {
   await order.save();
   logger.info(`Custom order ${order._id} cancelled by user ${req.user._id}`);
 
-  res.json({ success: true, message: 'Order cancelled successfully', order });
+  res.json({ success: true, message: 'Order cancelled successfully', order: await customerView(order._id) });
 };
 
 // ─── Phase 1: Create Payment Intent ───────────────────────────────────────────
@@ -160,6 +183,10 @@ const cancelCustomOrderUser = async (req, res) => {
 function getCustomOrderPaymentAmounts(order, phase) {
   let amountToPay = 0;
   let errorMsg = null;
+
+  if (order[`${phase}Payment`]?.status === 'paid') {
+    return { amountToPay: 0, errorMsg: `The ${phase === 'advance' ? 'advance' : 'final'} payment has already been received.` };
+  }
 
   if (phase === 'advance') {
     if (order.status === 'quoted') {
@@ -205,8 +232,7 @@ const createCustomPayment = async (req, res) => {
   // ── Self-heal: legacy orders quoted before two-phase amounts were computed ──
   // If quoteAmount is set but the derived amounts are 0, recompute and persist them.
   if ((!amountToPay || amountToPay <= 0) && order.quoteAmount > 0) {
-    const _shGstEntry = await GlobalPricing.findOne({ material: order.material, purity: order.purity }).lean();
-    const _shGstRate  = _shGstEntry ? (_shGstEntry.gst / 100) : 0.18;
+    const _shGstRate  = await getCustomGstRate(order.material, order.purity);
     const taxAmount     = Math.round(order.quoteAmount * _shGstRate);
     const totalAmount   = order.quoteAmount + taxAmount;
     const advanceAmount = Math.round(totalAmount * 0.7);
@@ -232,7 +258,6 @@ const createCustomPayment = async (req, res) => {
   }
 
   // Razorpay's per-transaction limit is ₹5,00,00,000 (5 crore)
-  const RAZORPAY_MAX_INR = 50000000;
   if (amountToPay > RAZORPAY_MAX_INR) {
     return res.status(400).json({
       success: false,
@@ -320,6 +345,100 @@ const createCustomPayment = async (req, res) => {
 
 // ─── Phase 2: Verify Payment ──────────────────────────────────────────────────
 /**
+ * confirmCustomPayment — record a captured advance/final payment on a custom order.
+ * Shared by verifyCustomPayment (browser callback) and the Razorpay webhook, so a payment is
+ * reconciled even if the customer closes the tab.
+ *
+ * IDEMPOTENT + RACE-SAFE: the write is conditional on "<phase>Payment.status != paid" AND the
+ * stored Razorpay order id, inside a transaction. Parallel calls (double click, webhook + verify)
+ * → one wins, the others see "already paid" and report success. A failure never flips a
+ * captured payment to 'failed'.
+ * Returns { ok, alreadyPaid?, error? }.
+ */
+async function confirmCustomPayment({ customOrderId, phase, razorpayOrderId, razorpayPaymentId, razorpaySignature, actorId, via, anyRazorpayOrder = false }) {
+  const statusPath = `${phase}Payment.status`;
+  const isPaid = async () => {
+    const o = await CustomOrder.findById(customOrderId).select(statusPath).lean();
+    return o?.[`${phase}Payment`]?.status === 'paid';
+  };
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    // anyRazorpayOrder: webhook path where our own Transaction record proves this Razorpay
+    // order belongs to this custom order/phase (customer may have opened checkout twice).
+    const current = await CustomOrder.findOne({
+      _id: customOrderId,
+      [statusPath]: { $ne: 'paid' },
+      ...(anyRazorpayOrder ? {} : { [`${phase}Payment.razorpayOrderId`]: String(razorpayOrderId) }),
+    }).session(session);
+
+    if (!current) {
+      await session.abortTransaction();
+      session.endSession();
+      if (await isPaid()) return { ok: true, alreadyPaid: true };
+      return { ok: false, error: 'Payment does not match this order' };
+    }
+
+    // Advance moves the order into production; a customer who cancelled and then paid
+    // is reinstated (money was captured). Final payment leaves the status ('shipped').
+    let nextStatus = current.status;
+    let comment = phase === 'advance' ? 'Advance payment (70%) received.' : 'Final balance (30%) received.';
+    if (phase === 'advance' && ['pending', 'quoted', 'cancelled'].includes(current.status)) {
+      if (current.status === 'cancelled') comment += ' Order reinstated — payment arrived after cancellation.';
+      nextStatus = 'advance_paid';
+    }
+
+    const updated = await CustomOrder.findOneAndUpdate(
+      { _id: customOrderId, status: current.status, [statusPath]: { $ne: 'paid' } },
+      {
+        $set: {
+          status: nextStatus,
+          [`${phase}Payment.razorpayOrderId`]:   String(razorpayOrderId),
+          [`${phase}Payment.razorpayPaymentId`]: razorpayPaymentId,
+          [`${phase}Payment.razorpaySignature`]: razorpaySignature,
+          [statusPath]:                          'paid',
+          [`${phase}Payment.paidAt`]:            new Date(),
+          [`${phase}Payment.failReason`]:        '',
+        },
+        $push: { trackingHistory: { status: nextStatus, comment, updatedBy: actorId, timestamp: new Date() } },
+      },
+      { new: true, session }
+    );
+    if (!updated) throw new Error('Custom order changed during payment confirmation');
+
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
+      {
+        razorpayPaymentId,
+        razorpaySignature,
+        status: 'success',
+        gatewayResponse: { razorpayOrderId, razorpayPaymentId },
+        order: customOrderId,
+        orderType: 'CustomOrder',
+      },
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+    logger.info(`Custom order payment (${phase}) confirmed via ${via}: order=${customOrderId}`);
+    return { ok: true };
+  } catch (err) {
+    await session.abortTransaction().catch(() => {});
+    session.endSession();
+    if (await isPaid()) return { ok: true, alreadyPaid: true }; // a parallel call won
+    // Signature/capture is genuine — keep the payment retryable, just note why it failed
+    await CustomOrder.updateOne(
+      { _id: customOrderId, [statusPath]: { $ne: 'paid' } },
+      { [`${phase}Payment.failReason`]: `Confirmation error: ${err.message}` }
+    );
+    logger.error(`Custom order payment confirm failed (${phase}) order=${customOrderId}: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * verifyCustomPayment
  * @route  POST /api/custom-orders/verify-payment
  * @access Private (authenticated user)
@@ -342,9 +461,7 @@ const createCustomPayment = async (req, res) => {
  *   customOrderId exists. Loading the order first and checking ownership collapses
  *   both into a consistent code path before signature crypto runs.
  *
- * TRANSACTION:
- *   Mongoose session wraps CustomOrder update + Transaction update + tracking history.
- *   Rolled back atomically on any failure.
+ * TRANSACTION + RACE SAFETY: delegated to confirmCustomPayment (shared with the webhook).
  *
  * SIGNATURE HELPER:
  *   verifyRazorpaySignature (utils/razorpayHelper.js) uses crypto.timingSafeEqual
@@ -360,9 +477,12 @@ const verifyCustomPayment = async (req, res) => {
   if (!mongoose.isValidObjectId(customOrderId)) {
     return res.status(400).json({ success: false, message: 'Invalid custom order ID' });
   }
+  if (!PAYMENT_PHASES.includes(phase)) {
+    return res.status(400).json({ success: false, message: 'Invalid payment phase' });
+  }
 
   // 2. Load order
-  const order = await CustomOrder.findById(customOrderId);
+  const order = await CustomOrder.findById(customOrderId).select('user advancePayment finalPayment').lean();
   if (!order) return res.status(404).json({ success: false, message: 'Custom order not found' });
 
   // 3. Ownership — must be the requesting user's order
@@ -371,92 +491,48 @@ const verifyCustomPayment = async (req, res) => {
   }
 
   // 4. Cross-validate razorpayOrderId against stored value (prevents payment-swap attack)
-  const storedRzpId = phase === 'advance'
-    ? order.advancePayment?.razorpayOrderId
-    : order.finalPayment?.razorpayOrderId;
+  const storedRzpId = order[`${phase}Payment`]?.razorpayOrderId;
   if (storedRzpId !== razorpayOrderId) {
     logger.warn(`razorpayOrderId mismatch for custom order=${customOrderId} phase=${phase}: submitted=${razorpayOrderId}, stored=${storedRzpId}`);
     return res.status(400).json({ success: false, message: 'Payment ID mismatch for this order.' });
   }
 
   // 5. Idempotency — return success if already confirmed, no double-write
-  if (phase === 'advance' && order.advancePayment.status === 'paid') return res.json({ success: true, message: 'Advance already paid', order });
-  if (phase === 'final'   && order.finalPayment.status === 'paid')   return res.json({ success: true, message: 'Final already paid', order });
+  if (order[`${phase}Payment`]?.status === 'paid') {
+    return res.json({
+      success: true,
+      message: phase === 'advance' ? 'Advance already paid' : 'Final already paid',
+      order: await customerView(customOrderId),
+    });
+  }
 
   // 6. Razorpay HMAC signature verification (crypto — most expensive check, runs last)
   const isValid = verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature);
   if (!isValid) {
-    await Transaction.findOneAndUpdate({ razorpayOrderId: String(razorpayOrderId) }, { status: 'failed', failReason: 'Signature mismatch' });
+    await Transaction.findOneAndUpdate(
+      { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
+      { status: 'failed', failReason: 'Signature mismatch' }
+    );
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
   }
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  const result = await confirmCustomPayment({
+    customOrderId, phase, razorpayOrderId, razorpayPaymentId, razorpaySignature,
+    actorId: req.user._id, via: 'verify',
+  });
 
-  try {
-    // Advance payment sets status to advance_paid;
-    // Final payment leaves order status as 'shipped'; admin manually confirms delivery.
-    const nextStatus = phase === 'advance' ? 'advance_paid' : order.status;
-
-    // Update payment fields on the custom order
-    await CustomOrder.findByIdAndUpdate(
-      customOrderId,
-      {
-        status: nextStatus,
-        [`${phase}Payment.razorpayPaymentId`]: razorpayPaymentId,
-        [`${phase}Payment.razorpaySignature`]: razorpaySignature,
-        [`${phase}Payment.status`]:            'paid',
-        [`${phase}Payment.paidAt`]:            new Date(),
-      },
-      { session }
-    );
-
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId: String(razorpayOrderId) },
-      {
-        razorpayPaymentId,
-        razorpaySignature,
-        status: 'success',
-        gatewayResponse: { razorpayOrderId, razorpayPaymentId },
-        order: customOrderId,
-        orderType: 'CustomOrder',
-      },
-      { session }
-    );
-
-    // Re-fetch within session to get the updated doc for tracking history
-    const confirmedOrder = await CustomOrder.findById(customOrderId).session(session);
-    confirmedOrder.trackingHistory.push({
-      status: nextStatus,
-      comment: phase === 'advance' ? 'Advance payment (70%) received.' : 'Final balance (30%) received.',
-      updatedBy: req.user._id,
+  if (!result.ok) {
+    return res.status(500).json({
+      success: false,
+      message: 'Payment received but confirmation is delayed. Please refresh in a minute or contact support — you will not be charged again.',
     });
-    await confirmedOrder.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info(`Custom order payment (${phase}) confirmed: order=${customOrderId}`);
-
-    // Re-fetch clean document (without session) to return to client
-    const freshOrder = await CustomOrder.findById(customOrderId)
-      .select('-advancePayment.razorpaySignature -finalPayment.razorpaySignature');
-
-    return res.json({
-      success: true,
-      message: `Payment verified. ${phase === 'advance' ? 'Advance paid successfully!' : 'Final balance paid!'}`,
-      order: freshOrder,
-    });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    logger.error(`Custom order payment rollback: ${err.message}`);
-
-    await CustomOrder.findByIdAndUpdate(customOrderId, { [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: err.message });
-    await Transaction.findOneAndUpdate({ razorpayOrderId }, { status: 'failed', failReason: err.message });
-
-    return res.status(500).json({ success: false, message: `Payment confirmation failed: ${err.message}` });
   }
+
+  return res.json({
+    success: true,
+    message: `Payment verified. ${phase === 'advance' ? 'Advance paid successfully!' : 'Final balance paid!'}`,
+    order: await customerView(customOrderId),
+  });
 };
 
 // ─── Phase 3: Fail Payment ────────────────────────────────────────────────────
@@ -465,7 +541,7 @@ const verifyCustomPayment = async (req, res) => {
 const failCustomPayment = async (req, res) => {
   const { customOrderId, reason, phase } = req.body;
 
-  if (!customOrderId || !mongoose.isValidObjectId(customOrderId) || !phase) {
+  if (!customOrderId || !mongoose.isValidObjectId(customOrderId) || !PAYMENT_PHASES.includes(phase)) {
     return res.status(400).json({ success: false, message: 'Invalid payload' });
   }
 
@@ -473,22 +549,31 @@ const failCustomPayment = async (req, res) => {
   if (!order) return res.status(404).json({ success: false, message: 'Custom order not found' });
   if (order.user.toString() !== req.user._id.toString()) return res.status(403).json({ success: false, message: 'Not authorised' });
 
-  const failReason = reason || 'Payment cancelled by user';
-  // For final phase: do NOT change order status (keep as 'shipped') — only reset payment flag
-  const failUpdate = phase === 'advance'
-    ? { status: 'quoted', [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: failReason }
-    : { [`${phase}Payment.status`]: 'failed', [`${phase}Payment.failReason`]: failReason };
+  // Already paid (e.g. webhook/verify won the race) → nothing to record
+  if (order[`${phase}Payment`]?.status === 'paid') {
+    return res.json({ success: true, message: 'Payment already received' });
+  }
+
+  const failReason = String(reason || 'Payment cancelled by user').slice(0, 300);
+  const statusPath = `${phase}Payment.status`;
 
   const failSession = await mongoose.startSession();
   failSession.startTransaction();
   try {
-    await CustomOrder.findByIdAndUpdate(
-      customOrderId,
-      failUpdate,
+    // Order status is NOT changed (advance → stays 'quoted', final → stays 'shipped');
+    // only the payment flag is reset, and never if it became 'paid' meanwhile.
+    await CustomOrder.updateOne(
+      { _id: customOrderId, [statusPath]: { $ne: 'paid' } },
+      { [statusPath]: 'failed', [`${phase}Payment.failReason`]: failReason },
       { session: failSession }
     );
     await Transaction.findOneAndUpdate(
-      { order: new mongoose.Types.ObjectId(customOrderId), status: 'pending' },
+      {
+        order: new mongoose.Types.ObjectId(customOrderId),
+        phase,
+        status: 'pending',
+        ...(order[`${phase}Payment`]?.razorpayOrderId ? { razorpayOrderId: order[`${phase}Payment`].razorpayOrderId } : {}),
+      },
       { status: 'failed', failReason },
       { session: failSession }
     );
@@ -508,27 +593,39 @@ const failCustomPayment = async (req, res) => {
 // @route   GET /api/custom-orders
 // @access  Admin
 const getAllCustomOrders = async (req, res) => {
-  const { page = 1, limit = 20, status } = req.query;
-  const query = {};
+  const { status, search } = req.query;
+  const pageNum = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
+
+  const filter = {};
   if (status) {
-    // 'in_production' filter covers both advance_paid and in_production statuses —
+    // 'confirmed' (alias 'in_production') covers both advance_paid and confirmed —
     // both display as "Confirmed & In Production" in the UI
-    if (String(status) === 'confirmed') {
-      query.status = { $in: ['advance_paid', 'confirmed'] };
+    if (['confirmed', 'in_production'].includes(String(status))) {
+      filter.status = { $in: ['advance_paid', 'confirmed'] };
     } else {
-      query.status = String(status);
+      filter.status = String(status);
     }
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  // Support lookup across all pages: CUS-… id, tracking number, customer, phone, PIN, item type
+  const searchOr = await buildOrderSearch(search, {
+    idField: 'customOrderId',
+    paymentPaths: [
+      'advancePayment.razorpayPaymentId', 'advancePayment.razorpayOrderId',
+      'finalPayment.razorpayPaymentId', 'finalPayment.razorpayOrderId',
+    ],
+    extra: (rx) => [{ type: rx }, { description: rx }],
+  });
+  const query = searchOr ? { $and: [filter, { $or: searchOr }] } : filter;
 
   const [orders, total] = await Promise.all([
     CustomOrder.find(query)
       .select('-advancePayment.razorpaySignature -finalPayment.razorpaySignature')
       .populate('user', 'name email phone')
       .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(Number(limit))
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
       .lean(),
     CustomOrder.countDocuments(query),
   ]);
@@ -537,8 +634,8 @@ const getAllCustomOrders = async (req, res) => {
     success: true,
     orders,
     total,
-    pages: Math.ceil(total / Number(limit)),
-    page:  Number(page),
+    pages: Math.ceil(total / limitNum),
+    page:  pageNum,
   });
 };
 
@@ -551,8 +648,9 @@ const setQuote = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) {
     return res.status(400).json({ success: false, message: 'Invalid order ID' });
   }
-  if (!quoteAmount || quoteAmount <= 0) {
-    return res.status(400).json({ success: false, message: 'quoteAmount must be a positive number' });
+  const numQuote = Number(quoteAmount);
+  if (!Number.isFinite(numQuote) || numQuote < 10) {
+    return res.status(400).json({ success: false, message: 'quoteAmount must be a number of at least ₹10' });
   }
 
   const order = await CustomOrder.findById(req.params.id);
@@ -574,13 +672,9 @@ const setQuote = async (req, res) => {
     });
   }
 
-  order.quoteAmount   = Number(quoteAmount);
-  // Fetch GST from GlobalPricing for this material/purity, fallback to 18%
-  const _gstEntry = await GlobalPricing.findOne({
-    material: order.material,
-    purity:   order.purity,
-  }).lean();
-  const _gstRate = _gstEntry ? (_gstEntry.gst / 100) : 0.18;
+  order.quoteAmount   = numQuote;
+  // GST from GlobalPricing for this material/purity (purity labels mapped), fallback 18%
+  const _gstRate = await getCustomGstRate(order.material, order.purity);
   order.taxAmount     = Math.round(order.quoteAmount * _gstRate);
   order.totalAmount   = order.quoteAmount + order.taxAmount;
 
@@ -598,6 +692,14 @@ const setQuote = async (req, res) => {
   } else {
     order.advanceAmount = Math.round(order.totalAmount * 0.7);
     order.finalAmount   = order.totalAmount - order.advanceAmount;
+  }
+
+  // Both instalments must be payable online (Razorpay: ≥ ₹1 and ≤ ₹5 crore each)
+  if (order.finalAmount < 1 || order.advanceAmount > RAZORPAY_MAX_INR || order.finalAmount > RAZORPAY_MAX_INR) {
+    return res.status(400).json({
+      success: false,
+      message: 'Quote out of range: each instalment must be between ₹1 and ₹5 crore for online payment.',
+    });
   }
 
   order.quoteNote   = quoteNote   || '';
@@ -649,14 +751,30 @@ function applyCustomOrderTransition(order, status) {
     return { error: 'Cannot cancel order after advance payment has been received.' };
   }
 
-  // ── Guard: delivery partner must confirm first ──
-  if (status === 'delivered' && !order.dpConfirmedAt) {
-    return { error: 'Delivery partner must confirm delivery first before admin can mark as delivered.' };
+  // ── Guard: payment-driven states are set by payments / the quote form, not by hand ──
+  if (status === 'quoted') {
+    return { error: 'Use "Set Quote" to quote an order.' };
+  }
+  if (status === 'advance_paid') {
+    return { error: 'Advance-paid status is set automatically when the customer pays.' };
   }
 
-  // ── Guard: cannot ship unless advance payment is done ──
-  if (status === 'shipped' && order.advancePayment?.status !== 'paid') {
-    return { error: 'Cannot mark as shipped. Advance payment (70%) has not been received yet.' };
+  // ── Guard: production / dispatch only after the advance is received ──
+  if (['confirmed', 'ready_to_ship', 'shipped'].includes(status) && order.advancePayment?.status !== 'paid') {
+    return { error: `Cannot mark as ${status.replaceAll('_', ' ')}. Advance payment (70%) has not been received yet.` };
+  }
+
+  // ── Guard: delivered only from shipped, after the DP confirmed AND the balance is paid ──
+  if (status === 'delivered') {
+    if (current !== 'shipped') {
+      return { error: 'Order must be shipped before it can be marked as delivered.' };
+    }
+    if (!order.dpConfirmedAt) {
+      return { error: 'Delivery partner must confirm delivery first before admin can mark as delivered.' };
+    }
+    if (order.finalPayment?.status !== 'paid') {
+      return { error: 'Cannot mark as delivered. Final payment (30%) has not been received yet.' };
+    }
   }
 
   // ── Dispatch: auto-generate deliveryId + set internal tracking ref ──
@@ -702,6 +820,7 @@ const updateCustomOrderStatus = async (req, res) => {
     if (status === 'shipped' && estimatedDelivery) {
       order.estimatedDelivery = new Date(estimatedDelivery);
       await order.save();
+      await writeCustomOrderSnapshot(order); // keep the Delivery record's ETA in sync
       return res.json({ success: true, order, message: 'Estimated delivery date updated' });
     }
     return res.status(400).json({ success: false, message: `Order is already in "${status}" status. Cannot update to the same status.` });
@@ -713,65 +832,81 @@ const updateCustomOrderStatus = async (req, res) => {
     return res.status(400).json({ success: false, message: transition.error });
   }
 
+  await commitCustomOrderStatus(order, status, { comment, estimatedDelivery, adminId: req.user._id });
+
+  res.json({ success: true, order });
+};
+
+/**
+ * commitCustomOrderStatus — the ONE place a custom order's status is written after validation
+ * (shared with adminController.adminConfirmDelivery). Claims the transition atomically so two
+ * admins / double-clicks cannot both apply it, then writes history + Delivery snapshot.
+ */
+async function commitCustomOrderStatus(order, status, { comment = '', estimatedDelivery, adminId } = {}) {
+  const current = order.status;
+  const claimed = await CustomOrder.updateOne({ _id: order._id, status: current }, { $set: { status } });
+  if (claimed.modifiedCount === 0) {
+    const err = new Error('This order was just updated by someone else. Refresh and try again.');
+    err.statusCode = 409;
+    throw err;
+  }
+
   // ── Apply fields ──
   order.status = status;
   if (estimatedDelivery) order.estimatedDelivery = new Date(estimatedDelivery);
   if (status === 'delivered') {
     order.deliveredAt = new Date();
     order.estimatedDelivery = undefined; // clear — actual date now known
+    // The partner who physically confirmed delivery takes precedence over the assigned one
+    const agentRef = order.dpConfirmedBy || order.deliveryAgent;
+    if (agentRef && !order.deliveredByPartnerId) {
+      const DeliveryPartner = require('../models/DeliveryPartner');
+      const dp = await DeliveryPartner.findById(agentRef).select('partnerId name').lean();
+      if (dp?.partnerId) order.deliveredByPartnerId   = dp.partnerId;
+      if (dp?.name)      order.deliveredByPartnerName = dp.name;
+    }
   }
 
   order.trackingHistory.push({
     status,
     comment:   comment || '',
-    updatedBy: req.user._id,
+    updatedBy: adminId,
   });
 
   await order.save();
   logger.info(
-    `Custom order ${order._id} "${current}" → "${status}" by admin ${req.user._id}` +
+    `Custom order ${order._id} "${current}" → "${status}" by admin ${adminId}` +
     (order.deliveryId ? ` | deliveryId=${order.deliveryId}` : '')
   );
 
-  // ── Persist delivery snapshot ─────────────────────────────────────────────
-  if (status === 'shipped' || status === 'delivered') {
-    const u = order.user;
-    const puritySuffix = order.purity && order.purity !== 'None' ? ` (${order.purity})` : '';
-    const itemsSummary = `Custom ${order.type} — ${order.material}${puritySuffix}`;
-    let deliveredByPartnerId = '';
-    let deliveredByPartnerName = '';
-    if (status === 'delivered') {
-      const agentRef = order.deliveryAgent || order.dpConfirmedBy;
-      if (agentRef) {
-        const DeliveryPartner = require('../models/DeliveryPartner');
-        const dp = await DeliveryPartner.findById(agentRef).select('partnerId name').lean();
-        if (dp?.partnerId) deliveredByPartnerId   = dp.partnerId;
-        if (dp?.name)      deliveredByPartnerName = dp.name;
-      }
-    }
-    await upsertDeliverySnapshot({
-      sourceType:          'custom_order',
-      sourceId:            order._id,
-      orderId:             order.customOrderId || '',
-      deliveryId:          order.deliveryId    || '',
-      customerName:        u?.name  || '',
-      customerEmail:       u?.email || '',
-      shippingAddress:     order.shippingAddress,
-      itemsSummary,
-      totalAmount:         order.totalAmount || order.quoteAmount || 0,
-      status,
-      dispatchedAt:        order.dispatchedAt,
-      estimatedDelivery:   order.estimatedDelivery,
-      deliveredAt:         order.deliveredAt,
-      deliveryAgent:       order.deliveryAgent,
-      deliveredByPartnerId,
-      deliveredByPartnerName,
-      trackingHistory:     order.trackingHistory,
-    });
-  }
+  if (status === 'shipped' || status === 'delivered') await writeCustomOrderSnapshot(order);
+  return order;
+}
 
-  res.json({ success: true, order });
-};
+/** writeCustomOrderSnapshot — persist the custom order's delivery state to the Delivery collection. */
+async function writeCustomOrderSnapshot(order) {
+  const u = order.user?.name ? order.user : await require('../models/User').findById(order.user).select('name email').lean();
+  const puritySuffix = order.purity && order.purity !== 'None' ? ` (${order.purity})` : '';
+  await upsertDeliverySnapshot({
+    sourceType:          'custom_order',
+    sourceId:            order._id,
+    orderId:             order.customOrderId || '',
+    deliveryId:          order.deliveryId    || '',
+    customerName:        u?.name  || '',
+    customerEmail:       u?.email || '',
+    shippingAddress:     order.shippingAddress,
+    itemsSummary:        `Custom ${order.type} — ${order.material}${puritySuffix}`,
+    totalAmount:         order.totalAmount || order.quoteAmount || 0,
+    status:              order.status,
+    dispatchedAt:        order.dispatchedAt,
+    estimatedDelivery:   order.estimatedDelivery,
+    deliveredAt:         order.deliveredAt,
+    deliveryAgent:       order.deliveryAgent,
+    deliveredByPartnerId:   order.deliveredByPartnerId   || '',
+    deliveredByPartnerName: order.deliveredByPartnerName || '',
+    trackingHistory:     order.trackingHistory,
+  });
+}
 
 // ─── Stats (Admin) ────────────────────────────────────────────────────────────
 // @route   GET /api/custom-orders/stats
@@ -819,4 +954,7 @@ module.exports = {
   setQuote,
   updateCustomOrderStatus,
   getCustomOrderStats,
+  // internal helpers shared with the webhook (orderController) and adminController
+  confirmCustomPayment,
+  commitCustomOrderStatus,
 };

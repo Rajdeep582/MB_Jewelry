@@ -1,17 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiShoppingBag, FiStar, FiShare2, FiChevronLeft, FiChevronRight,
   FiMinus, FiPlus, FiPackage, FiShield, FiCheckCircle, FiX, FiMessageSquare,
+  FiHeart, FiZap, FiLock, FiTruck, FiMapPin, FiAward, FiArrowRight,
 } from 'react-icons/fi';
 import { fetchProduct, selectCurrentProduct } from '../store/productSlice';
 import { addToCart, openCart } from '../store/cartSlice';
-import { selectIsAuthenticated } from '../store/authSlice';
-import { formatPrice, generateStars, formatDate, resolveImageUrl } from '../utils/helpers';
-import { productService } from '../services/services';
-import { ProductDetailSkeleton } from '../components/common/Skeletons';
+import { selectIsAuthenticated, selectUser, setUser } from '../store/authSlice';
+import { formatPrice, formatDate, resolveImageUrl } from '../utils/helpers';
+import { productService, orderService, userService } from '../services/services';
+import { ProductDetailSkeleton, ProductCardSkeleton } from '../components/common/Skeletons';
 import ProductCard from '../components/shop/ProductCard';
 import toast from 'react-hot-toast';
 import PropTypes from 'prop-types';
@@ -122,7 +123,7 @@ function AllReviewsModal({ reviews, onClose, productName, averageRating, numRevi
           {/* Modal Header */}
           <div className="flex items-center justify-between p-5 border-b border-white/8 flex-shrink-0">
             <div>
-              <h3 className="font-display text-lg text-white">All Reviews</h3>
+              <h3 className="font-serif text-lg text-white font-semibold pt-0">All Reviews</h3>
               <p className="text-dark-400 text-xs mt-0.5">{productName}</p>
             </div>
             <div className="flex items-center gap-4">
@@ -165,96 +166,196 @@ AllReviewsModal.propTypes = {
 };
 
 // ── Related Products Slider ───────────────────────────────────────────────────
-function RelatedProducts({ categoryId, currentProductId }) {
+function RelatedProducts({ categoryId, categoryName, material, currentProductId }) {
   const [products, setProducts] = useState([]);
   const [loading, setLoading]   = useState(true);
+  const [edges, setEdges]       = useState({ start: true, end: false });
   const trackRef                = useRef(null);
-  const navigate                = useNavigate();
 
   useEffect(() => {
-    if (!categoryId) { setLoading(false); return; }
-    setLoading(true);
-    productService.getProducts({ category: categoryId, limit: 12 })
-      .then(res => {
-        const all = res.data?.products || [];
-        setProducts(all.filter(p => p._id !== currentProductId));
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [categoryId, currentProductId]);
+    let alive = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        let list = [];
+        if (categoryId) {
+          const res = await productService.getProducts({ category: categoryId, limit: 12 });
+          list = (res.data?.products || []).filter((p) => p._id !== currentProductId);
+        }
+        // Too few in this category → top up with pieces of the same metal
+        if (list.length < 4 && material) {
+          const res = await productService.getProducts({ material, limit: 12 });
+          const seen = new Set(list.map((p) => p._id));
+          list = list.concat((res.data?.products || []).filter((p) => p._id !== currentProductId && !seen.has(p._id)));
+        }
+        if (alive) setProducts(list.slice(0, 12));
+      } catch {
+        if (alive) setProducts([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+    load();
+    return () => { alive = false; };
+  }, [categoryId, material, currentProductId]);
+
+  const updateEdges = useCallback(() => {
+    const t = trackRef.current;
+    if (!t) return;
+    setEdges({ start: t.scrollLeft <= 4, end: t.scrollLeft + t.clientWidth >= t.scrollWidth - 4 });
+  }, []);
+
+  useEffect(() => {
+    updateEdges();
+    window.addEventListener('resize', updateEdges);
+    return () => window.removeEventListener('resize', updateEdges);
+  }, [products, updateEdges]);
 
   const scroll = (dir) => {
     const track = trackRef.current;
     if (!track) return;
-    const cardW = track.querySelector('[data-card]')?.offsetWidth || 260;
-    track.scrollBy({ left: dir * (cardW + 16), behavior: 'smooth' });
+    const card = track.querySelector('[data-card]');
+    const step = card ? card.offsetWidth + 16 : 260;
+    track.scrollBy({ left: dir * step * (window.innerWidth >= 1024 ? 2 : 1), behavior: 'smooth' });
   };
 
   if (!loading && products.length === 0) return null;
 
+  const arrowCls = 'w-10 h-10 rounded-full border flex items-center justify-center transition-all duration-300 disabled:opacity-30 disabled:pointer-events-none border-gold-500/30 text-gold-400 hover:bg-gold-500 hover:text-dark-900 hover:border-gold-500';
+
   return (
-    <section className="border-t border-white/8 pt-12 pb-2">
-      <div className="flex items-center justify-between mb-6">
+    <section className="relative pt-12 sm:pt-14">
+      <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 w-[640px] max-w-full h-[260px] bg-[radial-gradient(50%_50%_at_50%_50%,rgba(212,175,55,0.06),transparent_70%)]" aria-hidden="true" />
+      <div className="relative flex items-end justify-between gap-4 mb-6">
         <div>
-          <p className="section-subtitle mb-1">Discover More</p>
-          <h2 className="font-display text-2xl text-white">You May Also Like</h2>
+          <p className="font-jakarta text-[11px] font-semibold tracking-[0.3em] text-gold-500 uppercase mb-2">Discover more</p>
+          <h2 className="font-serif text-2xl sm:text-3xl text-white font-semibold leading-tight pt-0">You may also like</h2>
+          <div className="h-px w-14 bg-gradient-to-r from-gold-600 to-gold-300 mt-3" />
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => scroll(-1)}
-            className="w-9 h-9 rounded-full border border-white/10 bg-dark-800 flex items-center justify-center text-dark-400 hover:text-white hover:border-gold-500/40 transition-all"
-          >
-            <FiChevronLeft size={16} />
+          {categoryId && (
+            <Link
+              to={`/shop?category=${categoryId}`}
+              className="hidden sm:inline-flex items-center gap-1.5 mr-2 font-jakarta text-xs font-semibold text-dark-300 hover:text-gold-400 transition-colors"
+            >
+              View all {categoryName || ''} <FiArrowRight size={12} />
+            </Link>
+          )}
+          <button type="button" onClick={() => scroll(-1)} disabled={edges.start} aria-label="Previous" className={arrowCls}>
+            <FiChevronLeft size={18} />
           </button>
-          <button
-            onClick={() => scroll(1)}
-            className="w-9 h-9 rounded-full border border-white/10 bg-dark-800 flex items-center justify-center text-dark-400 hover:text-white hover:border-gold-500/40 transition-all"
-          >
-            <FiChevronRight size={16} />
+          <button type="button" onClick={() => scroll(1)} disabled={edges.end} aria-label="Next" className={arrowCls}>
+            <FiChevronRight size={18} />
           </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex gap-4 overflow-hidden">
-          {[...new Array(4)].map((_, i) => (
-            <div key={i} className="flex-shrink-0 w-56 h-72 rounded-2xl bg-dark-800 animate-pulse" />
-          ))}
-        </div>
-      ) : (
+      <motion.div
+        className="relative -mx-4 sm:mx-0"
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.15 }}
+        transition={{ duration: 0.5 }}
+      >
+        {/* edge fades hint there is more to scroll */}
+        <span className={`pointer-events-none absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-dark-900 to-transparent transition-opacity duration-300 ${edges.start ? 'opacity-0' : 'opacity-100'}`} aria-hidden="true" />
+        <span className={`pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-dark-900 to-transparent transition-opacity duration-300 ${edges.end ? 'opacity-0' : 'opacity-100'}`} aria-hidden="true" />
         <div
           ref={trackRef}
-          className="flex gap-4 overflow-x-auto scrollbar-hide scroll-smooth pb-2"
-          style={{ scrollSnapType: 'x mandatory' }}
+          onScroll={updateEdges}
+          className="flex items-stretch gap-3 sm:gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain scrollbar-hide snap-x snap-proximity scroll-px-4 sm:scroll-px-0 px-4 sm:px-0 pt-2 pb-4"
         >
-          {products.map(p => (
-            <div
-              key={p._id}
-              data-card
-              className="flex-shrink-0 w-56 sm:w-64"
-              style={{ scrollSnapAlign: 'start' }}
-            >
-              <ProductCard product={p} view="grid" />
-            </div>
-          ))}
+          {loading
+            ? Array.from({ length: 4 }, (_, n) => n).map((n) => (
+                <div key={n} className="snap-start shrink-0 w-[46vw] sm:w-60 lg:w-[248px]"><ProductCardSkeleton /></div>
+              ))
+            : products.map((p) => (
+                <div key={p._id} data-card className="snap-start shrink-0 w-[46vw] sm:w-60 lg:w-[248px]">
+                  <ProductCard product={p} view="grid" />
+                </div>
+              ))}
         </div>
-      )}
+      </motion.div>
     </section>
   );
 }
 
 RelatedProducts.propTypes = {
   categoryId:       PropTypes.string,
+  categoryName:     PropTypes.string,
+  material:         PropTypes.string,
   currentProductId: PropTypes.string,
 };
 
+// ── Delivery PIN checker (server shipping zones) ──────────────────────────────
+function DeliveryCheck() {
+  const [zones, setZones] = useState(null);
+  const [pin, setPin]     = useState('');
+  const [result, setResult] = useState(null);
+
+  useEffect(() => {
+    orderService.getShippingZones().then((r) => setZones(r.data?.zones || [])).catch(() => setZones([]));
+  }, []);
+
+  const check = (e) => {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(pin)) { setResult({ ok: false, msg: 'Enter a valid 6-digit PIN code' }); return; }
+    const z = (zones || []).find((x) => x.pincode === pin);
+    setResult(z
+      ? { ok: true, msg: `Delivers to ${z.area} · shipping ${formatPrice(z.charge)}` }
+      : { ok: false, msg: `Sorry, we don't deliver to ${pin} yet` });
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-dark-900/40 p-3.5">
+      <form onSubmit={check} className="flex items-center gap-2">
+        <span className="flex-shrink-0 w-8 h-8 rounded-lg bg-gold-500/10 text-gold-400 flex items-center justify-center"><FiTruck size={14} /></span>
+        <div className="relative flex-1 min-w-0">
+          <input
+            value={pin}
+            onChange={(e) => { setPin(e.target.value.replaceAll(/\D/g, '').slice(0, 6)); setResult(null); }}
+            inputMode="numeric"
+            placeholder="Check delivery — enter PIN code"
+            aria-label="Delivery PIN code"
+            className="w-full bg-transparent font-jakarta text-sm text-white placeholder:text-dark-500 focus:outline-none py-1.5"
+          />
+        </div>
+        <button type="submit" disabled={zones === null} className="flex-shrink-0 font-jakarta text-xs font-semibold text-gold-400 hover:text-gold-300 px-2 py-1.5 disabled:opacity-40">
+          Check
+        </button>
+      </form>
+      <AnimatePresence>
+        {result && (
+          <motion.p
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            className={`font-jakarta text-xs mt-2 pl-10 flex items-center gap-1.5 ${result.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+          >
+            {result.ok ? <FiCheckCircle size={12} /> : <FiMapPin size={12} />} {result.msg}
+          </motion.p>
+        )}
+      </AnimatePresence>
+      {zones?.length > 0 && !result && (
+        <p className="font-jakarta text-[11px] text-dark-500 mt-1.5 pl-10">
+          We deliver to {zones.map((z) => z.area).join(', ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
+// Keyed by product id so gallery, quantity and review form reset when moving to another product.
 export default function ProductDetail() {
   const { id } = useParams();
+  return <ProductDetailView key={id} id={id} />;
+}
+
+function ProductDetailView({ id }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const product = useSelector(selectCurrentProduct);
   const isAuthenticated = useSelector(selectIsAuthenticated);
+  const user = useSelector(selectUser);
 
   const [loading, setLoading] = useState(true);
   const [activeImg, setActiveImg] = useState(0);
@@ -265,11 +366,24 @@ export default function ProductDetail() {
   const [hoverRating, setHoverRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [pendingWish, setPendingWish] = useState(null);
+  const [showStickyBar, setShowStickyBar] = useState(false);
+  const ctaRef = useRef(null);
+
+  // Mobile: show a sticky "Add to cart" bar once the main button scrolls out of view
+  useEffect(() => {
+    const el = ctaRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(([entry]) => setShowStickyBar(!entry.isIntersecting && entry.boundingClientRect.top < 0), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [loading, product?._id]);
 
   useEffect(() => {
-    setLoading(true);
-    dispatch(fetchProduct(id)).finally(() => setLoading(false));
+    let alive = true;
+    dispatch(fetchProduct(id)).finally(() => { if (alive) setLoading(false); });
     window.scrollTo(0, 0);
+    return () => { alive = false; };
   }, [id, dispatch]);
 
   useEffect(() => {
@@ -307,6 +421,42 @@ export default function ProductDetail() {
     toast.success(`${name} added to cart! 💎`);
   };
 
+  // Buy now → add to cart and go straight to checkout (login first if needed)
+  const handleBuyNow = () => {
+    if (stock === 0) return;
+    dispatch(addToCart({ ...product, quantity }));
+    if (!isAuthenticated) {
+      navigate('/login', { state: { from: { pathname: '/checkout' } } });
+      return;
+    }
+    navigate('/checkout');
+  };
+
+  const handleShare = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try { await navigator.share({ title: name, url }); return; } catch { /* cancelled → fall back to copy */ }
+    }
+    try { await navigator.clipboard.writeText(url); toast.success('Link copied!'); } catch { toast.error('Could not copy link'); }
+  };
+
+  const wishlistIds = (user?.wishlist || []).map((w) => (typeof w === 'object' && w !== null ? w._id : w));
+  const wishlisted = pendingWish ?? wishlistIds.includes(product._id);
+  const handleWishlist = async () => {
+    if (!isAuthenticated) { toast.error('Please login to save items'); return; }
+    const next = !wishlisted;
+    setPendingWish(next);
+    try {
+      const res = await userService.toggleWishlist(product._id);
+      dispatch(setUser(res.data.user)); // keep the in-memory access token
+      toast.success(next ? 'Saved to wishlist' : 'Removed from wishlist');
+    } catch {
+      toast.error('Failed to update wishlist');
+    } finally {
+      setPendingWish(null);
+    }
+  };
+
   const handleSubmitReview = async (e) => {
     e.preventDefault();
     if (!isAuthenticated) { toast.error('Please login to review'); return; }
@@ -338,58 +488,112 @@ export default function ProductDetail() {
   const savings = discountedPrice ? price - discountedPrice : 0;
   const displayPrice = discountedPrice || price;
 
+  const goImg = (dir) => setActiveImg((p) => (p + dir + displayImages.length) % displayImages.length);
+  const discountPct = discountedPrice ? Math.round(((price - discountedPrice) / price) * 100) : 0;
+
   const renderImageGallery = () => (
-    <div className="space-y-2.5">
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-dark-900 to-dark-950 border border-white/6 group shadow-xl"
-        style={{ aspectRatio: '6/5' }}
+    <div className="space-y-3 lg:sticky lg:top-24">
+      <div
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-dark-800 to-dark-950 border border-white/[0.06] group shadow-[0_30px_80px_rgba(0,0,0,0.5)] focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/40"
+        style={{ aspectRatio: '1 / 1' }}
+        tabIndex={0}
+        aria-label={`${name} images`}
+        onKeyDown={(e) => {
+          if (displayImages.length < 2) return;
+          if (e.key === 'ArrowLeft') goImg(-1);
+          if (e.key === 'ArrowRight') goImg(1);
+        }}
       >
-        <AnimatePresence mode="wait">
-          <motion.img
-            key={activeImg}
-            src={displayImages[activeImg]?.url ? resolveImageUrl(displayImages[activeImg].url) : placeholderImg}
-            alt={name}
-            initial={{ opacity: 0, scale: 1.02 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="w-full h-full object-cover"
-          />
-        </AnimatePresence>
+        {/* swipe between images on touch screens */}
+        <motion.div
+          className="absolute inset-0"
+          drag={displayImages.length > 1 ? 'x' : false}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.18}
+          onDragEnd={(_, info) => {
+            if (info.offset.x < -60) goImg(1);
+            else if (info.offset.x > 60) goImg(-1);
+          }}
+        >
+          <div className="absolute inset-0">
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={activeImg}
+                src={displayImages[activeImg]?.url ? resolveImageUrl(displayImages[activeImg].url) : placeholderImg}
+                alt={name}
+                draggable={false}
+                initial={{ opacity: 0, scale: 1.03 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="w-full h-full object-cover select-none"
+              />
+            </AnimatePresence>
+          </div>
+        </motion.div>
+
+        {/* top-left: discount; top-right: wishlist */}
+        {discountPct > 0 && (
+          <span className="absolute top-4 left-4 z-10 rounded-full bg-velvet-600/90 px-2.5 py-1 font-jakarta text-xs font-bold text-white shadow-lg">-{discountPct}%</span>
+        )}
+        <button
+          type="button"
+          onClick={handleWishlist}
+          aria-label={wishlisted ? 'Remove from wishlist' : 'Save to wishlist'}
+          aria-pressed={wishlisted}
+          className="absolute top-4 right-4 z-10 w-10 h-10 rounded-full bg-dark-900/75 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:text-velvet-400 hover:scale-110 transition-all"
+        >
+          <FiHeart size={16} className={wishlisted ? 'fill-velvet-400 text-velvet-400' : ''} />
+        </button>
+
         {stock === 0 && (
-          <div className="absolute inset-0 bg-dark-900/60 flex items-center justify-center">
+          <div className="absolute inset-0 z-10 bg-dark-900/60 flex items-center justify-center pointer-events-none">
             <span className="badge badge-red text-sm px-4 py-2">Out of Stock</span>
           </div>
         )}
         {displayImages.length > 1 && (
           <>
             <button
-              onClick={() => setActiveImg((p) => (p === 0 ? displayImages.length - 1 : p - 1))}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 glass rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
+              type="button"
+              onClick={() => goImg(-1)}
+              aria-label="Previous image"
+              className="absolute z-10 left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
             >
-              <FiChevronLeft size={16} />
+              <FiChevronLeft size={18} />
             </button>
             <button
-              onClick={() => setActiveImg((p) => (p === displayImages.length - 1 ? 0 : p + 1))}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 glass rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/20"
+              type="button"
+              onClick={() => goImg(1)}
+              aria-label="Next image"
+              className="absolute z-10 right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
             >
-              <FiChevronRight size={16} />
+              <FiChevronRight size={18} />
             </button>
+            {/* dots */}
+            <div className="absolute z-10 bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full bg-dark-900/60 backdrop-blur-md px-2.5 py-1.5">
+              {displayImages.map((img, i) => (
+                <button
+                  key={img._id || img.url || i}
+                  type="button"
+                  onClick={() => setActiveImg(i)}
+                  aria-label={`Image ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${i === activeImg ? 'w-5 bg-gold-400' : 'w-1.5 bg-white/40 hover:bg-white/70'}`}
+                />
+              ))}
+            </div>
           </>
-        )}
-        {displayImages.length > 1 && (
-          <div className="absolute bottom-3 right-3 glass px-2.5 py-1 rounded-full text-xs text-white/70">
-            {activeImg + 1} / {displayImages.length}
-          </div>
         )}
       </div>
       {displayImages.length > 1 && (
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+        <div className="flex gap-2.5 overflow-x-auto scrollbar-hide pb-1">
           {displayImages.map((img, i) => (
             <button
               key={img._id || img.url || img}
+              type="button"
               onClick={() => setActiveImg(i)}
-              className={`flex-shrink-0 w-14 h-14 rounded-xl overflow-hidden border-2 transition-all ${
-                activeImg === i ? 'border-gold-500 shadow-gold' : 'border-white/8 hover:border-white/25'
+              aria-label={`Show image ${i + 1}`}
+              className={`relative flex-shrink-0 w-16 h-16 sm:w-[72px] sm:h-[72px] rounded-xl overflow-hidden transition-all duration-300 ${
+                activeImg === i ? 'ring-2 ring-gold-500 ring-offset-2 ring-offset-dark-900' : 'opacity-60 hover:opacity-100 ring-1 ring-white/10'
               }`}
             >
               <img src={resolveImageUrl(img.url)} alt="" className="w-full h-full object-cover" />
@@ -401,12 +605,12 @@ export default function ProductDetail() {
   );
 
   const renderReviewsSection = () => (
-    <div id="reviews-section" className="border-t border-white/8 mt-20 pt-16">
+    <div id="reviews-section" className="border-t border-white/[0.06] mt-14 pt-12 scroll-mt-24">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <p className="section-subtitle mb-1">What Customers Say</p>
-          <h2 className="font-display text-2xl text-white">
-            Reviews{' '}<span className="text-dark-500 text-base font-sans font-normal ml-2">({numReviews})</span>
+          <p className="font-jakarta text-[11px] font-semibold tracking-[0.3em] text-gold-500 uppercase mb-2">What customers say</p>
+          <h2 className="font-serif text-2xl sm:text-3xl text-white font-semibold leading-tight pt-0">
+            Reviews{' '}<span className="text-dark-500 text-base font-jakarta font-normal ml-1">({numReviews})</span>
           </h2>
         </div>
         {numReviews > 3 && (
@@ -445,7 +649,7 @@ export default function ProductDetail() {
             </div>
             {!isAuthenticated ? (
               <p className="text-dark-400 text-sm">
-                <button onClick={() => navigate('/auth?type=login')} className="text-gold-400 hover:underline">Log in</button>
+                <button onClick={() => navigate('/login')} className="text-gold-400 hover:underline">Log in</button>
                 {' '}to leave a review.
               </p>
             ) : (
@@ -487,179 +691,237 @@ export default function ProductDetail() {
     </div>
   );
 
+  const specs = [
+    material && { icon: FiAward, label: 'Material', value: material },
+    purity && { icon: FiShield, label: 'Purity', value: purity },
+    weightValue && { icon: FiPackage, label: 'Weight', value: `${weightValue}${unit === 'kg' ? ' kg' : ' g'}` },
+    category?.name && { icon: FiStar, label: 'Category', value: category.name },
+  ].filter(Boolean);
+
   return (
-    <div className="min-h-screen pt-20 pb-16">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="relative min-h-screen pt-24 pb-24 lg:pb-16 overflow-x-clip">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(60%_100%_at_70%_0%,rgba(212,175,55,0.08),transparent_70%)]" aria-hidden="true" />
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-2 text-xs text-dark-500 mb-4">
-          <button onClick={() => navigate('/')} className="hover:text-gold-400 transition-colors">Home</button>
-          <span>/</span>
-          <button onClick={() => navigate('/shop')} className="hover:text-gold-400 transition-colors">Shop</button>
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 font-jakarta text-xs text-dark-500 mb-5 min-w-0">
+          <Link to="/" className="hover:text-gold-400 transition-colors">Home</Link>
+          <FiChevronRight size={11} className="text-dark-600 flex-shrink-0" />
+          <Link to="/shop" className="hover:text-gold-400 transition-colors">Shop</Link>
           {category?.name && (
             <>
-              <span>/</span>
-              <button
-                onClick={() => navigate(`/shop?category=${category._id}`)}
-                className="hover:text-gold-400 transition-colors"
-              >{category.name}</button>
+              <FiChevronRight size={11} className="text-dark-600 flex-shrink-0" />
+              <Link to={`/shop?category=${category._id}`} className="hover:text-gold-400 transition-colors">{category.name}</Link>
             </>
           )}
-          <span>/</span>
-          <span className="text-dark-400 truncate max-w-[160px]">{name}</span>
+          <FiChevronRight size={11} className="text-dark-600 flex-shrink-0" />
+          <span className="text-dark-300 truncate">{name}</span>
         </nav>
 
         {/* Product Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-20 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-start">
 
           {/* ── Image Gallery ── */}
           {renderImageGallery()}
 
           {/* ── Product Info ── */}
           <motion.div
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.4 }}
-            className="flex flex-col gap-3.5"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45 }}
+            className="flex flex-col gap-4"
           >
             {/* Badges */}
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="badge badge-gold">{material}</span>
               {purity && <span className="badge badge-blue">{purity}</span>}
               {stock === 0 && <span className="badge badge-red">Out of Stock</span>}
-              {stock > 0 && stock <= 5 && <span className="badge badge-gold">Only {stock} left</span>}
+              {stock > 0 && stock <= 5 && (
+                <span className="badge badge-gold inline-flex items-center gap-1.5">
+                  <span className="relative flex w-1.5 h-1.5"><span className="absolute inline-flex h-full w-full rounded-full bg-gold-400 opacity-70 animate-ping" /><span className="relative inline-flex w-1.5 h-1.5 rounded-full bg-gold-400" /></span>
+                  Only {stock} left
+                </span>
+              )}
             </div>
 
             {/* Name */}
-            <h1 className="font-display text-2xl md:text-3xl text-white font-medium leading-tight tracking-tight">
+            <h1 className="font-serif text-3xl md:text-[2.5rem] text-white font-semibold leading-[1.15] pt-0 tracking-tight">
               {name}
             </h1>
 
             {/* Rating row */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 -mt-1">
               {numReviews > 0 ? (
                 <>
                   <StarRow rating={averageRating} size={13} />
                   <span className="text-gold-400 text-xs font-semibold font-jakarta">{averageRating}</span>
                   <button
+                    type="button"
                     onClick={() => document.getElementById('reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="text-dark-500 text-xs hover:text-dark-300 transition-colors"
+                    className="font-jakarta text-dark-400 text-xs hover:text-gold-400 underline-offset-2 hover:underline transition-colors"
                   >
-                    ({numReviews} {numReviews === 1 ? 'review' : 'reviews'})
+                    {numReviews} {numReviews === 1 ? 'review' : 'reviews'}
                   </button>
                 </>
               ) : (
-                <span className="text-dark-600 text-xs">No reviews yet</span>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById('reviews-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="font-jakarta text-dark-500 text-xs hover:text-gold-400 transition-colors"
+                >
+                  No reviews yet · be the first
+                </button>
               )}
             </div>
 
             {/* Price */}
-            <div className="flex items-baseline gap-3">
-              <span className="text-2xl md:text-3xl font-bold text-gold-500 font-jakarta">
-                {formatPrice(displayPrice)}
-              </span>
-              {discountedPrice && (
-                <>
-                  <span className="text-dark-500 text-base line-through font-jakarta">{formatPrice(price)}</span>
-                  <span className="badge badge-green">Save {formatPrice(savings)}</span>
-                </>
-              )}
+            <div className="border-y border-white/[0.06] py-3">
+              <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                <span className="text-xl md:text-2xl font-semibold text-gold-400 font-jakarta">
+                  {displayPrice > 0 ? formatPrice(displayPrice) : 'Price on request'}
+                </span>
+                {discountedPrice && (
+                  <>
+                    <span className="text-dark-500 text-sm line-through font-jakarta">{formatPrice(price)}</span>
+                    <span className="badge badge-green">Save {formatPrice(savings)}</span>
+                  </>
+                )}
+              </div>
+              <p className="font-jakarta text-[11px] text-dark-400 mt-1">+ {product.gst ?? 3}% GST · shipping calculated at checkout from your PIN code</p>
             </div>
 
             {/* Description */}
-            <p className="text-dark-400 text-sm leading-relaxed border-t border-white/6 pt-3">
-              {description}
-            </p>
+            {description && (
+              <p className="font-jakarta text-dark-300 text-sm leading-relaxed">{description}</p>
+            )}
 
-            {/* Specs row */}
-            {(weightValue || purity || material) && (
-              <div className="grid grid-cols-3 gap-2">
-                {material && (
-                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
-                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Material</p>
-                    <p className="text-white text-sm font-medium">{material}</p>
-                  </div>
-                )}
-                {purity && (
-                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
-                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Purity</p>
-                    <p className="text-white text-sm font-medium">{purity}</p>
-                  </div>
-                )}
-                {weightValue && (
-                  <div className="bg-dark-800/50 rounded-xl p-2.5 text-center border border-white/5">
-                    <p className="text-[9px] text-dark-500 uppercase tracking-wider mb-0.5">Weight</p>
-                    <p className="text-white text-sm font-medium">{weightValue}{unit || 'g'}</p>
-                  </div>
-                )}
+            {/* Specs */}
+            {specs.length > 0 && (
+              <div className={`grid gap-2 ${specs.length >= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
+                {specs.map((sp) => {
+                  const SIcon = sp.icon;
+                  return (
+                    <div key={sp.label} className="group rounded-xl border border-white/[0.06] bg-dark-800/50 px-3 py-2.5 transition-colors hover:border-gold-500/30">
+                      <p className="flex items-center gap-1.5 font-jakarta text-[10px] text-dark-500 uppercase tracking-[0.14em] mb-0.5">
+                        <SIcon size={10} className="text-gold-600" /> {sp.label}
+                      </p>
+                      <p className="font-jakarta text-white text-sm font-semibold truncate">{sp.value}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {/* Quantity */}
             {stock > 0 && (
               <div className="flex items-center gap-3">
-                <span className="text-xs text-dark-400">Qty</span>
-                <div className="flex items-center bg-dark-800 rounded-xl border border-white/10 p-1">
+                <span className="font-jakarta text-xs text-dark-400">Quantity</span>
+                <div className="flex items-center bg-dark-800 rounded-full border border-white/10 p-1">
                   <button
+                    type="button"
                     onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    className="w-7 h-7 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
+                    disabled={quantity <= 1}
+                    aria-label="Decrease quantity"
+                    className="w-8 h-8 rounded-full hover:bg-dark-700 flex items-center justify-center text-dark-300 hover:text-white transition-colors disabled:opacity-30"
                   >
-                    <FiMinus size={12} />
+                    <FiMinus size={13} />
                   </button>
-                  <span className="w-8 text-center text-white text-sm font-semibold">{quantity}</span>
+                  <span className="w-9 text-center text-white text-sm font-semibold font-jakarta tabular-nums" aria-live="polite">{quantity}</span>
                   <button
+                    type="button"
                     onClick={() => setQuantity(Math.min(stock, quantity + 1))}
-                    className="w-7 h-7 rounded-lg hover:bg-dark-700 flex items-center justify-center text-dark-400 hover:text-white transition-colors"
+                    disabled={quantity >= stock}
+                    aria-label="Increase quantity"
+                    className="w-8 h-8 rounded-full hover:bg-dark-700 flex items-center justify-center text-dark-300 hover:text-white transition-colors disabled:opacity-30"
                   >
-                    <FiPlus size={12} />
+                    <FiPlus size={13} />
                   </button>
                 </div>
-                <span className="text-xs text-dark-600">{stock} in stock</span>
+                <span className={`font-jakarta text-xs ${stock <= 5 ? 'text-amber-400' : 'text-dark-500'}`}>{stock} in stock</span>
               </div>
             )}
 
             {/* CTA */}
-            <div className="flex gap-2.5">
+            <div ref={ctaRef} className="flex gap-2.5">
               <button
                 id="add-to-cart-detail-btn"
+                type="button"
                 onClick={handleAddToCart}
                 disabled={stock === 0}
-                className="flex-1 btn-gold py-3 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 btn-gold py-3.5 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <FiShoppingBag size={15} />
                 {stock === 0 ? 'Out of Stock' : 'Add to Cart'}
               </button>
+              {stock > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBuyNow}
+                  className="flex-1 btn-outline-gold py-3.5 text-sm gap-2"
+                >
+                  <FiZap size={15} /> Buy Now
+                </button>
+              )}
               <button
-                onClick={() => { navigator.clipboard.writeText(window.location.href); toast.success('Link copied!'); }}
-                className="p-3 rounded-xl bg-dark-800 border border-white/10 text-dark-400 hover:text-white transition-colors"
+                type="button"
+                onClick={handleShare}
+                aria-label="Share"
+                className="w-12 flex-shrink-0 rounded-xl bg-dark-800 border border-white/10 text-dark-300 hover:text-gold-400 hover:border-gold-500/40 transition-colors flex items-center justify-center"
                 title="Share"
               >
-                <FiShare2 size={15} />
+                <FiShare2 size={16} />
               </button>
             </div>
 
+            {/* Delivery check */}
+            <DeliveryCheck />
+
             {/* Trust badges */}
-            <div className="flex gap-2">
-              <div className="glass-gold rounded-xl p-2.5 flex items-center gap-2 flex-1">
-                <FiShield size={13} className="text-gold-500 flex-shrink-0" />
-                <p className="text-xs text-dark-300">Certified Authentic</p>
-              </div>
-              <div className="glass-gold rounded-xl p-2.5 flex items-center gap-2 flex-1">
-                <FiPackage size={13} className="text-gold-500 flex-shrink-0" />
-                <p className="text-xs text-dark-300">Premium Packaging</p>
-              </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { icon: FiShield, label: 'Certified authentic' },
+                { icon: FiLock, label: 'Secure payment' },
+                { icon: FiPackage, label: 'Premium packaging' },
+              ].map((t) => {
+                const TIcon = t.icon;
+                return (
+                  <div key={t.label} className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-2 rounded-xl border border-gold-500/10 bg-gold-500/[0.04] px-2 py-2.5 text-center sm:text-left">
+                    <TIcon size={14} className="text-gold-500 flex-shrink-0" />
+                    <p className="font-jakarta text-[11px] sm:text-xs text-dark-300 leading-tight">{t.label}</p>
+                  </div>
+                );
+              })}
             </div>
           </motion.div>
         </div>
 
         {/* ── Related Products ── */}
-        <div className="mt-20">
-          <RelatedProducts categoryId={category?._id} currentProductId={id} />
+        <div className="mt-14 sm:mt-16 border-t border-white/[0.06]">
+          <RelatedProducts categoryId={category?._id} categoryName={category?.name} material={material} currentProductId={id} />
         </div>
 
         {/* ── Reviews Section ── */}
         {renderReviewsSection()}
       </div>
+
+      {/* Mobile sticky buy bar */}
+      <AnimatePresence>
+        {showStickyBar && stock > 0 && (
+          <motion.div
+            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            className="lg:hidden fixed bottom-0 inset-x-0 z-30 border-t border-white/10 bg-dark-900/95 backdrop-blur-md px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex items-center gap-3"
+          >
+            <img src={displayImages[0]?.url ? resolveImageUrl(displayImages[0].url) : placeholderImg} alt="" className="w-11 h-11 rounded-lg object-cover border border-white/10" />
+            <div className="flex-1 min-w-0">
+              <p className="font-jakarta text-white text-xs font-medium truncate">{name}</p>
+              <p className="font-jakarta text-gold-400 text-sm font-bold">{displayPrice > 0 ? formatPrice(displayPrice) : 'Price on request'}</p>
+            </div>
+            <button type="button" onClick={handleAddToCart} className="btn-gold py-2.5 px-4 text-sm gap-1.5">
+              <FiShoppingBag size={14} /> Add
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* All Reviews Modal */}
       {showAllReviews && (
@@ -674,3 +936,5 @@ export default function ProductDetail() {
     </div>
   );
 }
+
+ProductDetailView.propTypes = { id: PropTypes.string.isRequired };
