@@ -8,7 +8,7 @@ import {
   FiMapPin, FiCheckCircle, FiStar, FiInfo,
 } from 'react-icons/fi';
 import { selectUser } from '../store/authSlice';
-import { customOrderService, userService } from '../services/services';
+import { customOrderService, userService, orderService } from '../services/services';
 import { formatDate, BLANK_ADDRESS, REQUIRED_ADDR_FIELDS } from '../utils/helpers';
 import toast from 'react-hot-toast';
 import AddressSelector from '../components/common/AddressSelector';
@@ -165,6 +165,13 @@ export default function CustomOrder() {
     return addresses.find((a) => a._id === selectedAddrId) ?? null;
   }, [showNewAddr, newAddr, addresses, selectedAddrId]);
 
+  // Delivery areas + shipping charge per PIN — the same list shop checkout uses (server: utils/shippingRates.js)
+  const [zones, setZones] = useState(null);
+  useEffect(() => {
+    orderService.getShippingZones().then((r) => setZones(r.data.zones || [])).catch(() => setZones(null));
+  }, []);
+  const zoneFor = (pin) => zones?.find((z) => z.pincode === String(pin || '').replaceAll(/\s+/g, '')) || null;
+
   const validateAddress = useCallback((addr) => {
     for (const f of REQUIRED_ADDR_FIELDS) {
       if (!addr[f]?.trim()) {
@@ -173,11 +180,15 @@ export default function CustomOrder() {
       }
     }
     if (!/^\d{6}$/.test(addr.pincode)) { toast.error('PIN code must be 6 digits'); return false; }
+    if (zones?.length && !zones.some((z) => z.pincode === String(addr.pincode).trim())) {
+      toast.error(`Sorry, we do not deliver to PIN ${addr.pincode} yet. We deliver to: ${zones.map((z) => `${z.area} (${z.pincode})`).join(', ')}`, { duration: 6000 });
+      return false;
+    }
     if (!/^[6-9]\d{9}$/.test(addr.phone.replaceAll(/\s/g, ''))) {
       toast.error('Please enter a valid 10-digit Indian mobile number'); return false;
     }
     return true;
-  }, []);
+  }, [zones]);
 
   // ── Step validation ─────────────────────────────────────────────────────────
 
@@ -337,6 +348,12 @@ export default function CustomOrder() {
           <p className="text-dark-400 text-sm">{addr.addressLine1}{addr.addressLine2 ? `, ${addr.addressLine2}` : ''}</p>
           <p className="text-dark-400 text-sm">{addr.city}, {addr.state} — {addr.pincode}</p>
           <p className="text-dark-500 text-sm">{addr.phone}</p>
+          {zoneFor(addr.pincode) && (
+            <p className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-sm">
+              <span className="text-dark-400">Shipping to {zoneFor(addr.pincode).area} ({addr.pincode})</span>
+              <span className="text-gold-400 font-semibold">₹{zoneFor(addr.pincode).charge.toLocaleString('en-IN')}</span>
+            </p>
+          )}
         </div>
       )}
       <div className="glass-gold rounded-2xl p-4 flex items-start gap-3">
@@ -345,6 +362,7 @@ export default function CustomOrder() {
           <p className="text-white text-sm font-medium mb-1">What happens next?</p>
           <p className="text-dark-400 text-xs leading-relaxed">
             Our artisans will review your request and send a personalised quote within <strong className="text-white">24–48 hours</strong>.
+            The quote shows the piece price, GST and the shipping charge for your PIN code.
             You&apos;ll see the quote on your Custom Orders page. Once you accept and pay, we begin crafting your piece.
             No payment is taken today.
           </p>

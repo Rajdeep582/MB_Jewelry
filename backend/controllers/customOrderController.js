@@ -10,6 +10,8 @@ const logger = require('../utils/logger');
 const GlobalPricing = require('../models/GlobalPricing');
 const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
 const { buildOrderSearch } = require('../utils/orderSearch');
+const { getShippingForPincode, getSupportedZones } = require('../utils/shippingRates');
+const { assignInvoiceNumber } = require('../utils/invoiceNumber');
 
 // Fields a customer must never receive (internal notes + payment signatures)
 const CUSTOMER_HIDDEN = '-advancePayment.razorpaySignature -finalPayment.razorpaySignature -adminNotes';
@@ -63,6 +65,13 @@ const createCustomOrder = async (req, res) => {
   if (addrError) {
     return res.status(400).json({ success: false, message: addrError });
   }
+
+  // Same delivery rule as shop orders: only PIN codes in utils/shippingRates.js
+  const zone = getShippingForPincode(shippingAddress.pincode);
+  if (!zone.ok) {
+    return res.status(400).json({ success: false, code: zone.code, message: zone.message, supportedZones: getSupportedZones() });
+  }
+  shippingAddress.pincode = zone.pincode;
 
   // Build reference images from uploaded files (multer populates req.files)
   const referenceImages = (req.files || []).map((file) => {
@@ -234,7 +243,7 @@ const createCustomPayment = async (req, res) => {
   if ((!amountToPay || amountToPay <= 0) && order.quoteAmount > 0) {
     const _shGstRate  = await getCustomGstRate(order.material, order.purity);
     const taxAmount     = Math.round(order.quoteAmount * _shGstRate);
-    const totalAmount   = order.quoteAmount + taxAmount;
+    const totalAmount   = order.quoteAmount + taxAmount + (order.shippingAmount || 0);
     const advanceAmount = Math.round(totalAmount * 0.7);
     const finalAmount   = totalAmount - advanceAmount;
 
@@ -423,6 +432,8 @@ async function confirmCustomPayment({ customOrderId, phase, razorpayOrderId, raz
     await session.commitTransaction();
     session.endSession();
     logger.info(`Custom order payment (${phase}) confirmed via ${via}: order=${customOrderId}`);
+    // Tax invoice for the full value is issued once the balance is paid (after the commit)
+    if (phase === 'final') await assignInvoiceNumber(CustomOrder, customOrderId, updated.finalPayment?.paidAt);
     return { ok: true };
   } catch (err) {
     await session.abortTransaction().catch(() => {});
@@ -672,11 +683,23 @@ const setQuote = async (req, res) => {
     });
   }
 
+  // Shipping: same PIN-code mapping as shop orders (utils/shippingRates.js) — no fallback charge
+  const zone = getShippingForPincode(order.shippingAddress?.pincode);
+  if (!zone.ok) {
+    return res.status(400).json({
+      success: false,
+      code: zone.code,
+      message: `Cannot quote: ${zone.message} Ask the customer to send the request again with a serviceable PIN code.`,
+      supportedZones: getSupportedZones(),
+    });
+  }
+
   order.quoteAmount   = numQuote;
-  // GST from GlobalPricing for this material/purity (purity labels mapped), fallback 18%
+  // GST from GlobalPricing for this material/purity (purity labels mapped), fallback 18%. GST is on the piece, not on shipping.
   const _gstRate = await getCustomGstRate(order.material, order.purity);
   order.taxAmount     = Math.round(order.quoteAmount * _gstRate);
-  order.totalAmount   = order.quoteAmount + order.taxAmount;
+  order.shippingAmount = zone.charge;
+  order.totalAmount   = order.quoteAmount + order.taxAmount + order.shippingAmount;
 
   if (order.advancePayment?.status === 'paid') {
     // If advance is already paid, keep the existing advanceAmount
@@ -713,7 +736,7 @@ const setQuote = async (req, res) => {
 
   order.trackingHistory.push({
     status:    'quoted',
-    comment:   quoteNote || `Quote set: ₹${order.quoteAmount} (+${Math.round(_gstRate * 100)}% GST). Advance: ₹${order.advanceAmount}`,
+    comment:   quoteNote || `Quote set: ₹${order.quoteAmount} + ${Math.round(_gstRate * 100)}% GST ₹${order.taxAmount} + shipping ₹${order.shippingAmount} = ₹${order.totalAmount}. Advance: ₹${order.advanceAmount}`,
     updatedBy: req.user._id,
   });
 

@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FiChevronDown, FiX, FiAlertCircle, FiRefreshCw, FiSearch,
-  FiPackage, FiTruck, FiClock, FiUser, FiMail,
+  FiPackage, FiTruck, FiUser, FiMail, FiInbox,
   FiPhone, FiMapPin, FiCreditCard, FiCalendar,
-  FiChevronUp, FiEdit2, FiFilter, FiRadio, FiDownload,
+  FiEdit2, FiFilter, FiRadio, FiDownload,
 } from 'react-icons/fi';
 import PropTypes from 'prop-types';
 import { orderService, adminService } from '../../services/services';
 import { downloadInvoice } from '../../utils/invoice';
 import {
-  formatPrice, formatDate, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl,
+  formatPrice, formatDateTime, formatCalendarDate, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl,
 } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Chip, KV, SectionTitle, CopyBtn, BillRow, Timeline } from '../../components/admin/OrderDetailUI';
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 const DELIVERY_STATUSES = ['ready_to_ship', 'shipped', 'delivered'];
@@ -54,14 +55,6 @@ const STATUS_FILTER_OPTIONS = [
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
-function formatDateTime(date) {
-  if (!date) return '—';
-  return new Date(date).toLocaleString('en-IN', {
-    day: 'numeric', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
-}
-
 function getNotePlaceholder(status) {
   if (status === 'shipped') return 'e.g. Dispatched via courier…';
   if (status === 'delivered') return 'e.g. Delivered to recipient…';
@@ -398,381 +391,244 @@ UpdateModal.propTypes = {
   onSaved: PropTypes.func.isRequired,
 };
 
-// ─── Order Detail Drawer ────────────────────────────────────────────────────────
-function OrderDetailDrawer({ order, onUpdate, onRefresh }) {
-  const [showTimeline, setShowTimeline] = useState(true);
-  const reversed = [...(order.trackingHistory || [])].reverse();
+// ─── Display helpers ────────────────────────────────────────────────────────────
+const displayOrderId = (order) => order.orderId || `#${order._id.slice(-8).toUpperCase()}`;
+const trackingNo = (order) => (order.deliveryId ? `MB-${order.deliveryId.replaceAll('-', '').slice(-8).toUpperCase()}` : '');
+const customerName = (order) => order.user?.name || order.shippingAddress?.fullName || 'Deleted account';
+
+const PAYMENT_CHIP = {
+  paid:     { label: 'Paid',            cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' },
+  pending:  { label: 'Payment pending', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/25' },
+  failed:   { label: 'Payment failed',  cls: 'text-red-300 bg-red-500/10 border-red-500/20' },
+  refunded: { label: 'Refunded',        cls: 'text-sky-300 bg-sky-500/10 border-sky-500/20' },
+};
+const paymentChip = (order) => PAYMENT_CHIP[order.payment?.status] || PAYMENT_CHIP.pending;
+
+// ─── Order Details (expanded card) ──────────────────────────────────────────────
+function OrderDetails({ order }) {
+  const addr = order.shippingAddress || {};
+  const pay = order.payment || {};
+  const chip = paymentChip(order);
+  const gstPct = order.itemsPrice > 0 && order.taxPrice > 0 ? Math.round((order.taxPrice / order.itemsPrice) * 100) : null;
+  const itemCount = (order.items || []).reduce((n, it) => n + (it.quantity || 1), 0);
+  const hasDelivery = order.deliveryId || order.dispatchedAt || order.estimatedDelivery || order.dpConfirmedAt || order.deliveredAt;
 
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={{ opacity: 0, height: 0 }}
-      transition={{ duration: 0.25 }}
+      initial={{ height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.22, ease: 'easeOut' }}
       className="overflow-hidden"
     >
-      <div className="bg-dark-900/50 border-t border-white/5 p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="border-t border-white/[0.06] bg-dark-900/50 p-4 grid gap-4 lg:grid-cols-3">
 
-        {/* LEFT — Items + Pricing */}
-        <div className="lg:col-span-2 space-y-4">
-
-          <div>
-            <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <FiPackage size={11} /> Order Items
-            </h4>
-            <div className="space-y-3">
-              {order.items?.map((item) => (
-                <div key={item._id || item.product || item.name} className="flex gap-3 items-center">
-                  <div className="w-12 h-12 rounded-lg bg-dark-700 overflow-hidden flex-shrink-0 border border-white/5">
-                    <img
-                      src={resolveImageUrl(item.image) || ''}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      onError={e => { e.target.style.display = 'none'; }}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-dark-500 text-xs">
-                      Qty {item.quantity} × {formatPrice(item.price)}
-                    </p>
-                  </div>
-                  <p className="text-gold-400 text-sm font-semibold flex-shrink-0">
-                    {formatPrice(item.price * item.quantity)}
-                  </p>
+        {/* ── Items & bill ── */}
+        <section className="min-w-0">
+          <SectionTitle icon={FiPackage} right={<span className="text-[11px] text-dark-500">{itemCount} item{itemCount !== 1 ? 's' : ''}</span>}>Items &amp; bill</SectionTitle>
+          <ul className="space-y-2 max-h-56 overflow-y-auto overscroll-contain pr-1" data-lenis-prevent="true">
+            {order.items?.map((item) => (
+              <li key={item._id || item.product || item.name} className="flex items-center gap-2.5">
+                <div className="w-11 h-11 rounded-lg bg-dark-800 overflow-hidden shrink-0 border border-white/10 flex items-center justify-center">
+                  {item.image
+                    ? <img src={resolveImageUrl(item.image)} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    : <FiPackage size={14} className="text-dark-600" />}
                 </div>
-              ))}
-            </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-xs font-medium truncate" title={item.name}>{item.name}</p>
+                  <p className="text-dark-500 text-[11px] tabular-nums">{item.quantity} × {formatPrice(item.price)}</p>
+                </div>
+                <p className="text-dark-100 text-xs font-semibold tabular-nums shrink-0">{formatPrice(item.price * item.quantity)}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 pt-2.5 border-t border-white/[0.06] space-y-1 text-xs tabular-nums">
+            <BillRow label="Subtotal (excl. GST)">{formatPrice(order.itemsPrice)}</BillRow>
+            <BillRow label={`Shipping${addr.pincode ? ` (PIN ${addr.pincode})` : ''}`}>
+              {order.shippingPrice > 0 ? formatPrice(order.shippingPrice) : <span className="text-emerald-400">Free</span>}
+            </BillRow>
+            <BillRow label={`GST${gstPct !== null ? ` (${gstPct}%)` : ''}`}>{formatPrice(order.taxPrice || 0)}</BillRow>
+            <BillRow label="Total" strong>{formatPrice(order.totalAmount)}</BillRow>
+          </div>
+        </section>
 
-            <div className="border-t border-white/[0.08] mt-4 pt-3 space-y-1.5 text-xs">
-              <div className="flex justify-between text-dark-500">
-                <span>Subtotal</span><span className="text-dark-300">{formatPrice(order.itemsPrice)}</span>
-              </div>
-              <div className="flex justify-between text-dark-500">
-                <span>Shipping</span>
-                <span className="text-dark-300">{order.shippingPrice > 0 ? formatPrice(order.shippingPrice) : 'Free'}</span>
-              </div>
-              <div className="flex justify-between text-dark-500">
-                <span>Tax (GST)</span><span className="text-dark-300">{formatPrice(order.taxPrice)}</span>
-              </div>
-              <div className="flex justify-between font-semibold border-t border-white/[0.08] pt-2 mt-1 text-sm">
-                <span className="text-white">Total</span>
-                <span className="text-gold-500">{formatPrice(order.totalAmount)}</span>
-              </div>
-            </div>
+        {/* ── Payment & customer ── */}
+        <section className="min-w-0 lg:border-l lg:border-white/[0.06] lg:pl-4 space-y-4">
+          <div>
+            <SectionTitle icon={FiCreditCard} right={<Chip className={chip.cls}>{chip.label}</Chip>}>Payment</SectionTitle>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+              <KV label="Placed">{formatDateTime(order.createdAt)}</KV>
+              <KV label="Paid">{pay.paidAt ? formatDateTime(pay.paidAt) : null}</KV>
+              <KV label="Method">{PAYMENT_METHOD_LABELS[pay.method] || pay.method}</KV>
+              <KV label="Invoice no." mono>{order.invoiceNumber || null}</KV>
+              <KV label="Amount">{formatPrice(order.totalAmount)}</KV>
+              {pay.razorpayPaymentId && (
+                <div className="col-span-2 min-w-0">
+                  <dt className="text-[10px] uppercase tracking-wider text-dark-500">Payment ID</dt>
+                  <dd className="flex items-center gap-1 text-xs text-dark-200 font-mono mt-0.5 break-all">{pay.razorpayPaymentId}<CopyBtn value={pay.razorpayPaymentId} label="Payment ID" /></dd>
+                </div>
+              )}
+              <KV label="Failure reason" className="col-span-2">{pay.failReason ? <span className="text-red-400">{pay.failReason}</span> : null}</KV>
+            </dl>
+            {pay.status === 'paid' && (
+              <button
+                type="button"
+                onClick={() => downloadInvoice(order)}
+                className="mt-3 w-full py-2 text-xs inline-flex items-center justify-center gap-1.5 text-gold-300 bg-gold-500/10 border border-gold-500/20 hover:bg-gold-500/20 rounded-xl transition-colors"
+              >
+                <FiDownload size={12} /> Download tax invoice
+              </button>
+            )}
           </div>
 
           <div>
-            <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <FiCreditCard size={11} /> Payment Details
-            </h4>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <p className="text-dark-500 mb-0.5">Method</p>
-                <p className="text-dark-300 font-medium">{PAYMENT_METHOD_LABELS[order.payment?.method] || order.payment?.method}</p>
-              </div>
-              <div>
-                <p className="text-dark-500 mb-0.5">Status</p>
-                <span className={getPaymentStatusColor(order.payment?.status)}>{order.payment?.status}</span>
-              </div>
-              {order.payment?.paidAt && (
-                <div className="col-span-2">
-                  <p className="text-dark-500 mb-0.5">Paid At</p>
-                  <p className="text-dark-300">{formatDateTime(order.payment.paidAt)}</p>
-                </div>
+            <SectionTitle icon={FiUser}>Customer</SectionTitle>
+            <div className="text-xs space-y-1">
+              <p className="text-white font-medium">{customerName(order)}</p>
+              {order.user?.email && (
+                <a href={`mailto:${order.user.email}`} className="flex items-center gap-1.5 text-dark-400 hover:text-gold-400 break-all"><FiMail size={11} className="shrink-0" />{order.user.email}</a>
               )}
-              {order.payment?.razorpayPaymentId && (
-                <div className="col-span-2">
-                  <p className="text-dark-500 mb-0.5">Razorpay Payment ID</p>
-                  <p className="text-dark-300 font-mono break-all">{order.payment.razorpayPaymentId}</p>
-                </div>
+              {(addr.phone || order.user?.phone) && (
+                <a href={`tel:${addr.phone || order.user.phone}`} className="flex items-center gap-1.5 text-dark-400 hover:text-gold-400"><FiPhone size={11} className="shrink-0" />{addr.phone || order.user.phone}</a>
               )}
-              {order.payment?.failReason && (
-                <div className="col-span-2">
-                  <p className="text-dark-500 mb-0.5">Failure Reason</p>
-                  <p className="text-red-400">{order.payment.failReason}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT — Customer, Shipping, DP Confirm, Timeline */}
-        <div className="space-y-4">
-
-          <div>
-            <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <FiUser size={11} /> Customer
-            </h4>
-            <div className="text-xs space-y-1.5">
-              <p className="text-white font-medium flex items-center gap-1.5">
-                <FiUser size={10} className="text-dark-500" />
-                {order.user?.name || 'N/A'}
-              </p>
-              <a href={`mailto:${order.user?.email}`} className="text-dark-400 hover:text-gold-400 transition-colors flex items-center gap-1.5">
-                <FiMail size={10} className="text-dark-500" />
-                {order.user?.email}
-              </a>
-              {order.shippingAddress?.phone && (
-                <p className="text-dark-400 flex items-center gap-1.5">
-                  <FiPhone size={10} className="text-dark-500" />
-                  {order.shippingAddress.phone}
+              {addr.addressLine1 && (
+                <p className="flex items-start gap-1.5 text-dark-400 pt-0.5">
+                  <FiMapPin size={11} className="shrink-0 mt-0.5" />
+                  <span>
+                    {addr.fullName && addr.fullName !== customerName(order) && <span className="text-dark-200">{addr.fullName}, </span>}
+                    {[addr.addressLine1, addr.addressLine2, addr.city, addr.state].filter(Boolean).join(', ')} — <span className="text-dark-200">{addr.pincode}</span>
+                  </span>
                 </p>
               )}
             </div>
           </div>
+        </section>
 
-          <div>
-            <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-              <FiMapPin size={11} /> Shipping Address
-            </h4>
-            <div className="text-xs text-dark-400 space-y-0.5">
-              <p className="text-white font-medium">{order.shippingAddress?.fullName}</p>
-              <p>{order.shippingAddress?.addressLine1}</p>
-              {order.shippingAddress?.addressLine2 && <p>{order.shippingAddress.addressLine2}</p>}
-              <p>{order.shippingAddress?.city}, {order.shippingAddress?.state} — {order.shippingAddress?.pincode}</p>
-              <p>{order.shippingAddress?.country}</p>
-            </div>
-          </div>
-
-          {(order.dispatchedAt || order.estimatedDelivery || order.deliveredAt || order.deliveryId) && (
+        {/* ── Delivery & timeline ── */}
+        <section className="min-w-0 lg:border-l lg:border-white/[0.06] lg:pl-4 space-y-4">
+          {hasDelivery ? (
             <div>
-              <h4 className="text-dark-400 text-xs uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <FiTruck size={11} /> Delivery Info
-              </h4>
-              <div className="text-xs space-y-1.5">
+              <SectionTitle icon={FiTruck}>Delivery</SectionTitle>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
                 {order.deliveryId && (
-                  <div>
-                    <p className="text-dark-500">Tracking No.</p>
-                    <p className="text-white font-mono">MB-{order.deliveryId.replaceAll('-', '').slice(-8).toUpperCase()}</p>
+                  <div className="col-span-2 min-w-0">
+                    <dt className="text-[10px] uppercase tracking-wider text-dark-500">Tracking no.</dt>
+                    <dd className="flex items-center gap-1 text-xs text-white font-mono mt-0.5">{trackingNo(order)}<CopyBtn value={trackingNo(order)} label="Tracking number" /></dd>
                   </div>
                 )}
-                {order.dispatchedAt && (
-                  <div>
-                    <p className="text-dark-500">Dispatched</p>
-                    <p className="text-dark-300">{formatDateTime(order.dispatchedAt)}</p>
-                  </div>
-                )}
-                {order.estimatedDelivery && (
-                  <div>
-                    <p className="text-dark-500">Estimated Delivery</p>
-                    <p className="text-dark-300">{formatDateTime(order.estimatedDelivery)}</p>
-                  </div>
-                )}
-                {order.deliveredAt && (
-                  <div>
-                    <p className="text-dark-500">Delivered</p>
-                    <p className="text-green-400 font-medium">{formatDateTime(order.deliveredAt)}</p>
-                  </div>
-                )}
-                {order.deliveredByPartnerId && (
-                  <div>
-                    <p className="text-dark-500">Delivered By</p>
-                    <p className="text-gold-400 font-mono font-medium">{order.deliveredByPartnerId}</p>
-                  </div>
-                )}
-              </div>
+                <KV label="Dispatched">{order.dispatchedAt ? formatDateTime(order.dispatchedAt) : null}</KV>
+                <KV label="ETA">{order.estimatedDelivery ? formatCalendarDate(order.estimatedDelivery, 'short') : null}</KV>
+                <KV label="Partner confirmed">{order.dpConfirmedAt ? formatDateTime(order.dpConfirmedAt) : null}</KV>
+                <KV label="Delivered">{order.deliveredAt ? <span className="text-emerald-400">{formatDateTime(order.deliveredAt)}</span> : null}</KV>
+                <KV label="Delivered by" className="col-span-2">
+                  {order.deliveredByPartnerName || order.deliveredByPartnerId
+                    ? <>{order.deliveredByPartnerName}{order.deliveredByPartnerId && <span className="font-mono text-dark-500"> ({order.deliveredByPartnerId})</span>}</>
+                    : null}
+                </KV>
+              </dl>
+              {order.dpNote && <p className="mt-2 text-[11px] text-dark-400"><span className="text-dark-500">Partner note:</span> &ldquo;{order.dpNote}&rdquo;</p>}
             </div>
-          )}
-
-
-
-          {reversed.length > 0 && (
+          ) : (
             <div>
-              <button
-                onClick={() => setShowTimeline(v => !v)}
-                className="flex items-center justify-between w-full text-dark-400 text-xs uppercase tracking-wider mb-2 hover:text-white transition-colors"
-              >
-                <span className="flex items-center gap-1.5">
-                  <FiClock size={11} />
-                  Timeline ({reversed.length})
-                </span>
-                {showTimeline ? <FiChevronUp size={12} /> : <FiChevronDown size={12} />}
-              </button>
-
-              {showTimeline && (
-                <div className="space-y-0">
-                  {reversed.map((entry) => (
-                    <div key={entry.timestamp || entry.createdAt || entry.status} className="flex gap-3">
-                      <div className="flex flex-col items-center w-4 flex-shrink-0">
-                        <div className={`w-2 h-2 rounded-full mt-1 flex-shrink-0 ${
-                          entry === reversed[0] ? 'bg-gold-500' : 'bg-dark-600'
-                        }`} />
-                        {entry !== reversed.at(-1) && <div className="flex-1 w-px bg-dark-700 my-0.5" />}
-                      </div>
-                      <div className="pb-3 flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-1 flex-wrap">
-                          <p className={`text-xs font-medium capitalize ${entry === reversed[0] ? 'text-white' : 'text-dark-400'}`}>
-                            {STATUS_LABELS[entry.status] || entry.status.replaceAll('_', ' ')}
-                          </p>
-                          <time className="text-dark-600 text-[10px] flex-shrink-0">
-                            {formatDateTime(entry.timestamp || entry.createdAt)}
-                          </time>
-                        </div>
-                        {entry.comment && (
-                          <p className="text-dark-500 text-[11px] mt-0.5 leading-snug">{entry.comment}</p>
-                        )}
-                        {entry.updatedBy?.name && (
-                          <p className="text-dark-600 text-[10px] mt-0.5">by {entry.updatedBy.name}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <SectionTitle icon={FiTruck}>Delivery</SectionTitle>
+              <p className="text-xs text-dark-500">Not dispatched yet.</p>
             </div>
           )}
-
-          {order.orderStatus !== 'delivered' && (
-            <button
-              onClick={onUpdate}
-              className="btn-gold w-full py-2 text-xs flex items-center justify-center gap-1.5"
-            >
-              <FiEdit2 size={12} /> Update Status
-            </button>
-          )}
-
-          {order.payment?.status === 'paid' && (
-            <button
-              onClick={() => downloadInvoice(order)}
-              className="w-full py-2 text-xs flex items-center justify-center gap-1.5 text-gold-400 bg-gold-500/10 border border-gold-500/20 hover:bg-gold-500/20 rounded-xl transition-colors"
-            >
-              <FiDownload size={12} /> Download Invoice
-            </button>
-          )}
-        </div>
+          <Timeline entries={order.trackingHistory} labels={STATUS_LABELS} />
+        </section>
       </div>
     </motion.div>
   );
 }
 
-OrderDetailDrawer.propTypes = {
-  order:     orderPropType.isRequired,
-  onUpdate:  PropTypes.func.isRequired,
-  onRefresh: PropTypes.func.isRequired,
+OrderDetails.propTypes = {
+  order: orderPropType.isRequired,
 };
 
-// ─── Order Row ──────────────────────────────────────────────────────────────────
-function OrderRow({ order, onUpdate, expanded, onToggle, onRefresh }) {
+// ─── Order Card (list row) ──────────────────────────────────────────────────────
+function OrderCard({ order, onUpdate, expanded, onToggle }) {
+  const addr = order.shippingAddress || {};
+  const chip = paymentChip(order);
+  const items = order.items || [];
+  const thumb = items.find((it) => it.image)?.image;
+  const itemCount = items.reduce((n, it) => n + (it.quantity || 1), 0);
+  const awaitingAdmin = order.dpConfirmedAt && order.orderStatus === 'shipped';
+  const canUpdate = order.orderStatus !== 'delivered';
 
   return (
-    <div className={`border-b border-white/5 last:border-0 transition-all duration-150 ${expanded ? 'bg-white/[0.02]' : 'hover:bg-white/[0.015]'}`}>
-      {/* Mobile: compact stacked row (the 6-column grid is unreadable on phones) */}
+    <div className={`rounded-2xl border transition-colors overflow-hidden ${expanded ? 'border-gold-500/30 bg-white/[0.02]' : 'border-white/[0.07] bg-dark-900/40 hover:border-white/15'}`}>
       <div
-        className="md:hidden px-4 py-3.5 cursor-pointer select-none"
+        tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        tabIndex={0}
+        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2.5 p-3 sm:p-3.5 cursor-pointer outline-none focus-visible:bg-white/[0.03] md:gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.1fr)_9rem] md:items-center"
       >
-        <div className="flex items-start justify-between gap-3">
+        {/* Items + id + date */}
+        <div className="col-span-2 md:col-span-1 flex items-center gap-3 min-w-0">
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-dark-800 border border-white/10 shrink-0 flex items-center justify-center">
+            {thumb
+              ? <img src={resolveImageUrl(thumb)} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+              : <FiPackage size={18} className="text-dark-500" />}
+            {itemCount > 1 && <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/70 text-[9px] text-dark-200">×{itemCount}</span>}
+          </div>
           <div className="min-w-0">
-            <p className="text-gold-400 font-mono text-xs font-semibold tracking-wide truncate">
-              {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-gold-400 font-mono text-xs font-semibold">{displayOrderId(order)}</span>
+              <span className={`${getOrderStatusColor(order.orderStatus)} !text-[10px] !px-2 !py-0.5`}>{STATUS_LABELS[order.orderStatus] || order.orderStatus?.replaceAll('_', ' ') || '—'}</span>
+              {awaitingAdmin && <Chip className="text-amber-300 bg-amber-500/10 border-amber-500/25" title="Delivery partner confirmed — awaiting your confirmation"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />DP confirmed</Chip>}
+            </div>
+            <p className="text-white text-sm font-medium mt-0.5 truncate" title={items.map((it) => `${it.name} ×${it.quantity}`).join(', ')}>
+              {items[0]?.name || '—'}
+              {items[0]?.quantity > 1 && <span className="text-dark-400 font-normal"> ×{items[0].quantity}</span>}
+              {items.length > 1 && <span className="text-dark-400 font-normal"> · +{items.length - 1} more</span>}
             </p>
-            <p className="text-white text-sm font-medium truncate mt-0.5">{order.user?.name || '—'}</p>
-            <p className="text-dark-500 text-[11px] flex items-center gap-1 mt-0.5">
-              <FiCalendar size={10} strokeWidth={2} /> {formatDate(order.createdAt)}
-            </p>
-          </div>
-          <p className="text-gold-400 font-semibold text-sm tabular-nums flex-shrink-0">{formatPrice(order.totalAmount)}</p>
-        </div>
-        <div className="flex items-center justify-between gap-2 mt-2.5">
-          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize`}>{order.payment?.status || '—'}</span>
-            <span className={`${getOrderStatusColor(order.orderStatus)} capitalize`}>
-              {STATUS_LABELS[order.orderStatus] || order.orderStatus || '—'}
-            </span>
-            {order.dpConfirmedAt && order.orderStatus !== 'delivered' && (
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" title="Delivery partner confirmed — awaiting admin" />
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Order actions">
-            {order.orderStatus !== 'delivered' && (
-              <button onClick={onUpdate} className="btn-gold px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 rounded-lg">
-                <FiEdit2 size={11} /> Update
-              </button>
-            )}
-            <button onClick={onToggle} aria-label={expanded ? 'Collapse' : 'Expand'} className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.08] border border-white/5">
-              {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
-            </button>
+            <p className="text-[11px] text-dark-500 mt-0.5 flex items-center gap-1"><FiCalendar size={10} /> {formatDateTime(order.createdAt)}</p>
           </div>
         </div>
-      </div>
 
-      <div
-        className="hidden md:grid items-center gap-3 py-4 px-5 cursor-pointer select-none w-full text-left hover:bg-white/[0.015]"
-        style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
-        onClick={onToggle}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        tabIndex={0}
-      >
-        <div className="min-w-0">
-          <p className="text-gold-400 font-mono text-xs font-semibold tracking-wide truncate">
-            {order.orderId || `#${order._id.slice(-8).toUpperCase()}`}
-          </p>
-          <p className="text-dark-600 text-[10px] mt-1 flex items-center gap-1 truncate">
-            <FiCalendar size={9} strokeWidth={2} />
-            {formatDate(order.createdAt)}
+        {/* Customer */}
+        <div className="col-span-2 md:col-span-1 min-w-0 pl-[3.75rem] md:pl-0">
+          <p className="text-dark-200 text-xs font-medium truncate flex items-center gap-1.5"><FiUser size={11} className="text-dark-500 shrink-0" />{customerName(order)}</p>
+          {(addr.phone || order.user?.email) && <p className="text-[11px] text-dark-500 truncate mt-0.5">{addr.phone || order.user?.email}</p>}
+          {addr.city && <p className="text-[11px] text-dark-500 truncate flex items-center gap-1"><FiMapPin size={10} className="shrink-0" />{addr.city} · {addr.pincode}</p>}
+        </div>
+
+        {/* Money */}
+        <div className="min-w-0 pl-[3.75rem] md:pl-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(order.totalAmount)}</span>
+            <Chip className={chip.cls}>{chip.label}</Chip>
+          </div>
+          <p className="text-[11px] text-dark-500 mt-1 tabular-nums">
+            {itemCount} item{itemCount !== 1 ? 's' : ''} · Shipping {order.shippingPrice > 0 ? formatPrice(order.shippingPrice) : 'free'}
           </p>
         </div>
 
-        <div className="min-w-0">
-          <p className="text-white text-xs font-medium truncate">{order.user?.name || '—'}</p>
-          <p className="text-dark-500 text-[10px] truncate mt-0.5">{order.user?.email || '—'}</p>
-        </div>
-
-        <div className="min-w-0">
-          <p className="text-gold-400 font-semibold text-sm tabular-nums truncate">{formatPrice(order.totalAmount)}</p>
-        </div>
-
-        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-          <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize truncate`}>
-            {order.payment?.status || '—'}
-          </span>
-        </div>
-
-        <div className="min-w-0 flex items-center gap-1.5">
-          <span className={`${getOrderStatusColor(order.orderStatus)} capitalize truncate`}>
-            {STATUS_LABELS[order.orderStatus] || order.orderStatus || '—'}
-          </span>
-          {order.dpConfirmedAt && order.orderStatus !== 'delivered' && (
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" title="Delivery partner confirmed — awaiting admin" />
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Order actions">
-          {order.orderStatus !== 'delivered' && (
-            <button
-              onClick={onUpdate}
-              className="btn-gold px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 rounded-lg"
-            >
+        {/* Actions */}
+        <div className="flex items-center justify-end gap-1.5 self-end md:self-auto" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="group" aria-label="Order actions">
+          {canUpdate && (
+            <button type="button" onClick={onUpdate} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-dark-900 bg-gold-500 hover:bg-gold-400 transition-colors">
               <FiEdit2 size={11} /> Update
             </button>
           )}
-          <button
-            onClick={onToggle}
-            className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/[0.08] border border-white/5"
-          >
-            {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+          <button type="button" onClick={onToggle} className="p-2 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors" aria-expanded={expanded} aria-label={expanded ? 'Hide details' : 'Show details'}>
+            <FiChevronDown size={15} className={`transition-transform duration-200 ${expanded ? 'rotate-180 text-gold-400' : ''}`} />
           </button>
         </div>
       </div>
 
-      <AnimatePresence>
-        {expanded && (
-          <OrderDetailDrawer order={order} onUpdate={onUpdate} onRefresh={onRefresh} />
-        )}
+      <AnimatePresence initial={false}>
+        {expanded && <OrderDetails order={order} />}
       </AnimatePresence>
     </div>
   );
 }
 
-OrderRow.propTypes = {
-  order:     orderPropType.isRequired,
-  onUpdate:  PropTypes.func.isRequired,
-  expanded:  PropTypes.bool,
-  onToggle:  PropTypes.func.isRequired,
-  onRefresh: PropTypes.func.isRequired,
+OrderCard.propTypes = {
+  order:    orderPropType.isRequired,
+  onUpdate: PropTypes.func.isRequired,
+  expanded: PropTypes.bool,
+  onToggle: PropTypes.func.isRequired,
 };
 
 // ─── Main AdminOrders Page ──────────────────────────────────────────────────────
@@ -869,6 +725,8 @@ export default function AdminOrders() {
   // explicitly looking at failed payments or searching for a specific customer's order.
   const showFailed = paymentFilter === 'failed' || statusFilter === 'needs_attention' || !!query;
   const displayed = orders.filter(o => showFailed || !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus));
+  const toProcess = (stats?.statusCounts?.confirmed || 0) + (stats?.statusCounts?.ready_to_ship || 0);
+  const quickCount = (f) => (f.status ? stats?.statusCounts?.[f.status] : f.paymentStatus === 'paid' ? stats?.totalOrders : null);
 
   return (
     <div className="space-y-4">
@@ -886,7 +744,19 @@ export default function AdminOrders() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {stats && (
+            <>
+              <div className="rounded-xl border border-white/[0.07] bg-dark-900/40 px-3 py-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-dark-500">To process</p>
+                <p className={`text-sm font-semibold tabular-nums ${toProcess > 0 ? 'text-amber-300' : 'text-dark-300'}`}>{toProcess}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.07] bg-dark-900/40 px-3 py-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-dark-500">Revenue</p>
+                <p className="text-sm font-semibold tabular-nums text-emerald-400">{formatPrice(stats.totalRevenue || 0)}</p>
+              </div>
+            </>
+          )}
           <button
             onClick={() => { loadOrders(); orderService.getStats().then(r => setStats(r.data.stats)).catch(() => {}); }}
             disabled={loading}
@@ -899,18 +769,19 @@ export default function AdminOrders() {
       </div>
 
       <div className="card p-4 space-y-4">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 -mx-1 px-1 overflow-x-auto scrollbar-hide sm:flex-wrap sm:overflow-visible">
           {QUICK_FILTERS.map((f, idx) => (
             <button
               key={f.label}
               onClick={() => applyQuick(idx)}
-              className={`px-3.5 py-1.5 rounded-full text-xs border transition-all flex items-center gap-1.5 ${
+              className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs border transition-all flex items-center gap-1.5 ${
                 activeQuick === idx
                   ? 'bg-gold-500/15 border-gold-500/50 text-gold-400'
                   : 'border-white/10 text-dark-400 hover:border-white/25 hover:text-dark-200'
               }`}
             >
               {f.label}
+              {quickCount(f) > 0 && <span className={`tabular-nums text-[10px] ${activeQuick === idx ? 'text-gold-300/80' : 'text-dark-500'}`}>{quickCount(f)}</span>}
               {f.status && stats?.statusCounts?.[f.status] > (seenCounts[f.status] || 0) && f.status !== statusFilter && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" title="New updates" />
               )}
@@ -918,8 +789,8 @@ export default function AdminOrders() {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[180px]">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_9.5rem] items-center">
+          <div className="relative min-w-0">
             <FiSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
             <input
               ref={searchRef}
@@ -935,12 +806,13 @@ export default function AdminOrders() {
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <FiFilter size={12} className="text-dark-500" />
+          <div className="relative">
+            <FiFilter size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500 pointer-events-none" />
             <select
               value={statusFilter}
               onChange={e => handleStatusFilterChange(e.target.value)}
-              className="input-dark text-xs py-2 min-w-[160px]"
+              className="input-dark text-xs py-2 pl-8 w-full"
+              aria-label="Filter by status"
             >
               {STATUS_FILTER_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -951,7 +823,8 @@ export default function AdminOrders() {
           <select
             value={paymentFilter}
             onChange={e => handlePaymentFilterChange(e.target.value)}
-            className="input-dark text-xs py-2 min-w-[140px]"
+            className="input-dark text-xs py-2 w-full"
+            aria-label="Filter by payment"
           >
             <option value="all">All Payments</option>
             <option value="paid">Paid Only</option>
@@ -967,41 +840,31 @@ export default function AdminOrders() {
         )}
       </div>
 
-      <div className="card overflow-hidden">
-        <div
-          className="hidden md:grid gap-3 py-3 px-5 border-b border-white/[0.08] text-dark-500 text-[10px] uppercase tracking-widest font-semibold"
-          style={{ gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 120px' }}
-        >
-          <span>Order</span>
-          <span>Customer</span>
-          <span>Amount</span>
-          <span>Payment</span>
-          <span>Status</span>
-          <span />
-        </div>
-
+      <div>
         {loading && (
-          Array.from({ length: 8 }).map((_, idx) => (
-            <div key={`skeleton-${idx}`} className="border-b border-white/5 px-4 py-3.5">
-              <div className="skeleton h-8 rounded-lg" />
-            </div>
-          ))
-        )}
-        {!loading && displayed.length === 0 && (
-          <div className="py-20 text-center text-dark-500 text-sm">
-            No orders found for this filter.
+          <div className="space-y-2.5">
+            {Array.from({ length: 6 }).map((_, idx) => <div key={`skeleton-${idx}`} className="skeleton h-[74px] rounded-2xl" />)}
           </div>
         )}
-        {!loading && displayed.length > 0 && displayed.map(order => (
-          <OrderRow
-            key={order._id}
-            order={order}
-            expanded={expandedRow === order._id}
-            onToggle={() => setExpandedRow(prev => prev === order._id ? null : order._id)}
-            onUpdate={() => { setActiveModal(order); setExpandedRow(null); }}
-            onRefresh={() => loadOrders(true)}
-          />
-        ))}
+        {!loading && displayed.length === 0 && (
+          <div className="card py-14 flex flex-col items-center text-center">
+            <FiInbox size={26} className="text-dark-600 mb-2" />
+            <p className="text-dark-400 text-sm">{query ? `No orders match "${query}".` : 'No orders found for this filter.'}</p>
+          </div>
+        )}
+        {!loading && displayed.length > 0 && (
+          <div className="space-y-2.5">
+            {displayed.map(order => (
+              <OrderCard
+                key={order._id}
+                order={order}
+                expanded={expandedRow === order._id}
+                onToggle={() => setExpandedRow(prev => prev === order._id ? null : order._id)}
+                onUpdate={() => { setActiveModal(order); setExpandedRow(null); }}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {pages > 1 && (

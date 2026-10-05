@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { deliveryService } from '../services/services';
-import { downloadInvoice } from '../utils/invoice';
+import { downloadInvoice, downloadCustomOrderInvoice } from '../utils/invoice';
 import { useSelector, useDispatch } from 'react-redux';
 import { selectUser, logoutUser } from '../store/authSlice';
 import api from '../services/api';
@@ -39,6 +39,7 @@ function normalise(raw, type) {
       dpConfirmedAt: raw.dpConfirmedAt,
       dpNote: raw.dpNote,
       createdAt: raw.createdAt,
+      _raw: raw,
     };
   }
   return {
@@ -53,6 +54,7 @@ function normalise(raw, type) {
     dpConfirmedAt: raw.dpConfirmedAt,
     dpNote: raw.dpNote,
     createdAt: raw.createdAt,
+    _raw: raw,
   };
 }
 
@@ -307,35 +309,11 @@ ProfileModal.propTypes = { onClose: PropTypes.func.isRequired };
 
 /* ── PDF Invoice ─────────────────────────────────────────────────────────────── */
 
+// Same tax invoice the customer and admin download — issued once the order is paid
+const dpInvoiceReady = (item) => !!item._raw?.invoiceNumber || (item._source === 'order' && item._raw?.payment?.status === 'paid');
 function printDpInvoice(item) {
-  const addr = item.address || {};
-  downloadInvoice({
-    orderId:         item.displayId,
-    _id:             item._id,
-    createdAt:       item.createdAt,
-    items:           item.items || [],
-    itemsPrice:      item.total || 0,
-    shippingPrice:   0,
-    taxPrice:        0,
-    totalAmount:     item.total || 0,
-    payment: {
-      status:              'paid',
-      method:              item.paymentMethod || 'razorpay',
-      paidAt:              item.paidAt || item.createdAt,
-      razorpayPaymentId:   item.razorpayPaymentId || '',
-    },
-    shippingAddress: {
-      fullName:     addr.fullName  || item.customer?.name || '—',
-      addressLine1: addr.addressLine1 || '',
-      addressLine2: addr.addressLine2 || '',
-      city:         addr.city     || '',
-      state:        addr.state    || '',
-      pincode:      addr.pincode  || '',
-      country:      addr.country  || 'India',
-      phone:        addr.phone    || item.customer?.phone || '',
-    },
-    user: item.customer || {},
-  });
+  if (item._source === 'order') downloadInvoice(item._raw);
+  else downloadCustomOrderInvoice(item._raw);
 }
 
 /* ── Confirm Modal ───────────────────────────────────────────────────────────── */
@@ -502,14 +480,14 @@ function DeliveryCard({ item, onConfirm, currentUserId }) {
         )}
 
         {/* PDF Invoice */}
-        <div className="pt-1 border-t border-white/5 flex justify-end">
+        {dpInvoiceReady(item) && <div className="pt-1 border-t border-white/5 flex justify-end">
           <button
             onClick={() => printDpInvoice(item)}
             className="flex items-center gap-1.5 text-xs text-gold-400 bg-gold-500/10 border border-gold-500/20 hover:bg-gold-500/20 rounded-lg px-3 py-2 transition-colors"
           >
             <FiDownload size={11} /> Invoice PDF
           </button>
-        </div>
+        </div>}
       </motion.div>
     </>
   );

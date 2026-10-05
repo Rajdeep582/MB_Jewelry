@@ -276,7 +276,10 @@ function OrderDetailView({ id }) {
 
         {/* Invoice download */}
         {order.payment?.status === 'paid' && (
-          <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
+          <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-dark-500">
+              Tax invoice{order.invoiceNumber ? <> <span className="font-mono text-dark-300">{order.invoiceNumber}</span></> : ''} · issued on payment
+            </p>
             <button
               onClick={() => downloadInvoice(order)}
               className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"

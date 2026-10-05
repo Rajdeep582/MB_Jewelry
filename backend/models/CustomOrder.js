@@ -72,8 +72,9 @@ const customOrderSchema = new mongoose.Schema(
 
     // ── Admin Quote & Pricing ─────────────────────────────────────────────────
     quoteAmount:   { type: Number, default: null }, // Base price excl. GST
-    taxAmount:     { type: Number, default: 0 },    // 18% GST
-    totalAmount:   { type: Number, default: 0 },    // quoteAmount + taxAmount
+    taxAmount:     { type: Number, default: 0 },    // GST on quoteAmount (rate from GlobalPricing)
+    shippingAmount:{ type: Number, default: 0 },    // PIN-code shipping charge (utils/shippingRates.js), set with the quote
+    totalAmount:   { type: Number, default: 0 },    // quoteAmount + taxAmount + shippingAmount
     advanceAmount: { type: Number, default: 0 },    // 70% of totalAmount
     finalAmount:   { type: Number, default: 0 },    // 30% of totalAmount
     quotedAt:      { type: Date },
@@ -144,6 +145,11 @@ const customOrderSchema = new mongoose.Schema(
     dpConfirmedAt: { type: Date },
     dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
     dpNote:        { type: String, default: '' },
+
+    // ── Tax invoice (utils/invoiceNumber.js) — issued once, after the final balance is paid ──
+    invoiceNumber:  { type: String, unique: true, sparse: true }, // e.g. MBJ/26-27/00001
+    invoiceDate:    { type: Date },                               // = payment date
+    invoiceClaimAt: { type: Date, select: false },                // internal: in-flight assignment lock
   },
   { timestamps: true }
 );

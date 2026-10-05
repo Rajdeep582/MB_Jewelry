@@ -77,6 +77,11 @@ const orderSchema = new mongoose.Schema(
     dpConfirmedAt: { type: Date },
     dpConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryPartner' },
     dpNote:        { type: String, default: '' },
+
+    // ── Tax invoice (utils/invoiceNumber.js) — issued once, after payment is confirmed ──
+    invoiceNumber:  { type: String, unique: true, sparse: true }, // e.g. MBJ/26-27/00001
+    invoiceDate:    { type: Date },                               // = payment date
+    invoiceClaimAt: { type: Date, select: false },                // internal: in-flight assignment lock
     trackingHistory: [trackingStepSchema],
   },
   { timestamps: true }

@@ -13,6 +13,7 @@ const { getShippingForPincode, getSupportedZones } = require('../utils/shippingR
 const { applyLivePrice, getGstRate } = require('../utils/pricingUtils');
 const { getPricingMap } = require('../utils/pricingCache');
 const { buildOrderSearch } = require('../utils/orderSearch');
+const { assignInvoiceNumber } = require('../utils/invoiceNumber');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -295,6 +296,10 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
     session.endSession();
 
     logger.info(`Order confirmed atomically: order=${pendingOrder._id}, payment=${razorpayPaymentId}`);
+
+    // Tax invoice number — after the commit so it can never hold up or undo a confirmed payment
+    const invoice = await assignInvoiceNumber(Order, confirmedOrder._id, confirmedOrder.payment?.paidAt);
+    if (invoice) Object.assign(confirmedOrder, invoice);
     return { success: true, order: confirmedOrder };
   } catch (err) {
     await session.abortTransaction().catch(() => {});

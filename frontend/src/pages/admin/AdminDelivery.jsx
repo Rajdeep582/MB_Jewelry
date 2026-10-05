@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  FiPackage, FiSearch, FiRefreshCw, FiAlertCircle, FiTruck,
-  FiCheck, FiCheckCircle, FiShield, FiTag, FiRadio,
+  FiPackage, FiSearch, FiRefreshCw, FiTruck, FiCalendar,
+  FiCheck, FiShield, FiTag, FiRadio,
   FiMapPin, FiPhone, FiUser, FiClock, FiUserPlus, FiUserX, FiUsers,
-  FiChevronDown, FiChevronUp, FiDownload, FiX, FiInbox,
+  FiChevronDown, FiDownload, FiX, FiInbox,
 } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 import { orderService, customOrderService, adminService } from '../../services/services';
-import { downloadInvoice } from '../../utils/invoice';
+import { downloadInvoice, downloadCustomOrderInvoice } from '../../utils/invoice';
 import toast from 'react-hot-toast';
-import { formatDate, formatPrice, resolveImageUrl } from '../../utils/helpers';
+import { formatDate, formatDateTime, formatCalendarDate, formatPrice, resolveImageUrl } from '../../utils/helpers';
+import { CopyBtn, Timeline } from '../../components/admin/OrderDetailUI';
 
 /* ── Pipeline stage mapping ─────────────────────────────────────────────────── */
 
@@ -32,55 +33,49 @@ const STAGE_META = {
 
 /* ── Normalise order into unified shape ─────────────────────────────────────── */
 
+const PAY_TONE = {
+  green: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
+  amber: 'text-amber-300 bg-amber-500/10 border-amber-500/25',
+  sky:   'text-sky-300 bg-sky-500/10 border-sky-500/20',
+  red:   'text-red-300 bg-red-500/10 border-red-500/20',
+};
+
 function normaliseOrder(raw, sourceType) {
   if (sourceType === 'order') {
-    return { ...raw, _sourceType: 'order', _displayStatus: raw.orderStatus };
+    const st = raw.payment?.status;
+    const pay = st === 'paid' ? ['Paid', PAY_TONE.green] : st === 'failed' ? ['Payment failed', PAY_TONE.red] : st === 'refunded' ? ['Refunded', PAY_TONE.sky] : ['Payment pending', PAY_TONE.amber];
+    return { ...raw, _sourceType: 'order', _displayStatus: raw.orderStatus, _payLabel: pay[0], _payTone: pay[1] };
   }
   let displayStatus = raw.status;
   if (['advance_paid', 'in_production', 'final_payment_pending', 'final_payment_paid'].includes(raw.status)) {
     displayStatus = 'in_production';
   }
+  const advPaid = raw.advancePayment?.status === 'paid';
+  const finPaid = raw.finalPayment?.status === 'paid';
+  const paid = (advPaid ? raw.advanceAmount || 0 : 0) + (finPaid ? raw.finalAmount || 0 : 0);
+  const pay = finPaid ? ['Fully paid', PAY_TONE.green] : advPaid ? [`Advance paid · due ${formatPrice(Math.max(0, (raw.totalAmount || 0) - paid))}`, PAY_TONE.amber] : ['Awaiting advance', PAY_TONE.amber];
   const syntheticItem = {
     _id: raw._id, product: raw._id,
     name: `Custom ${raw.type} — ${raw.material}${raw.purity && raw.purity !== 'None' ? ` (${raw.purity})` : ''}`,
-    image: raw.referenceImages?.[0]?.url || '', price: raw.totalAmount || 0, quantity: 1,
+    image: raw.referenceImages?.[0]?.url || '', price: raw.quoteAmount || raw.totalAmount || 0, quantity: 1,
   };
   return {
     _id: raw._id, _sourceType: 'custom_order', _displayStatus: displayStatus,
+    _payLabel: pay[0], _payTone: pay[1], _raw: raw,
     user: raw.user, shippingAddress: raw.shippingAddress, totalAmount: raw.totalAmount || 0,
+    itemsPrice: raw.quoteAmount || 0, shippingPrice: raw.shippingAmount || 0, taxPrice: raw.taxAmount || 0,
+    payment: {
+      status: finPaid ? 'paid' : 'pending', method: 'razorpay',
+      paidAt: raw.finalPayment?.paidAt || raw.advancePayment?.paidAt,
+      razorpayPaymentId: raw.finalPayment?.razorpayPaymentId || raw.advancePayment?.razorpayPaymentId || '',
+    },
     items: [syntheticItem], deliveryId: raw.deliveryId, dispatchedAt: raw.dispatchedAt,
     estimatedDelivery: raw.estimatedDelivery, deliveredAt: raw.deliveredAt,
     trackingHistory: raw.trackingHistory || [], createdAt: raw.createdAt,
     customOrderId: raw.customOrderId, orderId: raw.orderId,
+    dpConfirmedAt: raw.dpConfirmedAt, dpNote: raw.dpNote || '',
     deliveredByPartnerId:   raw.deliveredByPartnerId   || '',
     deliveredByPartnerName: raw.deliveredByPartnerName || '',
-  };
-}
-
-/* ── Normalise Delivery record (from /admin/deliveries collection) ──────────── */
-function normaliseDeliveryRecord(rec) {
-  return {
-    _id:           rec._id,
-    _sourceType:   rec.sourceType,      // 'order' | 'custom_order'
-    _displayStatus: rec.status,         // 'shipped' | 'delivered'
-    _fromDeliveryCollection: true,
-    orderId:       rec.sourceType === 'order'        ? rec.orderId : undefined,
-    customOrderId: rec.sourceType === 'custom_order' ? rec.orderId : undefined,
-    deliveryId:    rec.deliveryId,
-    deliveredByPartnerId:   rec.deliveredByPartnerId   || '',
-    deliveredByPartnerName: rec.deliveredByPartnerName || '',
-    user:          { name: rec.customerName, email: rec.customerEmail },
-    shippingAddress: rec.shippingAddress || {},
-    totalAmount:   rec.totalAmount || 0,
-    dispatchedAt:  rec.dispatchedAt,
-    estimatedDelivery: rec.estimatedDelivery,
-    deliveredAt:   rec.deliveredAt,
-    trackingHistory: rec.trackingHistory || [],
-    createdAt:     rec.createdAt,
-    items: [{
-      _id: rec._id, product: rec._id,
-      name: rec.itemsSummary || '—', image: '', price: rec.totalAmount || 0, quantity: 1,
-    }],
   };
 }
 
@@ -127,36 +122,11 @@ function StatPill({ label, value, color, icon: Icon, active, onClick, hint }) {
 
 /* ── PDF Invoice Generator ──────────────────────────────────────────────────── */
 
-// Adapts AdminDelivery item shape → shared downloadInvoice shape
+// Tax invoice straight from the source order — only once it is paid (custom orders: balance paid)
+const invoiceReady = (item) => (item._sourceType === 'order' ? item.payment?.status === 'paid' : item._raw?.finalPayment?.status === 'paid');
 function printInvoice(item) {
-  const addr = item.shippingAddress || {};
-  downloadInvoice({
-    orderId:        resolveOrderId(item),
-    _id:            item._id,
-    createdAt:      item.createdAt,
-    items:          item.items || [],
-    itemsPrice:     item.itemsPrice ?? item.totalAmount ?? 0,
-    shippingPrice:  item.shippingPrice ?? 0,
-    taxPrice:       item.taxPrice ?? 0,
-    totalAmount:    item.totalAmount ?? 0,
-    payment: {
-      status:             item.payment?.status || 'paid',
-      method:             item.payment?.method || 'razorpay',
-      paidAt:             item.payment?.paidAt || item.createdAt,
-      razorpayPaymentId:  item.payment?.razorpayPaymentId || '',
-    },
-    shippingAddress: {
-      fullName:     addr.fullName    || item.user?.name || '—',
-      addressLine1: addr.addressLine1 || '',
-      addressLine2: addr.addressLine2 || '',
-      city:         addr.city        || '',
-      state:        addr.state       || '',
-      pincode:      addr.pincode     || '',
-      country:      addr.country     || 'India',
-      phone:        addr.phone       || '',
-    },
-    user: item.user || {},
-  });
+  if (item._sourceType === 'order') downloadInvoice(item);
+  else downloadCustomOrderInvoice(item._raw);
 }
 
 /* ── Delivery Card (read-only, collapsible) ─────────────────────────────────── */
@@ -184,11 +154,11 @@ function timingBadge(item, stage) {
     return { text: `Delivered ${item.deliveredAt ? formatDate(item.deliveredAt) : ''}`.trim(), cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20' };
   }
   if (stage === 'shipped') {
-    if (item.estimatedDelivery && new Date(item.estimatedDelivery).getTime() < Date.now()) {
-      return { text: `Overdue · ETA was ${formatDate(item.estimatedDelivery)}`, cls: 'text-red-300 bg-red-500/10 border-red-500/25' };
+    if (item.estimatedDelivery && new Date(item.estimatedDelivery).getTime() + DAY < Date.now()) {
+      return { text: `Overdue · ETA was ${formatCalendarDate(item.estimatedDelivery, 'short')}`, cls: 'text-red-300 bg-red-500/10 border-red-500/25' };
     }
     return {
-      text: item.estimatedDelivery ? `ETA ${formatDate(item.estimatedDelivery)}` : `Dispatched ${ago(item.dispatchedAt || item.createdAt)}`,
+      text: item.estimatedDelivery ? `ETA ${formatCalendarDate(item.estimatedDelivery, 'short')}` : `Dispatched ${ago(item.dispatchedAt || item.createdAt)}`,
       cls: 'text-sky-300 bg-sky-500/10 border-sky-500/20',
     };
   }
@@ -199,202 +169,168 @@ function timingBadge(item, stage) {
   };
 }
 
+const HISTORY_LABELS = {
+  pending: 'Order placed', quoted: 'Quoted', advance_paid: 'Advance paid · in production', in_production: 'In production',
+  confirmed: 'Confirmed', ready_to_ship: 'Ready to ship', shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled',
+};
+
+function InfoBlock({ icon, title, children, wide }) {
+  const Icon = icon;
+  return (
+    <div className={`min-w-0 rounded-xl bg-dark-900/50 border border-white/[0.05] px-2.5 py-2 sm:px-3 sm:py-2.5 ${wide ? 'col-span-2 sm:col-span-1' : ''}`}>
+      <p className="text-[10px] uppercase tracking-[0.14em] text-dark-500 font-semibold flex items-center gap-1.5 mb-1.5"><Icon size={10} className="text-gold-500" /> {title}</p>
+      <div className="text-[11px] leading-relaxed space-y-0.5">{children}</div>
+    </div>
+  );
+}
+
+function DateLine({ label, value, tone = 'text-dark-200' }) {
+  if (!value) return null;
+  return (
+    <p className="flex justify-between gap-2"><span className="text-dark-500">{label}</span><span className={`tabular-nums text-right ${tone}`}>{value}</span></p>
+  );
+}
+
 function DeliveryCard({ item }) {
-  const [expanded, setExpanded] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
   const stage    = getStage(item._displayStatus);
   const meta     = STAGE_META[stage];
   const isCustom = item._sourceType === 'custom_order';
   const delivID  = maskDeliveryId(item.deliveryId);
-  const mainItem = item.items?.[0];
+  const items    = item.items || [];
+  const thumb    = items.find((it) => it.image)?.image;
   const addr     = item.shippingAddress || {};
   const step     = pipelineIndex(item._displayStatus);
   const timing   = timingBadge(item, stage);
-  const itemCount = (item.items || []).reduce((n, it) => n + (it.quantity || 1), 0);
-  const toggle = () => setExpanded(v => !v);
+  const itemCount = items.reduce((n, it) => n + (it.quantity || 1), 0);
+  const name     = item.user?.name || addr.fullName || '—';
+  const phone    = addr.phone || item.user?.phone;
+  const awaitingAdmin = item.dpConfirmedAt && stage === 'shipped';
+  const partner  = [item.deliveredByPartnerName, item.deliveredByPartnerId && `(${item.deliveredByPartnerId})`].filter(Boolean).join(' ');
 
   return (
-    <motion.div layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-      className={`card !rounded-2xl border-l-[3px] ${meta.border} transition-all duration-300 hover:border-white/10 hover:shadow-lg hover:shadow-black/30 overflow-hidden ${expanded ? 'ring-1 ring-gold-500/20' : ''}`}>
+    <motion.article layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+      className={`card !rounded-2xl !p-0 border-l-[3px] ${meta.border} overflow-hidden`}>
 
-      {/* ── Summary (click to expand) ── */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={toggle}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
-        className="w-full text-left p-3.5 sm:p-4 cursor-pointer select-none focus:outline-none focus-visible:bg-white/[0.02]"
-      >
-        <div className="flex items-start gap-3">
-          {/* Thumbnail */}
-          <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-dark-800 flex-shrink-0 overflow-hidden border border-white/10">
-            {mainItem?.image
-              ? <img src={resolveImageUrl(mainItem.image)} alt="" className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />
-              : <span className="absolute inset-0 flex items-center justify-center text-dark-600"><FiPackage size={18} /></span>}
-            {itemCount > 1 && (
-              <span className="absolute bottom-0.5 right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-dark-950/90 border border-white/15 text-[9px] font-bold text-white flex items-center justify-center">×{itemCount}</span>
-            )}
-          </div>
-
-          {/* Core info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-gold-400 font-semibold text-sm">{resolveOrderId(item)}</span>
-              <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${isCustom ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' : 'bg-gold-500/10 border-gold-500/20 text-gold-300'}`}>
-                <FiTag size={8} /> {isCustom ? 'Custom' : 'Regular'}
-              </span>
-              {delivID && (
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-mono bg-white/[0.04] border border-white/10 text-dark-200 px-1.5 py-0.5 rounded-full">
-                  <FiShield size={8} className="text-gold-400" /> {delivID}
-                </span>
-              )}
-            </div>
-            <p className="text-white text-sm font-medium truncate mt-1">
-              {item.user?.name || addr.fullName || '—'}
-              {addr.phone && <span className="text-dark-500 font-normal"> · {addr.phone}</span>}
-            </p>
-            <p className="text-dark-400 text-xs truncate mt-0.5 flex items-center gap-1">
-              <FiMapPin size={10} className="text-dark-500 flex-shrink-0" />
-              {[addr.city, addr.state].filter(Boolean).join(', ') || '—'}
-              {addr.pincode && <span className="font-mono text-dark-300 ml-1">{addr.pincode}</span>}
-            </p>
-          </div>
-
-          {/* Amount + chevron */}
-          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-            <p className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(item.totalAmount)}</p>
-            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${meta.bg} ${meta.color}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${stage === 'shipped' ? 'animate-pulse' : ''}`} /> {meta.label}
-            </span>
-          </div>
+      {/* ── Header: product, id, status, amount ── */}
+      <div className="flex items-start gap-3 p-3 sm:p-3.5">
+        <div className="relative w-12 h-12 rounded-xl bg-dark-800 shrink-0 overflow-hidden border border-white/10 flex items-center justify-center">
+          {thumb
+            ? <img src={resolveImageUrl(thumb)} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
+            : <FiPackage size={18} className="text-dark-600" />}
+          {itemCount > 1 && <span className="absolute bottom-0.5 right-0.5 px-1 rounded bg-black/70 text-[9px] text-dark-200">×{itemCount}</span>}
         </div>
 
-        {/* Pipeline + timing + quick actions */}
-        <div className="mt-3 pt-3 border-t border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-2.5">
-          <ol className="flex items-center gap-1 min-w-0" aria-label={`Stage: ${PIPELINE[step]}`}>
-            {PIPELINE.map((label, i) => (
-              <li key={label} className="flex items-center gap-1">
-                <span className={`flex items-center gap-1 text-[10px] font-medium whitespace-nowrap ${i < step ? 'text-dark-300' : i === step ? meta.color : 'text-dark-600'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${i < step ? 'bg-gold-500/70' : i === step ? meta.dot : 'bg-dark-600'}`} />
-                  <span className={i === step ? '' : 'hidden sm:inline'}>{label}</span>
-                </span>
-                {i < PIPELINE.length - 1 && <span className={`w-3 sm:w-5 h-px ${i < step ? 'bg-gold-500/50' : 'bg-white/10'}`} />}
-              </li>
-            ))}
-          </ol>
-          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${timing.cls}`}>{timing.text}</span>
-          <div className="ml-auto flex items-center gap-1.5" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} role="group" aria-label="Delivery actions">
-            {addr.phone && (
-              <a href={`tel:${addr.phone}`} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-gold-400 border border-white/10 hover:border-gold-500/40 rounded-lg px-2 py-1 transition-colors">
-                <FiPhone size={11} /> Call
-              </a>
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-mono text-gold-400 font-semibold text-xs">{resolveOrderId(item)}</span>
+            <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md border font-medium ${isCustom ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' : 'bg-gold-500/10 border-gold-500/20 text-gold-300'}`}>
+              <FiTag size={8} /> {isCustom ? 'Custom' : 'Regular'}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md border ${meta.bg} ${meta.color}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} ${stage === 'shipped' ? 'animate-pulse' : ''}`} /> {meta.label}
+            </span>
+            {awaitingAdmin && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border text-amber-300 bg-amber-500/10 border-amber-500/25" title="Delivery partner confirmed — awaiting admin">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" /> DP confirmed
+              </span>
             )}
-            <button type="button" onClick={() => printInvoice(item)} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-gold-400 border border-white/10 hover:border-gold-500/40 rounded-lg px-2 py-1 transition-colors">
-              <FiDownload size={11} /> Invoice
-            </button>
-            <button type="button" onClick={toggle} aria-label={expanded ? 'Hide details' : 'Show details'} className="p-1.5 rounded-lg border border-white/10 text-dark-400 hover:text-white hover:border-white/25 transition-colors">
-              {expanded ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />}
-            </button>
           </div>
+          <p className="text-white text-sm font-medium mt-0.5 truncate" title={items.map((it) => `${it.name} ×${it.quantity ?? 1}`).join(', ')}>
+            {items[0]?.name || '—'}
+            {items[0]?.quantity > 1 && <span className="text-dark-400 font-normal"> ×{items[0].quantity}</span>}
+            {items.length > 1 && <span className="text-dark-400 font-normal"> · +{items.length - 1} more</span>}
+          </p>
+          {delivID && (
+            <p className="text-[11px] text-dark-400 flex items-center gap-1 mt-0.5">
+              <FiShield size={10} className="text-gold-500 shrink-0" /><span className="font-mono text-dark-200">{delivID}</span><CopyBtn value={delivID} label="Tracking number" />
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-1 shrink-0 text-right">
+          <p className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(item.totalAmount)}</p>
+          {item._payLabel && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md border max-w-[11rem] truncate ${item._payTone}`}>{item._payLabel}</span>}
         </div>
       </div>
 
-      {/* ── Expanded Detail Panel ── */}
+      {/* ── All details at a glance ── */}
+      <div className="grid grid-cols-2 gap-2 px-3 sm:px-3.5 pb-3 xl:grid-cols-4">
+        <InfoBlock icon={FiUser} title="Customer">
+          <p className="text-white font-medium truncate">{name}</p>
+          {phone && <a href={`tel:${phone}`} className="flex items-center gap-1 text-dark-300 hover:text-gold-400 w-fit"><FiPhone size={10} />{phone}</a>}
+          {item.user?.email && <a href={`mailto:${item.user.email}`} className="block text-dark-400 hover:text-gold-400 truncate">{item.user.email}</a>}
+        </InfoBlock>
+
+        <InfoBlock icon={FiMapPin} title="Ship to">
+          {addr.fullName && addr.fullName !== name && <p className="text-dark-200">{addr.fullName}</p>}
+          <p className="text-dark-300">{[addr.addressLine1, addr.addressLine2].filter(Boolean).join(', ') || '—'}</p>
+          <p className="text-dark-400">{[addr.city, addr.state].filter(Boolean).join(', ')} {addr.pincode && <span className="font-mono text-dark-200">{addr.pincode}</span>}</p>
+        </InfoBlock>
+
+        <InfoBlock icon={FiCalendar} title="Dates" wide>
+          <DateLine label="Placed" value={item.createdAt && formatDateTime(item.createdAt)} />
+          <DateLine label="Dispatched" value={item.dispatchedAt && formatDateTime(item.dispatchedAt)} />
+          <DateLine label="ETA" value={item.estimatedDelivery && formatCalendarDate(item.estimatedDelivery, 'short')} />
+          <DateLine label="Delivered" value={item.deliveredAt && formatDateTime(item.deliveredAt)} tone="text-emerald-400" />
+        </InfoBlock>
+
+        <InfoBlock icon={FiTruck} title={partner || item.dpConfirmedAt ? 'Partner & bill' : 'Bill'} wide>
+          <DateLine label="Delivered by" value={partner} />
+          <DateLine label="Partner confirmed" value={item.dpConfirmedAt && formatDateTime(item.dpConfirmedAt)} />
+          {item.dpNote && <p className="text-dark-400 truncate" title={item.dpNote}>&ldquo;{item.dpNote}&rdquo;</p>}
+          <DateLine label={isCustom ? 'Quote' : 'Items'} value={formatPrice(item.itemsPrice ?? item.totalAmount ?? 0)} />
+          <DateLine label="Shipping" value={item.shippingPrice > 0 ? formatPrice(item.shippingPrice) : 'Free'} />
+          <DateLine label="GST" value={formatPrice(item.taxPrice || 0)} />
+        </InfoBlock>
+      </div>
+
+      {/* ── Footer: pipeline, timing, actions ── */}
+      <div className="px-3 sm:px-3.5 py-2.5 border-t border-white/[0.06] flex flex-wrap items-center gap-x-4 gap-y-2">
+        <ol className="flex items-center gap-1 min-w-0" aria-label={`Stage: ${PIPELINE[step]}`}>
+          {PIPELINE.map((label, i) => (
+            <li key={label} className="flex items-center gap-1">
+              <span className={`flex items-center gap-1 text-[10px] font-medium whitespace-nowrap ${i < step ? 'text-dark-300' : i === step ? meta.color : 'text-dark-600'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${i < step ? 'bg-gold-500/70' : i === step ? meta.dot : 'bg-dark-600'}`} />
+                <span className={i === step ? '' : 'hidden sm:inline'}>{label}</span>
+              </span>
+              {i < PIPELINE.length - 1 && <span className={`w-3 sm:w-5 h-px ${i < step ? 'bg-gold-500/50' : 'bg-white/10'}`} />}
+            </li>
+          ))}
+        </ol>
+        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${timing.cls}`}>{timing.text}</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          {invoiceReady(item) && (
+            <button type="button" onClick={() => printInvoice(item)} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-gold-400 border border-white/10 hover:border-gold-500/40 rounded-lg px-2 py-1 transition-colors" title={item.invoiceNumber || item._raw?.invoiceNumber || 'Tax invoice'}>
+              <FiDownload size={11} /> Invoice
+            </button>
+          )}
+          {item.trackingHistory?.length > 0 && (
+            <button type="button" onClick={() => setShowTimeline(v => !v)} aria-expanded={showTimeline} className="inline-flex items-center gap-1 text-[11px] text-dark-300 hover:text-white border border-white/10 hover:border-white/25 rounded-lg px-2 py-1 transition-colors">
+              <FiClock size={11} /> History
+              <FiChevronDown size={11} className={`transition-transform ${showTimeline ? 'rotate-180' : ''}`} />
+            </button>
+          )}
+        </div>
+      </div>
+
       <AnimatePresence initial={false}>
-        {expanded && (
+        {showTimeline && (
           <motion.div
-            key="detail"
+            key="timeline"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="border-t border-white/5 px-4 pt-3 pb-3 space-y-3">
-
-              {/* Compact info row: items | customer | address */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-
-                {/* Items */}
-                <div className="space-y-1.5">
-                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1">
-                    <FiPackage size={9} /> {isCustom ? 'Custom Design' : `Items (${item.items?.length})`}
-                  </p>
-                  {item.items?.slice(0, 3).map((it) => (
-                    <div key={it._id || it.product} className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-md bg-dark-800 flex-shrink-0 overflow-hidden border border-white/5">
-                        {it.image && <img src={resolveImageUrl(it.image)} alt={it.name} className="w-full h-full object-cover" onError={e => { e.target.style.display = 'none'; }} />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-white truncate leading-tight">{it.name}</p>
-                        <p className="text-dark-500">Qty {it.quantity ?? 1} · {formatPrice(it.price)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Customer */}
-                <div className="space-y-0.5 md:border-l md:border-white/5 md:pl-3">
-                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1 mb-1"><FiUser size={9} /> Customer</p>
-                  <p className="text-white font-medium">{item.user?.name || item.shippingAddress?.fullName || '—'}</p>
-                  {item.user?.email && <p className="text-dark-500 truncate">{item.user.email}</p>}
-                  {item.shippingAddress?.phone && <p className="text-dark-400 flex items-center gap-1"><FiPhone size={9} /> {item.shippingAddress.phone}</p>}
-                </div>
-
-                {/* Address + delivery ref */}
-                <div className="space-y-0.5 md:border-l md:border-white/5 md:pl-3">
-                  <p className="text-dark-500 uppercase tracking-wider text-[10px] flex items-center gap-1 mb-1"><FiMapPin size={9} /> Ship To</p>
-                  <p className="text-white truncate">{item.shippingAddress?.addressLine1 || '—'}</p>
-                  <p className="text-dark-400">{item.shippingAddress?.city}, {item.shippingAddress?.state} {item.shippingAddress?.pincode}</p>
-                  {item.deliveryId && (
-                    <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-white/5">
-                      <FiTruck size={10} className="text-gold-400 flex-shrink-0" />
-                      <span className="font-mono text-gold-400 font-semibold">{delivID}</span>
-                      {item.estimatedDelivery && <span className="text-dark-500 ml-auto">ETA {formatDate(item.estimatedDelivery)}</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Timeline + partner row */}
-              <div className="flex flex-wrap items-center gap-2 text-xs border-t border-white/5 pt-2.5">
-                {item.dispatchedAt && (
-                  <span className="text-dark-500 flex items-center gap-1"><FiClock size={9} /> {formatDate(item.dispatchedAt)}</span>
-                )}
-                {item.deliveredAt && (
-                  <span className="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full text-[10px]">
-                    <FiCheck size={9} /> {formatDate(item.deliveredAt)}
-                  </span>
-                )}
-                {item.deliveredByPartnerId && (
-                  <span className="inline-flex items-center gap-1 text-gold-400 bg-gold-500/10 border border-gold-500/20 px-2 py-0.5 rounded-full text-[10px]">
-                    <FiUser size={9} />
-                    {item.deliveredByPartnerName && <span>{item.deliveredByPartnerName}</span>}
-                    <span className="font-mono opacity-70">({item.deliveredByPartnerId})</span>
-                  </span>
-                )}
-              </div>
-
-              {/* Tracking — compact, last 4 only */}
-              {item.trackingHistory?.length > 0 && (
-                <div className="border-t border-white/5 pt-2.5">
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {[...item.trackingHistory].slice(-4).map((h, i) => (
-                      <span key={i} className="flex items-center gap-1.5 text-[10px] text-dark-400">
-                        <span className="w-1 h-1 rounded-full bg-dark-600 flex-shrink-0" />
-                        <span className="capitalize text-dark-300">{(h.status || '').replace(/_/g, ' ')}</span>
-                        <span className="text-dark-600">{formatDate(h.timestamp || h.date)}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+            <div className="border-t border-white/[0.06] bg-dark-900/40 px-3 sm:px-3.5 pt-3 max-w-xl">
+              <Timeline entries={item.trackingHistory} labels={HISTORY_LABELS} bare />
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </motion.article>
   );
 }
 
@@ -694,12 +630,12 @@ export default function AdminDelivery() {
       const orderFetches = [
         ...IN_PROGRESS_REGULAR.map(s => orderService.getAllOrders({ status: s, paymentStatus: 'all', limit: 100 })),
         orderService.getAllOrders({ status: 'shipped', paymentStatus: 'all', limit: 100 }),
-        orderService.getAllOrders({ status: 'delivered', paymentStatus: 'all', limit: 25 }),
+        orderService.getAllOrders({ status: 'delivered', paymentStatus: 'all', limit: 100 }),
       ];
       const customFetches = [
         ...IN_PROGRESS_CUSTOM.map(s => customOrderService.getAllOrders({ status: s, limit: 100 })),
         customOrderService.getAllOrders({ status: 'shipped', limit: 100 }),
-        customOrderService.getAllOrders({ status: 'delivered', limit: 25 }),
+        customOrderService.getAllOrders({ status: 'delivered', limit: 100 }),
       ];
 
       const [orderResults, customResults] = await Promise.all([
@@ -746,7 +682,8 @@ export default function AdminDelivery() {
       (o.user?.email || '').toLowerCase().includes(q) ||
       (o.shippingAddress?.city || '').toLowerCase().includes(q) ||
       (o.shippingAddress?.pincode || '').toLowerCase().includes(q) ||
-      (o.items?.[0]?.name || '').toLowerCase().includes(q) ||
+      (o.shippingAddress?.phone || '').toLowerCase().includes(q) ||
+      (o.items || []).some(it => (it.name || '').toLowerCase().includes(q)) ||
       (o.deliveryId ? maskDeliveryId(o.deliveryId).toLowerCase().includes(q) : false) ||
       resolveOrderId(o).toLowerCase().includes(q)
     );
@@ -806,14 +743,14 @@ export default function AdminDelivery() {
       <div className="grid grid-cols-3 gap-3">
         <StatPill label="In Progress" hint="Processing & packed" value={counts.progress} color="amber"  icon={FiClock}   active={tab==='progress'}  onClick={() => setTab('progress')} />
         <StatPill label="Shipped"     hint="Out with partners"   value={counts.shipped}  color="blue"   icon={FiTruck}   active={tab==='shipped'}   onClick={() => setTab('shipped')} />
-        <StatPill label="Delivered"   hint="Recently completed"  value={counts.delivered} color="emerald" icon={FiCheck} active={tab==='delivered'} onClick={() => setTab('delivered')} />
+        <StatPill label="Delivered"   hint="Latest 100 per type"  value={counts.delivered} color="emerald" icon={FiCheck} active={tab==='delivered'} onClick={() => setTab('delivered')} />
       </div>
 
       {/* Search */}
       <div className="relative group">
         <input
           value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search order ID, customer, city, PIN, delivery ID…"
+          placeholder="Search order ID, tracking no., customer, phone, city, PIN, item…"
           className="w-full bg-dark-800 border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-gold-500/50 focus:ring-1 focus:ring-gold-500/20 transition-colors"
         />
         <FiSearch size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-500 group-focus-within:text-gold-400 transition-colors" />

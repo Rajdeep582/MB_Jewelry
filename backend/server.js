@@ -99,6 +99,8 @@ if (process.env.NODE_ENV !== 'test') {
     // Run stale order cleanup immediately on startup, then every 15 minutes
     cleanupStaleOrders();
     setInterval(() => cleanupStaleOrders(), 15 * 60 * 1000);
+    // Give every paid order (incl. ones paid before invoice numbering existed) its invoice number
+    require('./utils/invoiceNumber').backfillInvoiceNumbers().catch((e) => require('./utils/logger').error(`Invoice backfill failed: ${e.message}`));
     logger.info('Stale-order cleanup scheduler started (every 15 min)');
   });
 }

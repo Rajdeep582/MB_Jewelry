@@ -4,12 +4,13 @@ import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import {
   FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare,
-  FiCalendar, FiFilter, FiPenTool, FiClock, FiPlus, FiImage,
+  FiCalendar, FiFilter, FiPenTool, FiClock, FiPlus, FiImage, FiDownload,
 } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { customOrderService } from '../services/services';
 import api from '../services/api';
 import { formatPrice, formatDate, formatDateTime, formatCalendarDate, formatTrackingNumber, getCustomOrderStatusColor, resolveImageUrl } from '../utils/helpers';
+import { downloadCustomOrderInvoice } from '../utils/invoice';
 import { selectUser } from '../store/authSlice';
 import { OrderCardSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
@@ -21,15 +22,16 @@ import toast from 'react-hot-toast';
  */
 function quoteTotals(order, gstRates) {
   const quoteAmt = order.quoteAmount || 0;
+  const shipAmt  = order.shippingAmount || 0; // PIN-code shipping, set with the quote
   if (order.totalAmount > 0) {
-    return { taxAmt: order.taxAmount ?? Math.max(0, order.totalAmount - quoteAmt), totalAmt: order.totalAmount };
+    return { taxAmt: order.taxAmount ?? Math.max(0, order.totalAmount - quoteAmt - shipAmt), shipAmt, totalAmt: order.totalAmount };
   }
   const purity = order.purity === 'Hallmark' ? 'Hallmarked' : order.purity;
   const entry = gstRates.find(r => r.material === order.material && r.purity === purity)
     || gstRates.find(r => r.material === order.material);
   const rate = entry ? entry.gst / 100 : 0.18;
   const taxAmt = Math.round(quoteAmt * rate);
-  return { taxAmt, totalAmt: quoteAmt + taxAmt };
+  return { taxAmt, shipAmt, totalAmt: quoteAmt + taxAmt + shipAmt };
 }
 
 // ─── Razorpay loader ──────────────────────────────────────────────────────────
@@ -73,6 +75,17 @@ const STATUS_LABELS = {
   shipped:                  'Shipped',
   delivered:                'Delivered',
 };
+
+const HISTORY_LABELS = {
+  pending: 'Request received', quoted: 'Quote ready', advance_paid: 'Advance paid — in production',
+  in_production: 'In production', confirmed: 'Confirmed', ready_to_ship: 'Ready to ship',
+  shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled',
+};
+/** historyLabel — a balance payment is logged while the order is still "shipped"; name it for what it is. */
+function historyLabel(entry) {
+  if (/^Final balance/i.test(entry.comment || '')) return 'Balance paid';
+  return HISTORY_LABELS[entry.status] || (entry.status || '').replaceAll('_', ' ');
+}
 
 function getTimelineStepClass(i, idx) {
   if (i < idx) return 'bg-gold-500 border-gold-500';
@@ -712,7 +725,7 @@ function CustomOrderDetail({ id }) {
                 <h2 className="font-jakarta text-white font-bold text-xl leading-tight pt-0 tracking-wide">
                   {order.customOrderId || `CUS-${order._id.slice(-8).toUpperCase()}`}
                 </h2>
-                <p className="font-jakarta text-dark-500 text-xs mt-0.5">{formatDate(order.createdAt)}</p>
+                <p className="font-jakarta text-dark-500 text-xs mt-0.5">Placed {formatDateTime(order.createdAt)}</p>
               </div>
             </div>
             <span className={`${getCustomOrderStatusColor(order.status)} font-jakarta mt-1 capitalize`}>
@@ -735,7 +748,7 @@ function CustomOrderDetail({ id }) {
         >
           {(() => {
             const quoteAmt   = order.quoteAmount;
-            const { taxAmt, totalAmt } = quoteTotals(order, gstRates);
+            const { taxAmt, shipAmt, totalAmt } = quoteTotals(order, gstRates);
             const advanceAmt = order.advanceAmount > 0 ? order.advanceAmount : Math.round(totalAmt * 0.70);
             const finalAmt   = order.finalAmount  > 0 ? order.finalAmount  : totalAmt - advanceAmt;
 
@@ -750,7 +763,7 @@ function CustomOrderDetail({ id }) {
                     {order.quoteNote && (
                       <p className="font-jakarta text-dark-400 text-sm mt-1">{order.quoteNote}</p>
                     )}
-                    {order.expectedDeliveryDate && !order.estimatedDelivery && (
+                    {order.expectedDeliveryDate && !order.estimatedDelivery && !['delivered', 'cancelled'].includes(order.status) && (
                       <p className="font-jakarta text-gold-400 text-sm font-medium mt-3 flex items-center gap-1.5">
                         <FiTruck size={14} />
                         Expected Delivery: {formatCalendarDate(order.expectedDeliveryDate)}
@@ -759,7 +772,7 @@ function CustomOrderDetail({ id }) {
                   </div>
                   {order.quotedAt && (
                     <p className="font-jakarta text-dark-600 text-[11px] mt-1">
-                      Quoted {formatDate(order.quotedAt)}
+                      Quoted {formatDateTime(order.quotedAt)}
                     </p>
                   )}
                 </div>
@@ -770,10 +783,16 @@ function CustomOrderDetail({ id }) {
                     <p className="font-jakarta text-dark-400 font-medium">Base Quote</p>
                     <p className="font-jakarta text-white font-medium">{formatPrice(quoteAmt)}</p>
                   </div>
-                  <div className="flex justify-between items-center text-sm pb-3 mb-3 border-b border-white/5">
+                  <div className={`flex justify-between items-center text-sm ${shipAmt > 0 ? 'mb-2.5' : 'pb-3 mb-3 border-b border-white/5'}`}>
                     <p className="font-jakarta text-dark-500">{Math.round((taxAmt / quoteAmt) * 100)}% GST</p>
                     <p className="font-jakarta text-dark-400">{formatPrice(taxAmt)}</p>
                   </div>
+                  {shipAmt > 0 && (
+                    <div className="flex justify-between items-center text-sm pb-3 mb-3 border-b border-white/5">
+                      <p className="font-jakarta text-dark-500">Shipping{order.shippingAddress?.pincode ? ` (PIN ${order.shippingAddress.pincode})` : ''}</p>
+                      <p className="font-jakarta text-dark-400">{formatPrice(shipAmt)}</p>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <p className="font-jakarta text-white font-semibold">Grand Total</p>
                     <p className="font-jakarta text-gold-400 font-bold text-lg">{formatPrice(totalAmt)}</p>
@@ -792,8 +811,10 @@ function CustomOrderDetail({ id }) {
                       )}
                     </div>
                     <p className="font-jakarta text-white font-bold text-lg">{formatPrice(advanceAmt)}</p>
-                    {order.advancePayment?.status === 'paid' && (
-                      <p className="font-jakarta text-green-500 text-[10px] font-medium mt-1">Paid</p>
+                    {order.advancePayment?.status === 'paid' ? (
+                      <p className="font-jakarta text-green-500 text-[10px] font-medium mt-1">Paid{order.advancePayment?.paidAt ? ` · ${formatDateTime(order.advancePayment.paidAt)}` : ''}</p>
+                    ) : (
+                      <p className="font-jakarta text-dark-500 text-[10px] mt-1">Pay now to start making</p>
                     )}
                   </div>
                   <div className={`p-4 rounded-xl border ${order.finalPayment?.status === 'paid' ? 'border-green-500/25 bg-green-500/5' : 'border-white/5 bg-dark-900/40'}`}>
@@ -808,8 +829,10 @@ function CustomOrderDetail({ id }) {
                     <p className={`font-jakarta font-bold text-lg ${order.finalPayment?.status === 'paid' ? 'text-white' : 'text-dark-400'}`}>
                       {formatPrice(finalAmt)}
                     </p>
-                    {order.finalPayment?.status === 'paid' && (
-                      <p className="font-jakarta text-green-500 text-[10px] font-medium mt-1">Paid</p>
+                    {order.finalPayment?.status === 'paid' ? (
+                      <p className="font-jakarta text-green-500 text-[10px] font-medium mt-1">Paid{order.finalPayment?.paidAt ? ` · ${formatDateTime(order.finalPayment.paidAt)}` : ''}</p>
+                    ) : (
+                      <p className="font-jakarta text-dark-500 text-[10px] mt-1">Due when your order ships</p>
                     )}
                   </div>
                 </div>
@@ -854,6 +877,20 @@ function CustomOrderDetail({ id }) {
                       )}
                     </button>
                   </>
+                )}
+
+                {order.finalPayment?.status === 'paid' && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5">
+                    <p className="font-jakarta text-dark-500 text-xs">
+                      Fully paid · Tax invoice{order.invoiceNumber ? <> <span className="font-mono text-dark-300">{order.invoiceNumber}</span></> : ''}
+                    </p>
+                    <button
+                      onClick={() => downloadCustomOrderInvoice(order)}
+                      className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"
+                    >
+                      <FiDownload size={14} /> Download Invoice
+                    </button>
+                  </div>
                 )}
 
                 {(order.status === 'quoted' || order.status === 'shipped') && processing && (
@@ -985,6 +1022,31 @@ function CustomOrderDetail({ id }) {
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Order history — every status change with its date & time */}
+      {order.trackingHistory?.length > 0 && (
+        <div className="rounded-2xl border border-white/[0.06] bg-dark-800 p-5">
+          <p className="font-jakarta text-[10px] font-semibold tracking-[0.22em] text-gold-600 uppercase mb-1">Updates</p>
+          <h3 className="font-serif text-white text-lg sm:text-xl font-semibold mb-4">Order History</h3>
+          <ol>
+            {[...order.trackingHistory].reverse().map((entry, idx, list) => (
+              <li key={`${entry.status}-${entry.timestamp || idx}`} className="flex gap-3">
+                <div className="flex flex-col items-center w-3 flex-shrink-0">
+                  <span className={`w-2.5 h-2.5 rounded-full mt-1 ${idx === 0 ? 'bg-gold-400 ring-4 ring-gold-500/15' : 'bg-dark-600'}`} />
+                  {idx !== list.length - 1 && <span className="flex-1 w-px bg-dark-700 my-1" />}
+                </div>
+                <div className="pb-4 flex-1 min-w-0">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                    <p className={`font-jakarta text-sm font-semibold ${idx === 0 ? 'text-white' : 'text-dark-300'}`}>{historyLabel(entry)}</p>
+                    {entry.timestamp && <time className="font-jakarta text-dark-500 text-xs tabular-nums">{formatDateTime(entry.timestamp)}</time>}
+                  </div>
+                  {entry.comment && <p className="font-jakarta text-dark-400 text-xs mt-0.5 leading-relaxed">{entry.comment}</p>}
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 

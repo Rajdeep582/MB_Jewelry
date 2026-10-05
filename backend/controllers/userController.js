@@ -176,7 +176,7 @@ const getAllUsers = async (req, res) => {
   if (q) {
     const { escapeRegex } = require('../utils/orderSearch');
     const rx = new RegExp(escapeRegex(q), 'i');
-    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { userId: rx }];
+    filter.$or = [{ name: rx }, { email: rx }, { phone: rx }, { mobile: rx }, { userId: rx }];
   }
   const [users, total] = await Promise.all([
     User.find(filter)
