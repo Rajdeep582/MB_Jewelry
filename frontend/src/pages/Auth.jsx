@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PropTypes from 'prop-types';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
@@ -127,7 +127,26 @@ ResendButton.propTypes = {
 };
 
 // ─── Main Auth page ───────────────────────────────────────────────────────────
+// Google renders its button at a fixed pixel width — size it to its container (200–384px)
+// so it never overflows narrow phones.
+function useGoogleButtonWidth(max = 384) {
+  const [width, setWidth] = useState(() => (typeof window === 'undefined' ? max : Math.max(200, Math.min(max, window.innerWidth - 48))));
+  const observer = useRef(null);
+  const ref = useCallback((el) => {
+    observer.current?.disconnect();
+    observer.current = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    observer.current = new ResizeObserver(([entry]) => {
+      const w = Math.floor(entry.contentRect.width);
+      if (w > 0) setWidth(Math.max(200, Math.min(max, w)));
+    });
+    observer.current.observe(el);
+  }, [max]);
+  return [ref, width];
+}
+
 function AuthPage({ type }) {
+  const [googleBoxRef, googleWidth] = useGoogleButtonWidth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const dispatch  = useDispatch();
@@ -912,7 +931,7 @@ function AuthPage({ type }) {
                       <div className="flex-grow border-t border-dark-600"></div>
                     </div>
                     
-                    <div className="flex items-center justify-center w-full">
+                    <div ref={googleBoxRef} className="flex items-center justify-center w-full">
                       <GoogleLogin
                         onSuccess={async (credentialResponse) => {
                           const idToken = credentialResponse.credential;
@@ -925,7 +944,7 @@ function AuthPage({ type }) {
                         onError={() => toast.error('Google login failed')}
                         theme="filled_black"
                         shape="rectangular"
-                        width="384"
+                        width={String(googleWidth)}
                         text={type === 'login' ? "signin_with" : "signup_with"}
                       />
                     </div>

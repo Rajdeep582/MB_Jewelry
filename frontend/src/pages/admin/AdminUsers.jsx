@@ -295,7 +295,7 @@ export default function AdminUsers() {
       )}
 
       {loading && (
-        <div className="grid gap-2.5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
           {Array.from({ length: 6 }, (_, i) => <div key={i} className="skeleton h-[124px] rounded-2xl" />)}
         </div>
       )}
@@ -307,7 +307,7 @@ export default function AdminUsers() {
         </div>
       )}
       {!loading && users.length > 0 && (
-        <div className="grid gap-2.5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2">
           {users.map((user) => <UserCard key={user._id} user={user} onToggle={setConfirmUser} />)}
         </div>
       )}

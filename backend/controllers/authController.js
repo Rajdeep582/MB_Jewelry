@@ -35,11 +35,12 @@ const hashToken = (token) => crypto.createHash('sha256').update(token).digest('h
  * Called before: register (email), login (on failed user lookup), Google OAuth (on account creation).
  * Prevents confusion where a user tries to log into the wrong portal with the same email.
  */
+const ADMIN_PORTAL_MSG = 'You are registered as Admin. Please login through the Admin portal.';
 const crossPortalCheck = async (email) => {
   if (!email) return null;
   const e = email.toLowerCase().trim();
   if (await Admin.findOne({ email: e }).lean()) {
-    return 'You are registered as Admin. Please login through the Admin portal.';
+    return ADMIN_PORTAL_MSG;
   }
   if (await DeliveryPartner.findOne({ email: e }).lean()) {
     return 'You are registered as Delivery Partner. Please login through the Delivery Partner portal.';
@@ -181,11 +182,34 @@ const register = async (req, res) => {
   // ── Email registration ───────────────────────────────────────────────────
   if (!email) return res.status(400).json({ success: false, message: 'Email required.' });
 
-  const existingUser = await User.findOne({ email });
-  if (existingUser) return res.status(400).json({ success: false, message: 'Email already registered' });
+  const existingUser = await User.findOne({ email }).select('+otpExpires +otpAttempts');
+  if (existingUser) {
+    // A local sign-up that was never verified and whose code expired / was locked may start over —
+    // otherwise anyone could squat an address forever (no resend route; verify-otp says "use register again").
+    const unverifiedLocal = !existingUser.isVerified
+      && existingUser.providers.every((p) => p.providerType === 'local');
+    if (!unverifiedLocal) return res.status(400).json({ success: false, message: 'Email already registered' });
+    const codeDead = !existingUser.otpExpires || existingUser.otpExpires < Date.now() || existingUser.otpAttempts >= 5;
+    if (!codeDead) {
+      return res.status(400).json({ success: false, message: 'A verification code was already sent to this email. Enter it, or try again in 10 minutes.' });
+    }
+    const rawOtp = crypto.randomInt(100000, 999999).toString();
+    existingUser.name = name;
+    existingUser.password = password; // re-hashed by the pre-save hook
+    existingUser.otpHash = hashToken(rawOtp);
+    existingUser.otpExpires = Date.now() + 10 * 60 * 1000;
+    existingUser.otpAttempts = 0;
+    existingUser.sessions = [];
+    addAuditLog(existingUser, 'SIGNUP_RESTARTED', 'Unverified sign-up restarted', ipAddress);
+    await existingUser.save();
+    await sendVerificationEmail(email, name, rawOtp);
+    return res.status(201).json({ success: true, message: 'Account created! Please check your email for the verification code.' });
+  }
 
-  // Block registration if email belongs to another portal
+  // Block registration if email belongs to another portal.
+  // Admin addresses get the same reply as any taken address — the public portal must not reveal admin accounts.
   const portalMsg = await crossPortalCheck(email);
+  if (portalMsg === ADMIN_PORTAL_MSG) return res.status(400).json({ success: false, message: 'Email already registered' });
   if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
 
   const session = await mongoose.startSession();
@@ -278,7 +302,8 @@ const login = async (req, res) => {
     // If email-based lookup failed, check other portals for a helpful message
     if (!user && isEmail(identifier)) {
       const portalMsg = await crossPortalCheck(identifier);
-      if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+      // Admin addresses fall through to the generic 401 (never reveal admin accounts here)
+      if (portalMsg && portalMsg !== ADMIN_PORTAL_MSG) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
     }
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
   }
@@ -651,10 +676,12 @@ const addEmail = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Email already in use.' });
   }
 
-  const user = await User.findById(req.user._id).select('+otpHash +otpExpires');
+  // The new address stays PENDING until its owner enters the OTP. Writing it to user.email
+  // straight away let anyone claim someone else's address (and later be matched by their
+  // Google sign-in) without ever proving ownership.
+  const user = await User.findById(req.user._id).select('+otpHash +otpExpires +pendingEmail');
   const rawOtp = crypto.randomInt(100000, 999999).toString();
-  user.email = email.toLowerCase();
-  user.isVerified = false; // require email verify
+  user.pendingEmail = email.toLowerCase();
   user.otpHash = hashToken(rawOtp);
   user.otpExpires = Date.now() + 10 * 60 * 1000;
   user.otpAttempts = 0;
@@ -672,9 +699,9 @@ const addEmail = async (req, res) => {
  */
 const verifyEmailOtp = async (req, res) => {
   const { otp } = req.body;
-  const user = await User.findById(req.user._id).select('+otpHash +otpExpires +otpAttempts');
+  const user = await User.findById(req.user._id).select('+otpHash +otpExpires +otpAttempts +pendingEmail');
 
-  if (!user.email || user.isVerified) {
+  if (!user.pendingEmail) {
     return res.status(400).json({ success: false, message: 'No pending email verification.' });
   }
   if (user.otpAttempts >= 5) return res.status(403).json({ success: false, message: 'Too many attempts.' });
@@ -687,13 +714,23 @@ const verifyEmailOtp = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid OTP.' });
   }
 
+  // Re-check: the address may have been taken while the OTP was pending
+  const taken = await User.findOne({ email: user.pendingEmail, _id: { $ne: user._id } }).select('_id').lean();
+  if (taken) {
+    user.pendingEmail = undefined;
+    await user.save({ validateBeforeSave: false });
+    return res.status(400).json({ success: false, message: 'Email already in use.' });
+  }
+
+  user.email = user.pendingEmail;
+  user.pendingEmail = undefined;
   user.isVerified = true;
   user.otpHash = undefined;
   user.otpExpires = undefined;
   user.otpAttempts = 0;
   addAuditLog(user, 'EMAIL_ADDED', `Email ${user.email} verified`, req.ip);
   await user.save({ validateBeforeSave: false });
-  res.json({ success: true, message: 'Email verified and linked to your account.' });
+  res.json({ success: true, message: 'Email verified and linked to your account.', email: user.email });
 };
 
 module.exports = {

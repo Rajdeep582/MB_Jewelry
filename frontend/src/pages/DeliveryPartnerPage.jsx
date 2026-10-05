@@ -88,11 +88,11 @@ function LiveClock() {
   const dateStr = time.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
 
   return (
-    <div className="flex flex-col items-end">
-      <div className="font-mono text-lg font-bold text-gold-400 leading-none tracking-wider tabular-nums">
-        {hh}<span className="opacity-60 animate-pulse">:</span>{mm}<span className="opacity-60 animate-pulse">:</span>{ss}
+    <div className="flex flex-col items-end shrink-0">
+      <div className="font-mono text-sm sm:text-lg font-bold text-gold-400 leading-none tracking-wider tabular-nums whitespace-nowrap">
+        {hh}<span className="opacity-60 animate-pulse">:</span>{mm}<span className="hidden sm:inline"><span className="opacity-60 animate-pulse">:</span>{ss}</span>
       </div>
-      <div className="text-xs text-dark-500 mt-0.5">{dateStr}</div>
+      <div className="text-[10px] sm:text-xs text-dark-500 mt-0.5 whitespace-nowrap">{dateStr}</div>
     </div>
   );
 }
@@ -152,7 +152,7 @@ function ProfileModal({ onClose }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center px-4"
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-4"
       onClick={onClose}
     >
       {/* Backdrop */}
@@ -164,7 +164,7 @@ function ProfileModal({ onClose }) {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.93, opacity: 0, y: 16 }}
         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-        className="relative w-full max-w-md bg-dark-900 border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full max-w-md max-h-full overflow-y-auto overscroll-contain bg-dark-900 border border-white/10 rounded-2xl shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -640,7 +640,7 @@ export default function DeliveryPartnerPage() {
 
       {/* Header */}
       <div className="bg-dark-900/80 backdrop-blur-md border-b border-white/10 px-4 py-3 sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           {/* Left */}
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 shrink-0 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center">

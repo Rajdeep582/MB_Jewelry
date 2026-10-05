@@ -400,12 +400,12 @@ export default function Contact() {
                 {HOURS.map((h) => {
                   const isToday = h.days.includes(status.day);
                   return (
-                    <li key={h.label} className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 font-jakarta text-[13px] ${isToday ? 'bg-gold-500/[0.08] border border-gold-500/20' : ''}`}>
-                      <span className={`flex items-center gap-2 ${isToday ? 'text-gold-300 font-medium' : 'text-dark-400'}`}>
+                    <li key={h.label} className={`flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 font-jakarta text-[13px] ${isToday ? 'bg-gold-500/[0.08] border border-gold-500/20' : ''}`}>
+                      <span className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0 ${isToday ? 'text-gold-300 font-medium' : 'text-dark-400'}`}>
                         {h.label}
                         {isToday && <span className="rounded-full bg-gold-500 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-dark-900">Today</span>}
                       </span>
-                      <span className={h.open == null ? 'text-red-400' : 'text-white'}>{h.text}</span>
+                      <span className={`shrink-0 whitespace-nowrap text-right ${h.open == null ? 'text-red-400' : 'text-white'}`}>{h.text}</span>
                     </li>
                   );
                 })}

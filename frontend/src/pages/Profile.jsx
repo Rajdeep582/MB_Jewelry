@@ -917,7 +917,7 @@ export default function Profile() {
                 aria-selected={active}
                 aria-controls="profile-panel"
                 onClick={() => setTab(t.id)}
-                className={`relative flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-jakarta text-[13px] font-medium transition-colors ${
+                className={`relative flex-auto sm:flex-none flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-lg font-jakarta text-[13px] font-medium whitespace-nowrap transition-colors ${
                   active ? 'text-gold-300' : 'text-dark-400 hover:text-white'
                 }`}
               >
@@ -928,7 +928,7 @@ export default function Profile() {
                     transition={{ type: 'spring', stiffness: 400, damping: 34 }}
                   />
                 )}
-                <Icon size={14} className="relative" />
+                <Icon size={14} className="relative shrink-0 hidden min-[400px]:block" />
                 <span className="relative hidden sm:inline">{t.label}</span>
                 <span className="relative sm:hidden">{t.short}</span>
                 {count !== undefined && (

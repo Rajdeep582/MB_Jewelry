@@ -848,18 +848,18 @@ function ProductDetailView({ id }) {
                 type="button"
                 onClick={handleAddToCart}
                 disabled={stock === 0}
-                className="flex-1 btn-gold py-3.5 text-sm gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex-1 btn-gold py-3.5 px-3 sm:px-6 text-sm gap-2 whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <FiShoppingBag size={15} />
+                <FiShoppingBag size={15} className="shrink-0 hidden min-[380px]:block" />
                 {stock === 0 ? 'Out of Stock' : 'Add to Cart'}
               </button>
               {stock > 0 && (
                 <button
                   type="button"
                   onClick={handleBuyNow}
-                  className="flex-1 btn-outline-gold py-3.5 text-sm gap-2"
+                  className="flex-1 btn-outline-gold py-3.5 px-3 sm:px-6 text-sm gap-2 whitespace-nowrap"
                 >
-                  <FiZap size={15} /> Buy Now
+                  <FiZap size={15} className="shrink-0 hidden min-[380px]:block" /> Buy Now
                 </button>
               )}
               <button

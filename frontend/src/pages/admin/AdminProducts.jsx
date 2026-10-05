@@ -157,7 +157,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
           </div>
 
           {/* Weight / Unit / Stock */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
             <div>
               <label className="label-dark">Weight Value *</label>
               <input
@@ -179,7 +179,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
                 <option value="kg">Per KG</option>
               </select>
             </div>
-            <div>
+            <div className="col-span-2 sm:col-span-1">
               <label className="label-dark">Stock *</label>
               <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} onWheel={(e) => e.target.blur()} className="input-dark" required />
             </div>
@@ -220,7 +220,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
                 ))}
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 items-end">
               <div>
                 <label className="label-dark">Making Charges (%)</label>
                 <input
@@ -636,7 +636,7 @@ export default function AdminProducts() {
                         <div className="flex items-center gap-3">
                           <ProductThumb p={p} />
                           <div className="min-w-0">
-                            <p className="text-white text-sm font-medium max-w-[280px] lg:max-w-[340px] truncate group-hover:text-gold-200 transition-colors" title={p.name}>{p.name}</p>
+                            <p className="text-white text-sm font-medium max-w-[150px] lg:max-w-[260px] xl:max-w-[340px] truncate group-hover:text-gold-200 transition-colors" title={p.name}>{p.name}</p>
                             <p className="text-dark-500 text-xs mt-0.5">
                               {p.material} · {p.purity || '—'}{p.weightValue ? ` · ${p.weightValue} ${p.unit || 'g'}` : ''}
                             </p>

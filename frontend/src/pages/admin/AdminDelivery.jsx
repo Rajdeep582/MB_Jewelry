@@ -223,7 +223,7 @@ function DeliveryCard({ item }) {
 
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-mono text-gold-400 font-semibold text-xs">{resolveOrderId(item)}</span>
+            <span className="font-mono text-gold-400 font-semibold text-xs whitespace-nowrap">{resolveOrderId(item)}</span>
             <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-md border font-medium ${isCustom ? 'bg-purple-500/10 border-purple-500/20 text-purple-300' : 'bg-gold-500/10 border-gold-500/20 text-gold-300'}`}>
               <FiTag size={8} /> {isCustom ? 'Custom' : 'Regular'}
             </span>
@@ -250,7 +250,7 @@ function DeliveryCard({ item }) {
 
         <div className="flex flex-col items-end gap-1 shrink-0 text-right">
           <p className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(item.totalAmount)}</p>
-          {item._payLabel && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md border max-w-[11rem] truncate ${item._payTone}`}>{item._payLabel}</span>}
+          {item._payLabel && <span className={`text-[10px] leading-tight font-medium px-1.5 py-0.5 rounded-md border max-w-[7.5rem] sm:max-w-[11rem] sm:truncate ${item._payTone}`}>{item._payLabel}</span>}
         </div>
       </div>
 

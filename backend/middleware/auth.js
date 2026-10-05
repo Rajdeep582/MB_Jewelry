@@ -80,7 +80,9 @@ const protect = async (req, res, next) => {
  * Admin only — must come after protect
  */
 const adminOnly = (req, res, next) => {
-  if (req.userType === 'admin') return next();
+  // ADMIN_ALLOWED_IPS must cover EVERY admin-only endpoint (orders, users, products, …),
+  // not only the /api/admin and /api/admin-auth mounts. No-op when the env var is unset.
+  if (req.userType === 'admin') return require('./adminIpWhitelist')(req, res, next);
   return res.status(403).json({ success: false, message: 'Admin access required' });
 };
 

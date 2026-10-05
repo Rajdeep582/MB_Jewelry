@@ -561,10 +561,10 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
         tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2.5 p-3 sm:p-3.5 cursor-pointer outline-none focus-visible:bg-white/[0.03] md:gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.1fr)_9rem] md:items-center"
+        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2.5 p-3 sm:p-3.5 cursor-pointer outline-none focus-visible:bg-white/[0.03] lg:gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.1fr)_9rem] lg:items-center"
       >
         {/* Items + id + date */}
-        <div className="col-span-2 md:col-span-1 flex items-center gap-3 min-w-0">
+        <div className="col-span-2 lg:col-span-1 flex items-center gap-3 min-w-0">
           <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-dark-800 border border-white/10 shrink-0 flex items-center justify-center">
             {thumb
               ? <img src={resolveImageUrl(thumb)} alt="" className="w-full h-full object-cover" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
@@ -587,14 +587,14 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
         </div>
 
         {/* Customer */}
-        <div className="col-span-2 md:col-span-1 min-w-0 pl-[3.75rem] md:pl-0">
+        <div className="col-span-2 lg:col-span-1 min-w-0 pl-[3.75rem] lg:pl-0">
           <p className="text-dark-200 text-xs font-medium truncate flex items-center gap-1.5"><FiUser size={11} className="text-dark-500 shrink-0" />{customerName(order)}</p>
           {(addr.phone || order.user?.email) && <p className="text-[11px] text-dark-500 truncate mt-0.5">{addr.phone || order.user?.email}</p>}
           {addr.city && <p className="text-[11px] text-dark-500 truncate flex items-center gap-1"><FiMapPin size={10} className="shrink-0" />{addr.city} · {addr.pincode}</p>}
         </div>
 
         {/* Money */}
-        <div className="min-w-0 pl-[3.75rem] md:pl-0">
+        <div className="min-w-0 pl-[3.75rem] lg:pl-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(order.totalAmount)}</span>
             <Chip className={chip.cls}>{chip.label}</Chip>
@@ -605,7 +605,7 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-1.5 self-end md:self-auto" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="group" aria-label="Order actions">
+        <div className="flex items-center justify-end gap-1.5 self-end lg:self-auto" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="group" aria-label="Order actions">
           {canUpdate && (
             <button type="button" onClick={onUpdate} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-dark-900 bg-gold-500 hover:bg-gold-400 transition-colors">
               <FiEdit2 size={11} /> Update

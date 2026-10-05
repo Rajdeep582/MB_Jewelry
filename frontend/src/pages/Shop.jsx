@@ -295,7 +295,7 @@ export default function Shop() {
 
             {/* Product Grid */}
             {loading ? (
-              <div className={`grid gap-3 sm:gap-5 ${view === 'grid' ? 'grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}>
+              <div className={`grid gap-3 sm:gap-5 ${view === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}>
                 {Array.from({ length: 9 }, (_, n) => n).map((n) => <ProductCardSkeleton key={n} />)}
               </div>
             ) : products.length === 0 ? (
@@ -319,7 +319,7 @@ export default function Shop() {
             ) : (
               <motion.div
                 layout
-                className={`grid gap-3 sm:gap-5 ${view === 'grid' ? 'grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}
+                className={`grid gap-3 sm:gap-5 ${view === 'grid' ? 'grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3' : 'grid-cols-1'}`}
               >
                 {products.map((product) => (
                   <ProductCard key={product._id} product={product} view={view} />

@@ -70,17 +70,17 @@ export default function Navbar() {
         <div className="flex items-center justify-between h-16 lg:h-20">
 
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2 group">
+          <Link to="/" className="flex items-center gap-2 group lg:shrink-0">
             <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center shadow-gold group-hover:shadow-gold-lg transition-shadow duration-300">
               <span className="text-dark-900 font-bold text-[10px] font-serif tracking-tight">MB</span>
             </div>
-            <span className="font-jakarta font-bold text-white tracking-widest text-sm uppercase">
+            <span className="font-jakarta font-bold text-white tracking-widest text-sm uppercase lg:whitespace-nowrap">
               M.B.<span className="text-gradient-gold"> JEWELLERS</span>
             </span>
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden lg:flex items-center gap-8">
+          <div className="hidden lg:flex items-center gap-5 xl:gap-8">
             {navLinks.map(({ to, label, highlight }) => {
               const toPath = to.split('?')[0];
               const toSearch = to.split('?')[1] || '';
@@ -101,7 +101,7 @@ export default function Navbar() {
                   key={to}
                   to={to}
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                  className={`nav-link relative ${isActive ? 'nav-link-active text-gold-500' : ''} ${
+                  className={`nav-link relative whitespace-nowrap ${isActive ? 'nav-link-active text-gold-500' : ''} ${
                     highlight && !isActive ? 'text-gold-400 hover:text-gold-300' : ''
                   }`}
                 >
@@ -219,7 +219,7 @@ export default function Navbar() {
             ) : (
               <Link
                 to="/login"
-                className="hidden lg:flex btn-outline-gold text-sm py-2 px-4"
+                className="hidden lg:flex btn-outline-gold text-sm py-2 px-4 whitespace-nowrap"
               >
                 Sign In
               </Link>

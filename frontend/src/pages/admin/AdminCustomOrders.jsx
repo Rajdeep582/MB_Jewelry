@@ -896,10 +896,10 @@ function CustomOrderCard({ order, expanded, onToggle, onQuote, onStatus, onImage
         tabIndex={0}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2.5 p-3 sm:p-3.5 cursor-pointer outline-none focus-visible:bg-white/[0.03] md:gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.1fr)_10.5rem] md:items-center"
+        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-2.5 p-3 sm:p-3.5 cursor-pointer outline-none focus-visible:bg-white/[0.03] lg:gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1.1fr)_10.5rem] lg:items-center"
       >
         {/* Item + id + date */}
-        <div className="col-span-2 md:col-span-1 flex items-center gap-3 min-w-0">
+        <div className="col-span-2 lg:col-span-1 flex items-center gap-3 min-w-0">
           <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-dark-800 border border-white/10 shrink-0 flex items-center justify-center">
             {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" loading="lazy" /> : <FiPackage size={18} className="text-dark-500" />}
             {order.referenceImages?.length > 1 && (
@@ -920,7 +920,7 @@ function CustomOrderCard({ order, expanded, onToggle, onQuote, onStatus, onImage
         </div>
 
         {/* Customer */}
-        <div className="col-span-2 md:col-span-1 min-w-0 pl-[3.75rem] md:pl-0">
+        <div className="col-span-2 lg:col-span-1 min-w-0 pl-[3.75rem] lg:pl-0">
           <p className="text-dark-200 text-xs font-medium truncate flex items-center gap-1.5"><FiUser size={11} className="text-dark-500 shrink-0" />{customerName(order)}</p>
           {(order.shippingAddress?.phone || order.user?.email) && (
             <p className="text-[11px] text-dark-500 truncate mt-0.5">{order.shippingAddress?.phone || order.user?.email}</p>
@@ -931,7 +931,7 @@ function CustomOrderCard({ order, expanded, onToggle, onQuote, onStatus, onImage
         </div>
 
         {/* Money */}
-        <div className="min-w-0 pl-[3.75rem] md:pl-0">
+        <div className="min-w-0 sm:pl-[3.75rem] lg:pl-0">
           {pay.quoted ? (
             <>
               <div className="flex items-baseline gap-2 flex-wrap">
@@ -948,13 +948,13 @@ function CustomOrderCard({ order, expanded, onToggle, onQuote, onStatus, onImage
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-1.5 self-end md:self-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1.5 self-end lg:self-auto" onClick={(e) => e.stopPropagation()}>
           {!order.quotedAt && !['delivered', 'cancelled'].includes(order.status) && (
             <button type="button" onClick={() => onQuote(order)} className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-dark-900 bg-gold-500 hover:bg-gold-400 transition-colors">Quote</button>
           )}
           {!['delivered', 'cancelled'].includes(order.status) && (
             <button type="button" onClick={() => onStatus(order)} className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-dark-200 border border-white/10 hover:border-gold-500/40 hover:text-gold-300 transition-colors" title="Update status">
-              <FiEdit3 size={11} /> Update
+              <FiEdit3 size={11} /> <span className="hidden min-[380px]:inline">Update</span>
             </button>
           )}
           <button type="button" onClick={onToggle} className="p-2 rounded-lg text-dark-400 hover:text-white hover:bg-white/5 transition-colors" aria-expanded={expanded} aria-label={expanded ? 'Hide details' : 'Show details'}>

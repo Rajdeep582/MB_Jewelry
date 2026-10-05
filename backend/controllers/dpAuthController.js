@@ -24,7 +24,7 @@ const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
  * Account is not usable until admin calls assignDeliveryRole.
  *
  * CROSS-PORTAL CHECK:
- *   If the email is already in User or Admin collection → 403 WRONG_PORTAL.
+ *   If the email is already in User collection → 403 WRONG_PORTAL; an Admin address gets the plain 400 (admin accounts are never revealed).
  *   Each portal (user/admin/dp) is a separate collection — no shared accounts.
  *
  * DOES NOT send verification email — DP registration is approved manually by admin.
@@ -45,8 +45,9 @@ const registerDP = async (req, res) => {
   if (await User.findOne({ email: emailLower }).lean()) {
     return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
   }
+  // Admin addresses get the same reply as any taken address (never reveal admin accounts here)
   if (await Admin.findOne({ email: emailLower }).lean()) {
-    return res.status(403).json({ success: false, message: 'You are registered as Admin. Please login through the Admin portal.', code: 'WRONG_PORTAL' });
+    return res.status(400).json({ success: false, message: 'Email already registered.' });
   }
 
   try {
@@ -107,9 +108,7 @@ const loginDP = async (req, res) => {
       if (await User.findOne({ email: emailLower }).lean()) {
         return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
       }
-      if (await Admin.findOne({ email: emailLower }).lean()) {
-        return res.status(403).json({ success: false, message: 'You are registered as Admin. Please login through the Admin portal.', code: 'WRONG_PORTAL' });
-      }
+      // Admin addresses fall through to the generic 401 (never reveal admin accounts here)
     }
     return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
   }

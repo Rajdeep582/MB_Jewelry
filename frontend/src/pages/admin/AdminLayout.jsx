@@ -230,8 +230,8 @@ export default function AdminLayout() {
         )}
       </AnimatePresence>
 
-      {/* Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      {/* Content — overflow-x-clip (not overflow-hidden) so the mobile top bar can stay sticky */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-x-clip">
 
         {/* Mobile top bar */}
         <div className="lg:hidden flex items-center gap-3 p-3 glass border-b border-white/[0.08] sticky top-0 z-30">

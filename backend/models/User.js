@@ -94,6 +94,8 @@ const userSchema = new mongoose.Schema(
     otpHash: { type: String, select: false },
     otpExpires: { type: Date, select: false },
     otpAttempts: { type: Number, default: 0 },
+    // Email change waiting for OTP confirmation — the live email is NOT touched until verified
+    pendingEmail: { type: String, lowercase: true, trim: true, select: false },
     // Password-reset OTP (kept separate from registration OTP)
     pwdResetOtpHash: { type: String, select: false },
     pwdResetOtpExpires: { type: Date, select: false },
@@ -137,6 +139,8 @@ userSchema.pre('save', async function (next) {
  * Returns true if match, false otherwise.
  */
 userSchema.methods.comparePassword = async function (candidatePassword) {
+  // Google-only accounts have no password → plain mismatch, not a bcrypt crash (500)
+  if (!this.password || typeof candidatePassword !== 'string') return false;
   return bcrypt.compare(candidatePassword, this.password);
 };
 
