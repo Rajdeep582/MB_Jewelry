@@ -11,9 +11,11 @@ export default function SmoothScroller({ children }) {
         duration: 1.15,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
-        syncTouch: true,
-        touchMultiplier: 1.6,
         wheelMultiplier: 1,
+        // Touch devices keep the browser's native momentum scroll. Emulating it (syncTouch)
+        // fights iOS/Android inertia (jitter), swallows diagonal swipes on card rails and
+        // image galleries, and leaves pages "stuck" after fast flicks.
+        syncTouch: false,
       }}
     >
       {children}

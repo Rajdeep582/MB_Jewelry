@@ -1,5 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  // hover: styles only on devices that can hover — stops "stuck" hover states after taps on phones/tablets
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",

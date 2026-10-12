@@ -32,9 +32,9 @@
 
   body {
     @apply bg-dark-900 text-white font-sans;
-    overflow-x: hidden;
+    overflow-x: hidden;                 /* fallback for browsers without `clip` */
+    overflow-x: clip;                   /* clips stray overflow without creating a scroll container (keeps sticky + touch scroll intact) */
     overscroll-behavior-y: none;        /* prevent rubber-band / scroll chaining */
-    -webkit-overflow-scrolling: touch;  /* momentum scroll on iOS */
   }
 
   /* Admin panel — Plus Jakarta Sans (overrides Tailwind font-* utilities) */
@@ -146,9 +146,11 @@
     @apply card;
   }
   
-  .card-hover:hover {
-    @apply shadow-card-hover -translate-y-1;
-    border-color: rgba(212, 175, 55, 0.25);
+  @media (hover: hover) {
+    .card-hover:hover {
+      @apply shadow-card-hover -translate-y-1;
+      border-color: rgba(212, 175, 55, 0.25);
+    }
   }
 
   /* Glassmorphism */
@@ -255,8 +257,10 @@
     @apply w-full h-full object-cover transition-transform duration-500;
   }
 
-  .product-img-wrapper:hover img {
-    @apply scale-110;
+  @media (hover: hover) {
+    .product-img-wrapper:hover img {
+      @apply scale-110;
+    }
   }
 
   /* Price */

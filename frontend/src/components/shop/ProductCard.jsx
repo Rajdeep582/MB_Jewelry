@@ -30,7 +30,7 @@ function getDiscountBadgeClass(isList) {
 // on desktop it fades in on hover.
 function getWishlistBtnClass(isList, saved) {
   const pos = isList ? 'top-2 right-2 sm:top-3 sm:right-3' : 'top-2.5 right-2.5 sm:top-3 sm:right-3';
-  const vis = saved ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100';
+  const vis = saved ? 'opacity-100' : 'opacity-100 [@media(hover:hover)]:sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100';
   return `absolute z-10 w-8 h-8 rounded-full bg-dark-900/80 backdrop-blur-sm border border-white/10 flex items-center justify-center text-dark-300 hover:text-velvet-400 hover:scale-110 transition-all duration-200 ${vis} ${pos}`;
 }
 

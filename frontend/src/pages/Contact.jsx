@@ -16,12 +16,10 @@ const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURICom
 
 // Opening hours (IST). day: 0 = Sunday … 6 = Saturday; open/close in minutes from midnight.
 const HOURS = [
-  { label: 'Monday – Friday', days: [1, 2, 3, 4, 5], open: 600, close: 1140, text: '10:00 AM – 7:00 PM' },
-  { label: 'Saturday',        days: [6],             open: 600, close: 1020, text: '10:00 AM – 5:00 PM' },
-  { label: 'Sunday',          days: [0],             open: null, close: null, text: 'Closed' },
+  { label: 'Mon – Wed, Friday', days: [1, 2, 3, 5], open: 600, close: 1140, text: '10:00 AM – 7:00 PM' },
+  { label: 'Thursday',          days: [4],          open: null, close: null, text: 'Closed' },
+  { label: 'Saturday – Sunday', days: [6, 0],       open: 600, close: 1020, text: '10:00 AM – 5:00 PM' },
 ];
-
-const TOPICS = ['Order help', 'Custom design', 'Repair / resize', 'Gold & silver rates', 'Other'];
 
 const FAQS = [
   { q: 'Where do you deliver?', a: 'We currently deliver to New Barrackpore (700131), Madhyamgram (700129) and Barasat (700124). Shipping is calculated at checkout from your PIN code.' },
@@ -311,29 +309,6 @@ export default function Contact() {
               <div>
                 <h2 className="font-serif text-lg sm:text-xl text-white font-semibold leading-tight pt-0">Send a message</h2>
                 <p className="font-jakarta text-xs text-dark-500">Opens in your email app, ready to send.</p>
-              </div>
-            </div>
-
-            {/* Topic chips → subject */}
-            <div className="mb-4">
-              <p className="font-jakarta text-xs font-medium text-dark-300 mb-2">What is it about?</p>
-              <div className="flex flex-wrap gap-1.5">
-                {TOPICS.map((t) => {
-                  const active = form.subject === t;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setForm({ ...form, subject: active ? '' : t })}
-                      aria-pressed={active}
-                      className={`font-jakarta px-3 py-1.5 rounded-full text-xs border transition-all duration-200 ${
-                        active ? 'bg-gold-500 border-gold-500 text-dark-900 font-semibold' : 'border-white/10 text-dark-300 hover:border-gold-500/40 hover:text-white'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
               </div>
             </div>
 

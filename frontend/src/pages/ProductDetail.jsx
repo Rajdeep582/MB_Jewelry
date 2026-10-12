@@ -508,6 +508,8 @@ function ProductDetailView({ id }) {
         <motion.div
           className="absolute inset-0"
           drag={displayImages.length > 1 ? 'x' : false}
+          dragDirectionLock
+          style={{ touchAction: 'pan-y' }}
           dragConstraints={{ left: 0, right: 0 }}
           dragElastic={0.18}
           onDragEnd={(_, info) => {
@@ -557,7 +559,7 @@ function ProductDetailView({ id }) {
               type="button"
               onClick={() => goImg(-1)}
               aria-label="Previous image"
-              className="absolute z-10 left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
+              className="absolute z-10 left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white [@media(hover:hover)]:sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
             >
               <FiChevronLeft size={18} />
             </button>
@@ -565,7 +567,7 @@ function ProductDetailView({ id }) {
               type="button"
               onClick={() => goImg(1)}
               aria-label="Next image"
-              className="absolute z-10 right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white sm:opacity-0 sm:group-hover:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
+              className="absolute z-10 right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-dark-900/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-white [@media(hover:hover)]:sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 transition-all hover:bg-gold-500 hover:text-dark-900"
             >
               <FiChevronRight size={18} />
             </button>

@@ -6,6 +6,7 @@ import { FiShoppingBag, FiUser, FiMenu, FiX, FiSearch, FiChevronDown, FiLogOut, 
 import { selectCartCount, openCart } from '../../store/cartSlice';
 import { selectIsAuthenticated, selectUser, selectIsAdmin, logoutUser } from '../../store/authSlice';
 import toast from 'react-hot-toast';
+import useScrollLock from '../../hooks/useScrollLock';
 
 const navLinks = [
   { to: '/',                   label: 'Home' },
@@ -32,9 +33,18 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const profileRef = useRef(null);
 
+  useScrollLock(mobileOpen);
+
+  // Close the mobile menu on any navigation (incl. back/forward)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMobileOpen(false);
+  }, [location.pathname, location.search]);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -248,7 +258,7 @@ export default function Navbar() {
             transition={{ duration: 0.3 }}
             className="lg:hidden glass border-t border-white/10 overflow-hidden"
           >
-            <div className="px-4 py-4 space-y-1">
+            <div className="px-4 py-4 space-y-1 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain" data-lenis-prevent="true">
               {navLinks.map(({ to, label, highlight }) => {
                 const toPath = to.split('?')[0];
                 const toSearch = to.split('?')[1] || '';
@@ -268,7 +278,7 @@ export default function Navbar() {
                   <Link
                     key={to}
                     to={to}
-                    onClick={() => { setMobileOpen(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    onClick={() => setMobileOpen(false)}
                     className={`block px-4 py-2.5 rounded-xl text-sm font-medium transition-colors flex items-center justify-between ${(() => {
                       if (isActive) return 'bg-gold-500/10 text-gold-400';
                       if (highlight) return 'text-gold-400 hover:bg-gold-500/10';

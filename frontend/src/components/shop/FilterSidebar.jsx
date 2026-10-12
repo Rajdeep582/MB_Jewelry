@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import useScrollLock from '../../hooks/useScrollLock';
 import { FiX, FiChevronDown, FiCheck, FiSliders } from 'react-icons/fi';
 import { selectProductsFilter, selectProductsPagination, selectProductsLoading } from '../../store/productSlice';
 import { categoryService } from '../../services/services';
@@ -119,6 +120,9 @@ export default function FilterSidebar({ mobileOpen = false, onMobileClose = () =
   useEffect(() => {
     categoryService.getCategories().then((res) => setCategories(res.data.categories || [])).catch(() => {});
   }, []);
+
+  // Freeze the page behind the mobile bottom sheet
+  useScrollLock(mobileOpen);
 
   // Close the mobile drawer with Escape
   useEffect(() => {
@@ -340,7 +344,7 @@ export default function FilterSidebar({ mobileOpen = false, onMobileClose = () =
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-              className="fixed inset-x-0 bottom-0 z-50 lg:hidden max-h-[85vh] flex flex-col rounded-t-3xl border-t border-gold-500/20 bg-dark-900 shadow-[0_-20px_60px_rgba(0,0,0,0.6)]"
+              className="fixed inset-x-0 bottom-0 z-50 lg:hidden max-h-[85vh] supports-[height:100dvh]:max-h-[85dvh] flex flex-col rounded-t-3xl border-t border-gold-500/20 bg-dark-900 shadow-[0_-20px_60px_rgba(0,0,0,0.6)]"
             >
               <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-white/15" aria-hidden="true" />
               <div className="flex items-center justify-between gap-3 px-5 pt-3 pb-3 border-b border-white/[0.07]">
@@ -349,7 +353,7 @@ export default function FilterSidebar({ mobileOpen = false, onMobileClose = () =
                   <FiX size={18} />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-5" data-lenis-prevent="true">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5" data-lenis-prevent="true">
                 {renderFilterContent()}
               </div>
               <div className="px-5 py-3.5 border-t border-white/[0.07] bg-dark-900 pb-[max(0.875rem,env(safe-area-inset-bottom))]">

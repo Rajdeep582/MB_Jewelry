@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import jewelryImg from '../../assets/necklace.webp';
 import { useSelector, useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,6 +8,7 @@ import {
   closeCart, removeFromCart, updateQuantity,
 } from '../../store/cartSlice';
 import { formatPrice, resolveImageUrl } from '../../utils/helpers';
+import useScrollLock from '../../hooks/useScrollLock';
 
 export default function CartDrawer() {
   const dispatch = useDispatch();
@@ -17,11 +17,8 @@ export default function CartDrawer() {
   const total = useSelector(selectCartTotal);
   const isOpen = useSelector(selectCartOpen);
 
-  // Lock body scroll when drawer is open
-  useEffect(() => {
-    document.body.style.overflow = isOpen ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [isOpen]);
+  // Lock page scroll (Lenis + native) while the drawer is open
+  useScrollLock(isOpen);
 
   const handleCheckout = () => {
     dispatch(closeCart());
@@ -66,7 +63,7 @@ export default function CartDrawer() {
             </div>
 
             {/* Items */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-3" data-lenis-prevent="true">
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-3" data-lenis-prevent="true">
               {items.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-8">
                   <div className="w-20 h-20 rounded-full bg-dark-800 flex items-center justify-center">

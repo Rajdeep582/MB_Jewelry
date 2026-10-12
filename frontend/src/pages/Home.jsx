@@ -334,7 +334,7 @@ function FeaturedShowcase({ featured, loading, railRef, scrollRail, pauseRail })
           onBlur={() => pauseRail(false)}
           onTouchStart={() => pauseRail(true)}
           onTouchEnd={() => pauseRail(false)}
-          className="flex items-stretch gap-6 overflow-x-auto scrollbar-hide snap-x snap-mandatory scroll-px-4 sm:scroll-px-0 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0"
+          className="flex items-stretch gap-6 overflow-x-auto overflow-y-hidden overscroll-x-contain scrollbar-hide snap-x snap-mandatory scroll-px-4 sm:scroll-px-0 pb-4 -mx-4 px-4 sm:mx-0 sm:px-0"
         >
           {loading
             ? Array.from({ length: 4 }, (_, n) => n).map((n) => (
