@@ -24,6 +24,10 @@ const getTransporter = () => {
     host: process.env.SMTP_HOST,
     port: Number.parseInt(process.env.SMTP_PORT, 10),
     secure: false,
+    // Fail fast instead of hanging the request when the SMTP port is unreachable
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -43,6 +47,38 @@ const getSender = () => {
 };
 
 /**
+ * sendViaBrevoApi — sends through Brevo's HTTPS API (port 443).
+ * Needed on hosts that block outbound SMTP ports 25/465/587 (e.g. Railway Hobby/Free plans).
+ */
+const sendViaBrevoApi = async ({ to, subject, html }) => {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: { 'api-key': process.env.BREVO_API_KEY.trim(), 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ sender: { name: 'M&B Jewelry', email: getSender() }, to: [{ email: to }], subject, htmlContent: html }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Brevo API ${res.status}: ${data.message || res.statusText}`);
+  return { messageId: data.messageId };
+};
+
+/**
+ * deliver — Brevo HTTPS API when BREVO_API_KEY is set, otherwise SMTP.
+ * If the API call fails and SMTP is configured, falls back to SMTP (keeps local dev working).
+ */
+const deliver = async (mailOptions) => {
+  if (process.env.BREVO_API_KEY) {
+    try {
+      return await sendViaBrevoApi(mailOptions);
+    } catch (err) {
+      if (!process.env.SMTP_HOST) throw err;
+      logger.warn(`Brevo API send failed (${err.message}) — falling back to SMTP`);
+    }
+  }
+  return getTransporter().sendMail(mailOptions);
+};
+
+/**
  * sendVerificationEmail — sends a 6-digit OTP to a user's email for account verification.
  * OTP is valid for 10 minutes (enforced server-side via otpExpires field, not by this mailer).
  * userName is HTML-escaped before embedding to prevent injection.
@@ -53,7 +89,6 @@ const getSender = () => {
  */
 const sendVerificationEmail = async (userEmail, userName, otpCode) => {
   try {
-    const transporter = getTransporter();
     const from = getSender();
 
     const mailOptions = {
@@ -75,7 +110,7 @@ const sendVerificationEmail = async (userEmail, userName, otpCode) => {
       `,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await deliver(mailOptions);
     logger.info(`Verification OTP sent to ${userEmail}. MsgID: ${info.messageId}`);
     return true;
   } catch (error) {
@@ -95,7 +130,6 @@ const sendVerificationEmail = async (userEmail, userName, otpCode) => {
  */
 const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
   try {
-    const transporter = getTransporter();
     const from = getSender();
 
     const mailOptions = {
@@ -126,7 +160,7 @@ const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
       `,
     };
 
-    const info = await transporter.sendMail(mailOptions);
+    const info = await deliver(mailOptions);
     logger.info(`Password reset OTP sent to ${userEmail}. MsgID: ${info.messageId}`);
     return true;
   } catch (error) {
