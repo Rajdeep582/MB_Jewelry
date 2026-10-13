@@ -13,6 +13,7 @@ const {
 const { rotateRefreshSession } = require('../utils/refreshSessions');
 const { sendVerificationEmail } = require('../utils/email');
 const logger = require('../utils/logger');
+const { makePasswordResetHandlers } = require('../utils/staffPasswordReset');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -411,4 +412,7 @@ const confirmEmailChange = async (req, res) => {
   res.json({ success: true, message: 'Email updated successfully.', user: adminPayload(admin) });
 };
 
-module.exports = { register, verifyEmail, resendOtp, login, logout, getMe, refreshToken, updateName, requestEmailChange, confirmEmailChange };
+// Forgot password — POST /forgot-password, /verify-reset-otp, /reset-password
+const { forgotPassword, verifyResetOtp, resetPassword } = makePasswordResetHandlers(Admin, 'admin');
+
+module.exports = { register, verifyEmail, resendOtp, login, logout, getMe, refreshToken, updateName, requestEmailChange, confirmEmailChange, forgotPassword, verifyResetOtp, resetPassword };

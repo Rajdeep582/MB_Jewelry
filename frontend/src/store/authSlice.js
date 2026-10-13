@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
+import { DELIVERY_BASE } from '../utils/deliveryPaths';
 
 // ─── Async Thunks ────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ const keyFor = (role) => STORAGE_KEYS[portalOf(role)];
 const portalFromPath = () => {
   const path = typeof window === 'undefined' ? '/' : window.location.pathname;
   if (path.startsWith('/admin')) return 'admin';
-  if (path.startsWith('/delivery')) return 'delivery';
+  if (path.startsWith(DELIVERY_BASE)) return 'delivery';
   return 'user';
 };
 

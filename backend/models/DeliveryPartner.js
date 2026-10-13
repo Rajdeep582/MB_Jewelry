@@ -39,6 +39,12 @@ const deliveryPartnerSchema = new mongoose.Schema(
     // Login security
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
+    // Forgot-password flow (utils/staffPasswordReset.js) — hashes only, single use
+    pwdResetOtpHash:      { type: String, select: false },
+    pwdResetOtpExpires:   { type: Date,   select: false },
+    pwdResetOtpAttempts:  { type: Number, default: 0, select: false },
+    pwdResetTokenHash:    { type: String, select: false },
+    pwdResetTokenExpires: { type: Date,   select: false },
     lastLogin: { type: Date },
     sessions: [{
       sessionId: { type: String, required: true },

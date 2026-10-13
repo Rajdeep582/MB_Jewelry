@@ -2,6 +2,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { selectIsAuthenticated, selectIsAdmin, selectIsDelivery, selectUser, selectInitialized } from '../../store/authSlice';
 import PropTypes from 'prop-types';
+import { DELIVERY_LOGIN } from '../../utils/deliveryPaths';
 
 export function ProtectedRoute({ children }) {
   const initialized     = useSelector(selectInitialized);
@@ -30,8 +31,8 @@ export function DeliveryRoute({ children }) {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isDelivery      = useSelector(selectIsDelivery);
   if (!initialized) return null;
-  if (!isAuthenticated) return <Navigate to="/delivery/login" replace />;
-  if (!isDelivery) return <Navigate to="/delivery/login" replace />;
+  if (!isAuthenticated) return <Navigate to={DELIVERY_LOGIN} replace />;
+  if (!isDelivery) return <Navigate to={DELIVERY_LOGIN} replace />;
   return children;
 }
 

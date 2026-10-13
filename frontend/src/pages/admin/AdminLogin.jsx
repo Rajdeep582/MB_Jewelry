@@ -5,6 +5,7 @@ import { loginAdmin, selectAuthLoading, selectAuthError, clearError, selectIsAdm
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import BrandLogo from '../../components/common/BrandLogo';
+import StaffForgotPassword from '../../components/common/StaffForgotPassword';
 import toast from 'react-hot-toast';
 
 export default function AdminLogin() {
@@ -16,6 +17,7 @@ export default function AdminLogin() {
 
   const [form, setForm]       = useState({ email: '', password: '' });
   const [showPwd, setShowPwd] = useState(false);
+  const [forgot, setForgot]   = useState(false);
 
   if (isAdmin) return <Navigate to="/admin" replace />;
 
@@ -32,6 +34,12 @@ export default function AdminLogin() {
     } else if (loginAdmin.rejected.match(result)) {
       toast.error(result.payload || 'Login failed');
     }
+  };
+
+  const openForgot = () => { dispatch(clearError()); setForgot(true); };
+  const closeForgot = (resetEmail) => {
+    setForgot(false);
+    if (resetEmail) setForm({ email: resetEmail, password: '' });
   };
 
   const inputCls = 'w-full bg-dark-800/80 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white placeholder-dark-600 focus:outline-none focus:border-gold-500/60 focus:ring-2 focus:ring-gold-500/15 transition-all';
@@ -56,6 +64,11 @@ export default function AdminLogin() {
               <BrandLogo size="md" to="/" />
             </div>
 
+            {forgot ? (
+              <div className="mt-6">
+                <StaffForgotPassword apiBase="/admin-auth" initialEmail={form.email} onBack={closeForgot} />
+              </div>
+            ) : (<>
             <div className="text-center mt-6">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gold-500/25 bg-gold-500/[0.06] text-gold-400 text-[10px] uppercase tracking-[0.25em] font-semibold">
                 <FiShield size={11} /> Admin Portal
@@ -96,7 +109,12 @@ export default function AdminLogin() {
               </div>
 
               <div className="space-y-1.5">
-                <label htmlFor="admin-password" className="text-[11px] text-dark-400 uppercase tracking-wider font-medium">Password</label>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="admin-password" className="text-[11px] text-dark-400 uppercase tracking-wider font-medium">Password</label>
+                  <button type="button" onClick={openForgot} className="text-[11px] text-gold-500 hover:text-gold-400 font-medium transition-colors">
+                    Forgot password?
+                  </button>
+                </div>
                 <div className="relative group">
                   <FiLock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-500 group-focus-within:text-gold-400 transition-colors" />
                   <input
@@ -136,6 +154,7 @@ export default function AdminLogin() {
                 )}
               </motion.button>
             </form>
+            </>)}
           </div>
 
           <div className="px-7 py-3.5 border-t border-white/5 bg-dark-950/40 flex items-center justify-between text-xs">

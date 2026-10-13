@@ -8,11 +8,14 @@
  * GET  /me        — return minimal DP identity (protect + deliveryOnly)
  * GET  /profile   — return full DP profile (protect + deliveryOnly)
  * PATCH /profile  — update DP profile fields (protect + deliveryOnly)
+ * POST /forgot-password  — email a 6-digit password reset code (otpLimiter)
+ * POST /verify-reset-otp — verify code → one-time reset token (authLimiter, 5-attempt lockout)
+ * POST /reset-password   — set new password with reset token, revokes all sessions (authLimiter)
  */
 const express = require('express');
 const router = express.Router();
 const { protect, deliveryOnly } = require('../middleware/auth');
-const { loginLimiter, authLimiter } = require('../middleware/rateLimiter');
+const { loginLimiter, authLimiter, otpLimiter } = require('../middleware/rateLimiter');
 const { validateSchema, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/dpAuthController');
 
@@ -23,5 +26,10 @@ router.post('/refresh',  ctrl.refreshDP);
 router.get('/me',        protect, deliveryOnly, ctrl.getMeDP);
 router.get('/profile',   protect, deliveryOnly, ctrl.getProfileDP);
 router.patch('/profile', protect, deliveryOnly, ctrl.updateProfileDP);
+
+// Forgot password (public)
+router.post('/forgot-password',  otpLimiter,  validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
+router.post('/verify-reset-otp', authLimiter, validateSchema(schemas.verifyResetOtp), ctrl.verifyResetOtp);
+router.post('/reset-password',   authLimiter, validateSchema(schemas.resetPassword),  ctrl.resetPassword);
 
 module.exports = router;

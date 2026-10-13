@@ -11,6 +11,9 @@
  * PATCH /profile/name         — update display name (protect + adminOnly)
  * POST /profile/request-email-change — send OTP to new email address (protect + adminOnly)
  * POST /profile/confirm-email-change — verify OTP and commit new email (protect + adminOnly, 5-attempt lockout)
+ * POST /forgot-password     — email a 6-digit password reset code (otpLimiter)
+ * POST /verify-reset-otp    — verify code → one-time reset token (authLimiter, 5-attempt lockout)
+ * POST /reset-password      — set new password with reset token, revokes all sessions (authLimiter)
  */
 const express = require('express');
 const router = express.Router();
@@ -29,5 +32,10 @@ router.get('/me',            protect, adminOnly, ctrl.getMe);
 router.patch('/profile/name',                protect, adminOnly, ctrl.updateName);
 router.post('/profile/request-email-change', protect, adminOnly, ctrl.requestEmailChange);
 router.post('/profile/confirm-email-change', protect, adminOnly, ctrl.confirmEmailChange);
+
+// Forgot password (public)
+router.post('/forgot-password',  otpLimiter,  validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
+router.post('/verify-reset-otp', authLimiter, validateSchema(schemas.verifyResetOtp), ctrl.verifyResetOtp);
+router.post('/reset-password',   authLimiter, validateSchema(schemas.resetPassword),  ctrl.resetPassword);
 
 module.exports = router;

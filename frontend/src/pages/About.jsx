@@ -6,6 +6,7 @@ import {
   useInView, useReducedMotion, animate,
 } from 'framer-motion';
 import { FiAward, FiHeart, FiGlobe, FiUsers, FiArrowRight } from 'react-icons/fi';
+import useMediaQuery from '../hooks/useMediaQuery';
 
 /* ────────────────────────────────────────────────────────────────────────────
  * About — scrollytelling page (UI only)
@@ -451,13 +452,20 @@ function MarqueeBand() {
 function StoryScroller() {
   const ref = useRef(null);
   const [active, setActive] = useState(0);
+  const chaptersRef = useRef(null);
+  // Desktop: visual beside the chapters. Phone/tablet: visual pinned on top, chapters scroll beneath it,
+  // so progress and the spotlight band are measured below the pinned visual.
+  const stickyLayout = useMediaQuery('(min-width: 1024px)');
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start center', 'end center'] });
-  const railScale = useTransform(scrollYProgress, [0, 1], [0, 1]);
-  useMotionValueEvent(scrollYProgress, 'change', (v) => {
-    const idx = Math.min(chapters.length - 1, Math.max(0, Math.floor(v * chapters.length)));
-    setActive(idx);
-  });
+  const { scrollYProgress: stackedProgress } = useScroll({ target: chaptersRef, offset: ['start 70%', 'end 70%'] });
+  const railScale = useTransform(stickyLayout ? scrollYProgress : stackedProgress, [0, 1], [0, 1]);
+  const pick = (v) => setActive(Math.min(chapters.length - 1, Math.max(0, Math.floor(v * chapters.length))));
+  useMotionValueEvent(scrollYProgress, 'change', (v) => { if (stickyLayout) pick(v); });
+  useMotionValueEvent(stackedProgress, 'change', (v) => { if (!stickyLayout) pick(v); });
   const ch = chapters[active];
+  const chapterViewport = stickyLayout
+    ? { once: false, margin: '-30% 0px -30% 0px' }
+    : { once: false, margin: '-46% 0px -12% 0px' };
 
   return (
     <section ref={ref} className="relative py-24 sm:py-32">
@@ -471,16 +479,19 @@ function StoryScroller() {
           <Ornament className="mt-6" />
         </div>
 
-        <div className="grid lg:grid-cols-2 gap-10 lg:gap-20">
-          {/* Sticky visual (desktop) */}
-          <div className="hidden lg:block">
-            <div className="sticky top-28">
-              <ArtFrame art={ch.art} numeral={ch.numeral} />
+        <div className="lg:grid lg:grid-cols-2 lg:gap-20">
+          {/* Sticky visual — pinned on top on phone/tablet, beside the chapters on desktop */}
+          <div className="sticky top-16 z-10 -mx-4 px-4 pt-3 pb-3 bg-dark-900 sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:m-0 lg:p-0 lg:bg-transparent">
+            <span className="lg:hidden pointer-events-none absolute inset-x-0 top-full h-8 bg-gradient-to-b from-dark-900 to-transparent" aria-hidden="true" />
+            <div className="lg:sticky lg:top-28">
+              <div className="mx-auto w-40 min-[400px]:w-44 sm:w-56 lg:w-auto">
+                <ArtFrame art={ch.art} numeral={ch.numeral} />
+              </div>
               <AnimatePresence mode="wait">
                 <motion.p
                   key={ch.key}
                   initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.4 }}
-                  className={`${SERIF} italic text-center text-dark-300 text-lg mt-6`}
+                  className={`${SERIF} italic text-center text-dark-300 text-sm sm:text-base lg:text-lg mt-2 lg:mt-6`}
                 >
                   {ch.caption}
                 </motion.p>
@@ -489,7 +500,7 @@ function StoryScroller() {
           </div>
 
           {/* Chapters */}
-          <div className="relative">
+          <div ref={chaptersRef} className="relative mt-4 lg:mt-0">
             {/* progress rail */}
             <div className="absolute left-0 top-2 bottom-2 w-px bg-white/10 hidden sm:block" aria-hidden="true">
               <motion.div style={{ scaleY: railScale }} className="origin-top w-px h-full bg-gradient-to-b from-gold-300 via-gold-500 to-gold-700" />
@@ -499,9 +510,9 @@ function StoryScroller() {
                 key={c.key}
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: false, margin: '-30% 0px -30% 0px' }}
+                viewport={chapterViewport}
                 transition={{ duration: 0.8, ease: EASE }}
-                className="relative sm:pl-12 lg:min-h-[78vh] flex flex-col justify-center py-10 lg:py-0"
+                className="relative sm:pl-12 min-h-[55vh] lg:min-h-[78vh] flex flex-col justify-center py-8 lg:py-0"
               >
                 {/* rail node */}
                 <span
@@ -513,18 +524,12 @@ function StoryScroller() {
                   <span className={`w-1.5 h-1.5 ${i <= active ? 'bg-gold-300' : 'bg-white/20'}`} />
                 </span>
 
-                {/* mobile illustration */}
-                <div className="lg:hidden w-56 sm:w-64 mx-auto mb-8">
-                  <ArtFrame art={c.art} numeral={c.numeral} />
-                </div>
-
                 <div className="flex items-baseline gap-4 mb-4">
                   <span className={`${SERIF} text-6xl sm:text-7xl font-semibold text-gold-500/15 leading-none`}>{c.numeral}</span>
                   <span className="font-jakarta text-[11px] font-semibold tracking-[0.35em] text-gold-500 uppercase">{c.eyebrow}</span>
                 </div>
                 <h3 className={`${SERIF} text-white text-3xl sm:text-5xl font-semibold leading-[1.1] mb-6`}>{c.title}</h3>
                 <p className="font-jakarta text-dark-300 text-base sm:text-lg leading-relaxed max-w-xl">{c.text}</p>
-                <p className={`${SERIF} italic text-gold-400/80 text-lg mt-5 lg:hidden`}>{c.caption}</p>
               </motion.article>
             ))}
           </div>

@@ -13,6 +13,7 @@ import { userService } from '../services/services';
 import { resolveImageUrl, formatPrice } from '../utils/helpers';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { DELIVERY_BASE } from '../utils/deliveryPaths';
 
 // ─── Static config ────────────────────────────────────────────────────────────
 const BLANK_ADDR = {
@@ -230,7 +231,7 @@ export default function Profile() {
   }, [isNonUser]);
 
   // Delivery partners have dedicated profile on /delivery page
-  if (authUser?.role === 'delivery') return <Navigate to="/delivery" replace />;
+  if (authUser?.role === 'delivery') return <Navigate to={DELIVERY_BASE} replace />;
 
   // Admin profile — show minimal view
   if (authUser?.role === 'admin') {

@@ -12,6 +12,7 @@ const {
 } = require('../utils/generateToken');
 const { rotateRefreshSession } = require('../utils/refreshSessions');
 const logger = require('../utils/logger');
+const { makePasswordResetHandlers } = require('../utils/staffPasswordReset');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -316,4 +317,7 @@ const updateProfileDP = async (req, res) => {
   res.json({ success: true, message: 'Profile updated.' });
 };
 
-module.exports = { registerDP, loginDP, getMeDP, logoutDP, refreshDP, getProfileDP, updateProfileDP };
+// Forgot password — POST /forgot-password, /verify-reset-otp, /reset-password
+const { forgotPassword, verifyResetOtp, resetPassword } = makePasswordResetHandlers(DeliveryPartner, 'delivery');
+
+module.exports = { registerDP, loginDP, getMeDP, logoutDP, refreshDP, getProfileDP, updateProfileDP, forgotPassword, verifyResetOtp, resetPassword };

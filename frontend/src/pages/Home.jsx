@@ -8,7 +8,7 @@ import imgNecklace from '../assets/necklage.png';
 import imgKundanSet from '../assets/necklace.webp';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  motion, AnimatePresence, useScroll, useTransform, useSpring, useMotionValueEvent, useReducedMotion,
+  motion, AnimatePresence, useScroll, useTransform, useMotionValueEvent, useReducedMotion,
 } from 'framer-motion';
 import { FiArrowRight, FiStar, FiShield, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { GiCutDiamond } from 'react-icons/gi';
@@ -17,6 +17,7 @@ import { categoryService } from '../services/services';
 // import { reviewService } from '../services/services'; // DB fetch: reviewService.getFeatured()
 import ProductCard from '../components/shop/ProductCard';
 import { ProductCardSkeleton } from '../components/common/Skeletons';
+import useMediaQuery from '../hooks/useMediaQuery';
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Home — calm, product-first layout with one clear scroll story (UI only).
@@ -188,12 +189,8 @@ function Hero() {
 // ─── 2. One clear scroll story — sticky image, steps on the right ────────────
 function StoryStep({ step, index, active, categories }) {
   return (
-    <div className="lg:min-h-[70vh] flex flex-col justify-center py-10 lg:py-0">
-      {/* mobile image */}
-      <div className="lg:hidden mb-6 rounded-3xl overflow-hidden aspect-[4/5] max-w-sm mx-auto w-full border border-gold-500/15">
-        <img src={step.image} alt={step.alt} loading="lazy" className="w-full h-full object-cover object-top" />
-      </div>
-      <div className={`max-w-md transition-opacity duration-500 ${active ? 'lg:opacity-100' : 'lg:opacity-30'}`}>
+    <div className="min-h-[52vh] lg:min-h-[70vh] flex flex-col justify-center py-8 lg:py-0">
+      <div className={`max-w-md transition-opacity duration-500 ${active ? 'opacity-100' : 'opacity-30'}`}>
         <div className="flex items-center gap-3 mb-4">
           <span className="font-jakarta text-xs font-semibold text-gold-500 tabular-nums">{String(index + 1).padStart(2, '0')}</span>
           <span className="h-px w-8 bg-gold-500/50" />
@@ -214,11 +211,16 @@ StoryStep.propTypes = { step: PropTypes.object.isRequired, index: PropTypes.numb
 function StorySection({ categories }) {
   const ref = useRef(null);
   const [active, setActive] = useState(0);
+  const stepsRef = useRef(null);
+  // Desktop: image beside the steps. Phone/tablet: image pinned on top, steps scroll beneath it,
+  // so progress is read where the text is (70% down the screen, below the pinned image).
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start center', 'end center'] });
+  const { scrollYProgress: stackedProgress } = useScroll({ target: stepsRef, offset: ['start 70%', 'end 70%'] });
   const fill = useTransform(scrollYProgress, [0, 1], [0, 1]);
-  useMotionValueEvent(scrollYProgress, 'change', (v) => {
-    setActive(Math.min(story.length - 1, Math.max(0, Math.floor(v * story.length))));
-  });
+  const pick = (v) => setActive(Math.min(story.length - 1, Math.max(0, Math.floor(v * story.length))));
+  useMotionValueEvent(scrollYProgress, 'change', (v) => { if (isDesktop) pick(v); });
+  useMotionValueEvent(stackedProgress, 'change', (v) => { if (!isDesktop) pick(v); });
   const current = story[active];
 
   return (
@@ -226,11 +228,12 @@ function StorySection({ categories }) {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <SectionHeading eyebrow="Why M.B. Jewellers" title="Crafted to be Cherished" />
 
-        <div ref={ref} className="mt-16 lg:mt-20 grid lg:grid-cols-2 gap-10 lg:gap-20">
-          {/* sticky image (desktop) */}
-          <div className="hidden lg:block">
-            <div className="sticky top-28">
-              <div className="relative mx-auto w-full max-w-[calc((100vh_-_9rem)*0.8)] aspect-[4/5] rounded-[32px] overflow-hidden border border-gold-500/20 bg-dark-800 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+        <div ref={ref} className="mt-12 lg:mt-20 lg:grid lg:grid-cols-2 lg:gap-20">
+          {/* sticky image — pinned on top on phone/tablet, beside the steps on desktop */}
+          <div className="sticky top-16 z-10 -mx-4 px-4 pt-3 pb-4 bg-dark-900 sm:-mx-6 sm:px-6 lg:static lg:z-auto lg:m-0 lg:p-0 lg:bg-transparent">
+            <span className="lg:hidden pointer-events-none absolute inset-x-0 top-full h-8 bg-gradient-to-b from-dark-900 to-transparent" aria-hidden="true" />
+            <div className="lg:sticky lg:top-28">
+              <div className="relative mx-auto h-[36vh] supports-[height:100svh]:h-[36svh] sm:h-[40vh] sm:supports-[height:100svh]:h-[40svh] w-auto aspect-[4/5] lg:h-auto lg:supports-[height:100svh]:h-auto lg:w-full lg:max-w-[calc((100vh_-_9rem)*0.8)] rounded-3xl lg:rounded-[32px] overflow-hidden border border-gold-500/20 bg-dark-800 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
                 <AnimatePresence mode="sync">
                   <motion.img
                     key={current.key}
@@ -253,7 +256,7 @@ function StorySection({ categories }) {
           </div>
 
           {/* steps */}
-          <div className="relative lg:pl-10">
+          <div ref={stepsRef} className="relative lg:pl-10">
             <div className="hidden lg:block absolute left-0 top-[15vh] bottom-[15vh] w-px bg-white/10" aria-hidden="true">
               <motion.div style={{ scaleY: fill }} className="origin-top w-px h-full bg-gold-500" />
             </div>
@@ -405,7 +408,8 @@ Twinkle.propTypes = { x: PropTypes.number.isRequired, y: PropTypes.number.isRequ
 function RingCrafting() {
   const ref = useRef(null);
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] });
-  const p      = useSpring(scrollYProgress, { stiffness: 80, damping: 24, mass: 0.4, restDelta: 0.0005 });
+  // Driven 1:1 by scroll position — no spring, so the ring never lags the finger or wheel
+  const p      = scrollYProgress;
   const band   = useTransform(p, [0.05, 0.6], [0, 1]);
   const prongs = useTransform(p, [0.45, 0.7], [0, 1]);
   const gemY   = useTransform(p, [0.55, 0.92], [-80, 0]);

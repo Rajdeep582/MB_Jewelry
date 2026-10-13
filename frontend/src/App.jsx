@@ -7,6 +7,7 @@ import { store } from './store/store';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { refreshSession, isAuthFailure } from './services/api';
 import { ProtectedRoute, AdminRoute, DeliveryRoute } from './components/common/ProtectedRoute';
+import { DELIVERY_BASE, DELIVERY_LOGIN, DELIVERY_REGISTER } from './utils/deliveryPaths';
 import {
   selectIsDelivery, selectIsAdmin, selectIsAuthenticated,
   selectUser, selectToken, selectInitialized,
@@ -125,8 +126,8 @@ function DeliveryRedirect() {
   const navigate        = useNavigate();
 
   useEffect(() => {
-    if (isDelivery && isAuthenticated && !location.pathname.startsWith('/delivery')) {
-      navigate('/delivery', { replace: true });
+    if (isDelivery && isAuthenticated && !location.pathname.startsWith(DELIVERY_BASE)) {
+      navigate(DELIVERY_BASE, { replace: true });
     }
   }, [isDelivery, isAuthenticated, location.pathname, navigate]);
 
@@ -219,9 +220,9 @@ export default function App() {
                   </Route>
                 </Route>
 
-                <Route path="/delivery/login"    element={<DeliveryLogin />} />
-                <Route path="/delivery/register" element={<DeliveryRegister />} />
-                <Route path="/delivery" element={<DeliveryRoute><DeliveryPartnerPage /></DeliveryRoute>} />
+                <Route path={DELIVERY_LOGIN}    element={<DeliveryLogin />} />
+                <Route path={DELIVERY_REGISTER} element={<DeliveryRegister />} />
+                <Route path={DELIVERY_BASE} element={<DeliveryRoute><DeliveryPartnerPage /></DeliveryRoute>} />
 
                 <Route path="/admin/login"    element={<AdminLogin />} />
                 <Route path="/admin/register" element={<AdminRegister />} />
