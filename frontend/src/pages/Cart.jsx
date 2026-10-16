@@ -5,9 +5,10 @@ import { motion } from 'framer-motion';
 import { FiTrash2, FiMinus, FiPlus, FiArrowRight } from 'react-icons/fi';
 import jewelryImg from '../assets/necklace.webp';
 import {
-  selectCartItems, selectCartTotal,
-  removeFromCart, updateQuantity, clearCart,
+  selectCartItems, selectCartTotal, selectCartTax,
+  removeFromCart, updateQuantity, clearCart, syncPrices,
 } from '../store/cartSlice';
+import { productService } from '../services/services';
 import { selectIsAuthenticated } from '../store/authSlice';
 import { formatPrice } from '../utils/helpers';
 import toast from 'react-hot-toast';
@@ -20,10 +21,25 @@ export default function Cart() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
 
   // Shipping depends on the delivery PIN code and is calculated by the server at checkout.
-  const tax = Math.round(total * 0.03);
+  const tax = useSelector(selectCartTax);
   const grandTotal = total + tax;
 
   useEffect(() => { document.title = 'Cart — M.B. JEWELLERS'; }, []);
+
+  // Refresh saved cart prices with the current live prices (rates may have changed since adding)
+  const idKey = items.map((i) => i._id).join(',');
+  useEffect(() => {
+    if (!idKey) return undefined;
+    let cancelled = false;
+    Promise.allSettled(idKey.split(',').map((id) => productService.getProduct(id))).then((results) => {
+      if (cancelled) return;
+      const fresh = results
+        .filter((r) => r.status === 'fulfilled' && r.value?.data?.product)
+        .map((r) => r.value.data.product);
+      if (fresh.length) dispatch(syncPrices(fresh));
+    });
+    return () => { cancelled = true; };
+  }, [dispatch, idKey]);
 
   if (items.length === 0) {
     return (
@@ -135,7 +151,7 @@ export default function Cart() {
                   <span className="text-dark-300 text-xs">Calculated at checkout</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-dark-400">GST (3%)</span>
+                  <span className="text-dark-400">GST</span>
                   <span className="text-white">{formatPrice(tax)}</span>
                 </div>
                 <p className="text-xs text-dark-500">

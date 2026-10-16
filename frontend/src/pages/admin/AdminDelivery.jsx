@@ -193,6 +193,8 @@ function DateLine({ label, value, tone = 'text-dark-200' }) {
 
 function DeliveryCard({ item }) {
   const [showTimeline, setShowTimeline] = useState(false);
+  const [open, setOpen] = useState(false);
+  const toggleOpen = () => setOpen(v => !v);
   const stage    = getStage(item._displayStatus);
   const meta     = STAGE_META[stage];
   const isCustom = item._sourceType === 'custom_order';
@@ -212,8 +214,15 @@ function DeliveryCard({ item }) {
     <motion.article layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
       className={`card !rounded-2xl !p-0 border-l-[3px] ${meta.border} overflow-hidden`}>
 
-      {/* ── Header: product, id, status, amount ── */}
-      <div className="flex items-start gap-3 p-3 sm:p-3.5">
+      {/* ── Header: product, id, status, amount — tap to expand/collapse ── */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={toggleOpen}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleOpen(); } }}
+        className="flex items-start gap-3 p-3 sm:p-3.5 cursor-pointer select-none hover:bg-white/[0.02] transition-colors focus:outline-none focus-visible:bg-white/[0.03]"
+      >
         <div className="relative w-12 h-12 rounded-xl bg-dark-800 shrink-0 overflow-hidden border border-white/10 flex items-center justify-center">
           {thumb
             ? <img src={resolveImageUrl(thumb)} alt="" className="w-full h-full object-cover" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
@@ -243,7 +252,14 @@ function DeliveryCard({ item }) {
           </p>
           {delivID && (
             <p className="text-[11px] text-dark-400 flex items-center gap-1 mt-0.5">
-              <FiShield size={10} className="text-gold-500 shrink-0" /><span className="font-mono text-dark-200">{delivID}</span><CopyBtn value={delivID} label="Tracking number" />
+              <FiShield size={10} className="text-gold-500 shrink-0" /><span className="font-mono text-dark-200">{delivID}</span><span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}><CopyBtn value={delivID} label="Tracking number" /></span>
+            </p>
+          )}
+          {!open && (
+            <p className="text-[11px] text-dark-400 flex flex-wrap items-center gap-x-1.5 gap-y-1 mt-1">
+              <FiUser size={10} className="shrink-0" /><span className="text-dark-200 truncate max-w-[10rem]">{name}</span>
+              {(addr.city || addr.pincode) && <><span className="text-dark-600">·</span><span className="truncate">{[addr.city, addr.pincode].filter(Boolean).join(' ')}</span></>}
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-md border ${timing.cls}`}>{timing.text}</span>
             </p>
           )}
         </div>
@@ -251,8 +267,23 @@ function DeliveryCard({ item }) {
         <div className="flex flex-col items-end gap-1 shrink-0 text-right">
           <p className="text-gold-400 font-semibold text-sm tabular-nums">{formatPrice(item.totalAmount)}</p>
           {item._payLabel && <span className={`text-[10px] leading-tight font-medium px-1.5 py-0.5 rounded-md border max-w-[7.5rem] sm:max-w-[11rem] sm:truncate ${item._payTone}`}>{item._payLabel}</span>}
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-dark-500 mt-0.5">
+            {open ? 'Hide' : 'Details'}
+            <FiChevronDown size={12} className={`transition-transform duration-200 ${open ? 'rotate-180 text-gold-400' : ''}`} />
+          </span>
         </div>
       </div>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="overflow-hidden"
+          >
 
       {/* ── All details at a glance ── */}
       <div className="grid grid-cols-2 gap-2 px-3 sm:px-3.5 pb-3 xl:grid-cols-4">
@@ -327,6 +358,9 @@ function DeliveryCard({ item }) {
             <div className="border-t border-white/[0.06] bg-dark-900/40 px-3 sm:px-3.5 pt-3 max-w-xl">
               <Timeline entries={item.trackingHistory} labels={HISTORY_LABELS} bare />
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>

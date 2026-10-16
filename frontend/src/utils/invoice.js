@@ -20,7 +20,7 @@
 // ─── Seller (M.B. Jewellers) ─────────────────────────────────────────────────
 const SELLER = {
   name: 'M.B. Jewellers',
-  tagline: 'Fine Gold & Silver Jewellery · Since 2010',
+  tagline: 'Fine Gold & Silver Jewellery · Since 2021',
   address: ["Boys' High School, 217/3, Netaji Subhash Bose Road", 'Beside New Barrackpore, New Barrackpur', 'West Bengal 700131, India'],
   phone: '098304 24257',
   email: 'mbjewellers2021@gmail.com',

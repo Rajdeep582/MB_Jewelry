@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { selectIsAuthenticated, selectIsAdmin, selectIsDelivery, selectUser, selectInitialized } from '../../store/authSlice';
 import PropTypes from 'prop-types';
 import { DELIVERY_LOGIN } from '../../utils/deliveryPaths';
+import { ADMIN_LOGIN } from '../../utils/adminPaths';
 
 export function ProtectedRoute({ children }) {
   const initialized     = useSelector(selectInitialized);
@@ -21,8 +22,8 @@ export function AdminRoute({ children }) {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const isAdmin         = useSelector(selectIsAdmin);
   if (!initialized) return null;
-  if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
-  if (!isAdmin) return <Navigate to="/admin/login" replace />;
+  if (!isAuthenticated) return <Navigate to={ADMIN_LOGIN} replace />;
+  if (!isAdmin) return <Navigate to={ADMIN_LOGIN} replace />;
   return children;
 }
 

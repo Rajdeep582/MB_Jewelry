@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fi';
 import { orderService, userService, productService, customOrderService } from '../../services/services';
 import { formatPrice } from '../../utils/helpers';
+import { ADMIN_BASE } from '../../utils/adminPaths';
 
 function StatCard({ icon, title, value, subtitle, color = 'gold', to }) {
 
@@ -279,10 +280,10 @@ export default function AdminDashboard() {
   const pipelineTotal = PIPELINE.reduce((sum, s) => sum + (statusCounts[s.key] || 0), 0);
   const recentOrders = stats?.recentOrders || [];
   const attention = [
-    { icon: FiBox,           label: 'Orders to process',     count: statusCounts.confirmed || 0,     hint: 'Pack & mark ready', to: '/admin/orders',        tone: 'amber' },
-    { icon: FiTruck,         label: 'Ready to ship',         count: statusCounts.ready_to_ship || 0, hint: 'Assign & dispatch', to: '/admin/deliveries',    tone: 'blue' },
-    { icon: FiEdit2,         label: 'Custom quotes pending', count: customStats?.pendingCount || 0,  hint: 'Send a quote',      to: '/admin/custom-orders', tone: 'violet' },
-    { icon: FiAlertTriangle, label: 'Failed payments',       count: stats?.needsAttention || 0,      hint: 'Review',            to: '/admin/orders',        tone: 'red' },
+    { icon: FiBox,           label: 'Orders to process',     count: statusCounts.confirmed || 0,     hint: 'Pack & mark ready', to: `${ADMIN_BASE}/orders`,        tone: 'amber' },
+    { icon: FiTruck,         label: 'Ready to ship',         count: statusCounts.ready_to_ship || 0, hint: 'Assign & dispatch', to: `${ADMIN_BASE}/deliveries`,    tone: 'blue' },
+    { icon: FiEdit2,         label: 'Custom quotes pending', count: customStats?.pendingCount || 0,  hint: 'Send a quote',      to: `${ADMIN_BASE}/custom-orders`, tone: 'violet' },
+    { icon: FiAlertTriangle, label: 'Failed payments',       count: stats?.needsAttention || 0,      hint: 'Review',            to: `${ADMIN_BASE}/orders`,        tone: 'red' },
   ];
   const allClear = attention.every((a) => a.count === 0);
 
@@ -309,10 +310,10 @@ export default function AdminDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={FiDollarSign} title="Total Revenue" value={formatPrice(stats?.totalRevenue || 0)} subtitle="Paid orders" color="gold" to="/admin/orders" />
-        <StatCard icon={FiPackage} title="Total Orders" value={stats?.totalOrders || 0} subtitle="Paid orders" color="blue" to="/admin/orders" />
-        <StatCard icon={FiUsers} title="Total Users" value={totalUsers} subtitle="Registered" color="green" to="/admin/users" />
-        <StatCard icon={FiShoppingBag} title="Products" value={totalProducts} subtitle="In catalogue" color="purple" to="/admin/products" />
+        <StatCard icon={FiDollarSign} title="Total Revenue" value={formatPrice(stats?.totalRevenue || 0)} subtitle="Paid orders" color="gold" to={`${ADMIN_BASE}/orders`} />
+        <StatCard icon={FiPackage} title="Total Orders" value={stats?.totalOrders || 0} subtitle="Paid orders" color="blue" to={`${ADMIN_BASE}/orders`} />
+        <StatCard icon={FiUsers} title="Total Users" value={totalUsers} subtitle="Registered" color="green" to={`${ADMIN_BASE}/users`} />
+        <StatCard icon={FiShoppingBag} title="Products" value={totalProducts} subtitle="In catalogue" color="purple" to={`${ADMIN_BASE}/products`} />
       </div>
 
       {/* Needs attention */}
@@ -367,10 +368,10 @@ export default function AdminDashboard() {
             <h2 className="font-display text-base text-white mb-3">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: 'Add Product', to: '/admin/products', icon: FiShoppingBag },
-                { label: 'Orders', to: '/admin/orders', icon: FiPackage },
-                { label: 'Deliveries', to: '/admin/deliveries', icon: FiTruck },
-                { label: 'Users', to: '/admin/users', icon: FiUsers },
+                { label: 'Add Product', to: `${ADMIN_BASE}/products`, icon: FiShoppingBag },
+                { label: 'Orders', to: `${ADMIN_BASE}/orders`, icon: FiPackage },
+                { label: 'Deliveries', to: `${ADMIN_BASE}/deliveries`, icon: FiTruck },
+                { label: 'Users', to: `${ADMIN_BASE}/users`, icon: FiUsers },
               ].map((item) => {
                 const SIcon = item.icon;
                 return (
@@ -392,7 +393,7 @@ export default function AdminDashboard() {
         <div className="card p-4 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display text-base text-white">Recent Orders</h2>
-            <Link to="/admin/orders" className="inline-flex items-center gap-1 text-[11px] text-gold-400 hover:text-gold-300">
+            <Link to={`${ADMIN_BASE}/orders`} className="inline-flex items-center gap-1 text-[11px] text-gold-400 hover:text-gold-300">
               View all <FiArrowRight size={11} />
             </Link>
           </div>
@@ -409,7 +410,7 @@ export default function AdminDashboard() {
                 const name = o.user?.name || 'Guest';
                 return (
                   <li key={o._id}>
-                    <Link to="/admin/orders" className="flex items-center gap-3 px-1 py-2.5 rounded-lg hover:bg-white/[0.03] transition-colors">
+                    <Link to={`${ADMIN_BASE}/orders`} className="flex items-center gap-3 px-1 py-2.5 rounded-lg hover:bg-white/[0.03] transition-colors">
                       <div className="w-8 h-8 rounded-full bg-gold-500/10 border border-gold-500/20 text-gold-400 text-xs font-semibold flex items-center justify-center flex-shrink-0">
                         {name.charAt(0).toUpperCase()}
                       </div>

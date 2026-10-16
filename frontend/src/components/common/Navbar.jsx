@@ -7,6 +7,7 @@ import { selectCartCount, openCart } from '../../store/cartSlice';
 import { selectIsAuthenticated, selectUser, selectIsAdmin, logoutUser } from '../../store/authSlice';
 import toast from 'react-hot-toast';
 import useScrollLock from '../../hooks/useScrollLock';
+import { ADMIN_BASE } from '../../utils/adminPaths';
 
 const navLinks = [
   { to: '/',                   label: 'Home' },
@@ -187,7 +188,7 @@ export default function Navbar() {
                       <div className="p-1">
                         {isAdmin && (
                           <Link
-                            to="/admin"
+                            to={ADMIN_BASE}
                             onClick={() => setProfileOpen(false)}
                             className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gold-400 hover:bg-gold-500/10 transition-colors"
                           >
@@ -299,7 +300,7 @@ export default function Navbar() {
                       <p className="text-xs text-dark-400">{user?.email}</p>
                     </div>
                     {isAdmin && (
-                      <Link to="/admin" onClick={() => setMobileOpen(false)}
+                      <Link to={ADMIN_BASE} onClick={() => setMobileOpen(false)}
                         className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-gold-400 hover:bg-gold-500/10">
                         <FiSettings size={14} /> Admin Panel
                       </Link>

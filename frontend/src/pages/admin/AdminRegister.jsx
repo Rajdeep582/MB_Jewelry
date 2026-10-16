@@ -6,6 +6,7 @@ import { FiMail, FiLock, FiUser, FiKey, FiEye, FiEyeOff, FiShield } from 'react-
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import BrandLogo from '../../components/common/BrandLogo';
+import { ADMIN_LOGIN } from '../../utils/adminPaths';
 
 export default function AdminRegister() {
   const dispatch  = useDispatch();
@@ -76,7 +77,7 @@ export default function AdminRegister() {
           <div className="text-4xl mb-4">✅</div>
           <h2 className="font-jakarta text-white font-semibold text-lg leading-tight pt-0 mb-2">Email verified!</h2>
           <p className="text-dark-400 text-sm mb-5">Your admin account is ready. Sign in to continue.</p>
-          <Link to="/admin/login" className="btn-gold py-2.5 px-6 text-sm font-semibold">
+          <Link to={ADMIN_LOGIN} className="btn-gold py-2.5 px-6 text-sm font-semibold">
             Go to Login
           </Link>
         </div>
@@ -244,7 +245,7 @@ export default function AdminRegister() {
 
           <p className="text-center text-dark-600 text-xs mt-5">
             Already have account?{' '}
-            <Link to="/admin/login" className="text-gold-500 hover:text-gold-400 transition-colors">Sign in</Link>
+            <Link to={ADMIN_LOGIN} className="text-gold-500 hover:text-gold-400 transition-colors">Sign in</Link>
           </p>
         </div>
       </div>

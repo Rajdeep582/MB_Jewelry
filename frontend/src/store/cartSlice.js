@@ -34,6 +34,18 @@ const cartSlice = createSlice({
       }
     },
 
+    // Refresh saved cart lines with the CURRENT shop prices (cart is kept in localStorage,
+    // so prices captured when the item was added can be outdated after a rate change).
+    syncPrices: (state, { payload }) => {
+      for (const p of payload || []) {
+        const item = state.items.find((i) => i._id === p._id);
+        if (!item) continue;
+        item.price = p.price;
+        item.discountedPrice = p.discountedPrice ?? null;
+        if (p.gst != null) item.gst = p.gst;
+      }
+    },
+
     clearCart: (state) => {
       state.items = [];
     },
@@ -51,7 +63,7 @@ const cartSlice = createSlice({
 });
 
 export const {
-  addToCart, removeFromCart, updateQuantity, clearCart, toggleCart, openCart, closeCart,
+  addToCart, removeFromCart, updateQuantity, syncPrices, clearCart, toggleCart, openCart, closeCart,
 } = cartSlice.actions;
 
 // ─── Selectors ───────────────────────────────────────────────────────────────
@@ -63,6 +75,14 @@ export const selectCartTotal = (state) =>
     (sum, item) => sum + (item.discountedPrice ?? item.price) * item.quantity,
     0
   );
+// GST estimate — same rule as checkout: per item (product GST %, default 3), rounded to paise
+export const selectCartTax = (state) =>
+  Math.round(
+    state.cart.items.reduce(
+      (sum, item) => sum + (item.discountedPrice ?? item.price) * item.quantity * ((item.gst ?? 3) / 100),
+      0
+    ) * 100
+  ) / 100;
 export const selectCartOpen = (state) => state.cart.isOpen;
 
 export default cartSlice.reducer;

@@ -22,6 +22,9 @@
  *   POST   /orders/:id/admin-confirm-delivery  — admin confirms DP-reported delivery
  *                                               (requires dpConfirmedAt set by DP first)
  *
+ * Leads:
+ *   GET    /leads                    — all customer accounts + footer newsletter emails (newest first)
+ *
  * Delivery Records (snapshot collection):
  *   GET    /deliveries               — list all delivery records
  *   GET    /deliveries/stats         — aggregate delivery stats
@@ -44,6 +47,7 @@ const {
   deleteDeliveryPartner,
 } = require('../controllers/adminController');
 const { getDeliveries, getDeliveryRecordStats } = require('../controllers/deliveryRecordController');
+const { listLeads } = require('../controllers/leadController');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.get('/global-pricing', protect, adminOnly, getGlobalPricing);
@@ -64,5 +68,8 @@ router.post('/orders/:id/admin-confirm-delivery',  protect, adminOnly, adminConf
 // Delivery records (independent collection)
 router.get('/deliveries',       protect, adminOnly, getDeliveries);
 router.get('/deliveries/stats', protect, adminOnly, getDeliveryRecordStats);
+
+// Leads (customer accounts + newsletter emails)
+router.get('/leads', protect, adminOnly, listLeads);
 
 module.exports = router;

@@ -177,6 +177,9 @@ export default function Checkout() {
   const quoteError   = quoteKey && quoteState.key === quoteKey ? quoteState.error : null;
   const deliverable  = !!quote?.delivery;
   const grandTotal   = quote?.pricing?.totalAmount ?? null;
+  // Per-line prices from the server quote (cart prices may be outdated); cart price only as fallback
+  const quotePrice   = new Map((quote?.items || []).map((q) => [String(q.product), q.price]));
+  const linePrice    = (item) => quotePrice.get(String(item._id)) ?? (item.discountedPrice ?? item.price);
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
   const getSelectedAddress = useCallback(() => {
@@ -494,10 +497,10 @@ export default function Checkout() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{item.name}</p>
-                    <p className="text-dark-500 text-xs">{formatPrice(item.discountedPrice ?? item.price)} × {item.quantity}</p>
+                    <p className="text-dark-500 text-xs">{formatPrice(linePrice(item))} × {item.quantity}</p>
                   </div>
                   <span className="text-gold-400 text-sm font-semibold whitespace-nowrap">
-                    {formatPrice((item.discountedPrice ?? item.price) * item.quantity)}
+                    {formatPrice(linePrice(item) * item.quantity)}
                   </span>
                 </div>
               ))}

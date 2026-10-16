@@ -220,6 +220,7 @@ app.use('/api/admin', adminIpWhitelist, adminRoutes);
 app.use('/api/custom-orders', customOrderRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/dp-auth', dpAuthRoutes);
+app.use('/api/subscribe', require('./routes/subscriberRoutes'));
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 Sentry.setupExpressErrorHandler(app);

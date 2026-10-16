@@ -1,38 +1,17 @@
 import { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FiArrowLeft } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
 import { GiCutDiamond } from 'react-icons/gi';
 
 export default function DiamondComingSoon() {
-  const navigate = useNavigate();
 
   useEffect(() => {
     document.title = 'Diamond Collection — Coming Soon | M.B. JEWELLERS';
   }, []);
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
 
   return (
     <div className="min-h-screen pt-28 pb-20 flex items-center justify-center">
       <div className="max-w-lg mx-auto px-6 text-center">
-        {/* Back Button */}
-        <div className="absolute top-28 left-4 sm:left-8">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-gold-400 transition-colors group cursor-pointer"
-            aria-label="Go back to previous page"
-          >
-            <FiArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform duration-200" />
-            <span>Back</span>
-          </button>
-        </div>
 
         {/* Logo */}
         <div className="flex justify-center mb-8">

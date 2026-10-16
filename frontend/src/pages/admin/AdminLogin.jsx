@@ -7,6 +7,7 @@ import { FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiArrowLeft, FiArrowRight } 
 import BrandLogo from '../../components/common/BrandLogo';
 import StaffForgotPassword from '../../components/common/StaffForgotPassword';
 import toast from 'react-hot-toast';
+import { ADMIN_BASE, ADMIN_REGISTER } from '../../utils/adminPaths';
 
 export default function AdminLogin() {
   const dispatch  = useDispatch();
@@ -19,7 +20,7 @@ export default function AdminLogin() {
   const [showPwd, setShowPwd] = useState(false);
   const [forgot, setForgot]   = useState(false);
 
-  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (isAdmin) return <Navigate to={ADMIN_BASE} replace />;
 
   const set = (k) => (e) => {
     dispatch(clearError());
@@ -30,7 +31,7 @@ export default function AdminLogin() {
     e.preventDefault();
     const result = await dispatch(loginAdmin({ email: form.email, password: form.password }));
     if (loginAdmin.fulfilled.match(result)) {
-      navigate('/admin', { replace: true });
+      navigate(ADMIN_BASE, { replace: true });
     } else if (loginAdmin.rejected.match(result)) {
       toast.error(result.payload || 'Login failed');
     }
@@ -163,7 +164,7 @@ export default function AdminLogin() {
             </Link>
             <span className="text-dark-500">
               No account?{' '}
-              <Link to="/admin/register" className="text-gold-500 hover:text-gold-400 transition-colors font-medium">
+              <Link to={ADMIN_REGISTER} className="text-gold-500 hover:text-gold-400 transition-colors font-medium">
                 Register
               </Link>
             </span>

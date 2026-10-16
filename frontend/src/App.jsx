@@ -16,11 +16,14 @@ import {
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
 import CartDrawer from './components/common/CartDrawer';
+import BackButton from './components/common/BackButton';
+import { hasBackButton } from './utils/backButtonRoutes';
 import ScrollToTop from './components/common/ScrollToTop';
 import SmoothScroller from './components/common/SmoothScroller';
 import Terms from './pages/Terms';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import DiamondComingSoon from './pages/DiamondComingSoon';
+import { ADMIN_BASE, ADMIN_LOGIN, ADMIN_REGISTER } from './utils/adminPaths';
 
 // Pages
 const Home = lazy(() => import('./pages/Home'));
@@ -55,6 +58,7 @@ const AdminPricing = lazy(() => import('./pages/admin/AdminPricing'));
 const AdminDelivery = lazy(() => import('./pages/admin/AdminDelivery'));
 const AdminCustomOrders = lazy(() => import('./pages/admin/AdminCustomOrders'));
 const AdminProfile = lazy(() => import('./pages/admin/AdminProfile'));
+const AdminLeads = lazy(() => import('./pages/admin/AdminLeads'));
 
 // Module-level flag — prevents React 18 StrictMode double-invoke from firing two
 // simultaneous refresh requests. Backend uses token rotation: second request with
@@ -101,15 +105,18 @@ function RootNavbarLayout() {
     <>
       <Navbar />
       <CartDrawer />
+      <BackButton />
       <Outlet />
     </>
   );
 }
 
 function MainFooterLayout() {
+  const { pathname } = useLocation();
   return (
     <>
-      <main><Outlet /></main>
+      {/* Drill-down pages: room under the navbar for the floating Back arrow */}
+      <main className={hasBackButton(pathname) ? 'pt-6 lg:pt-10' : undefined}><Outlet /></main>
       <Footer />
     </>
   );
@@ -142,8 +149,8 @@ function AdminRedirect() {
 
   useEffect(() => {
     // Only redirect if truly authenticated — prevents stale localStorage role from firing
-    if (isAdmin && isAuthenticated && !location.pathname.startsWith('/admin')) {
-      navigate('/admin', { replace: true });
+    if (isAdmin && isAuthenticated && !location.pathname.startsWith(ADMIN_BASE)) {
+      navigate(ADMIN_BASE, { replace: true });
     }
   }, [isAdmin, isAuthenticated, location.pathname, navigate]);
 
@@ -224,10 +231,10 @@ export default function App() {
                 <Route path={DELIVERY_REGISTER} element={<DeliveryRegister />} />
                 <Route path={DELIVERY_BASE} element={<DeliveryRoute><DeliveryPartnerPage /></DeliveryRoute>} />
 
-                <Route path="/admin/login"    element={<AdminLogin />} />
-                <Route path="/admin/register" element={<AdminRegister />} />
+                <Route path={ADMIN_LOGIN}    element={<AdminLogin />} />
+                <Route path={ADMIN_REGISTER} element={<AdminRegister />} />
 
-                <Route path="/admin" element={<AdminRoute><AdminLayout /></AdminRoute>}>
+                <Route path={ADMIN_BASE} element={<AdminRoute><AdminLayout /></AdminRoute>}>
                   <Route index element={<AdminDashboard />} />
                   <Route path="products"      element={<AdminProducts />} />
                   <Route path="orders"        element={<AdminOrders />} />
@@ -236,6 +243,7 @@ export default function App() {
                   <Route path="users"         element={<AdminUsers />} />
                   <Route path="pricing"       element={<AdminPricing />} />
                   <Route path="profile"       element={<AdminProfile />} />
+                  <Route path="leads"         element={<AdminLeads />} />
                 </Route>
 
                 <Route path="*" element={<NotFound />} />

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FiFileText, FiAlertCircle, FiMapPin, FiPhoneCall, FiShoppingBag, FiCheckCircle, FiArrowLeft, FiPackage, FiSlash } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
+import { FiFileText, FiAlertCircle, FiMapPin, FiPhoneCall, FiShoppingBag, FiCheckCircle, FiPackage, FiSlash } from 'react-icons/fi';
 
 const SECTIONS = [
   { id: 'about', title: 'About Us & Acceptance of Terms', icon: FiShoppingBag },
@@ -47,35 +47,15 @@ function Clause({ n, label, children }) {
 }
 
 export default function Terms() {
-  const navigate = useNavigate();
 
   useEffect(() => {
     document.title = 'Terms & Conditions — M.B. JEWELLERS';
   }, []);
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/');
-    }
-  };
 
   return (
     <div className="min-h-screen pt-28 pb-20">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back Button */}
-        <div className="mb-6">
-          <button
-            type="button"
-            onClick={handleBack}
-            className="inline-flex items-center gap-2 text-sm text-dark-400 hover:text-gold-400 transition-colors group cursor-pointer"
-            aria-label="Go back to previous page"
-          >
-            <FiArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform duration-200" />
-            <span>Back</span>
-          </button>
-        </div>
 
         {/* Header */}
         <div className="text-center mb-10">

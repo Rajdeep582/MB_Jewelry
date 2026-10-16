@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { FiInstagram, FiTwitter, FiFacebook, FiMail, FiPhone, FiMapPin } from 'react-icons/fi';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
+import { newsletterService } from '../../services/services';
 
 const footerLinks = {
   Shop: [
@@ -27,12 +28,21 @@ const footerLinks = {
 
 export default function Footer() {
   const [email, setEmail] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const handleSubscribe = (e) => {
+  const handleSubscribe = async (e) => {
     e.preventDefault();
-    if (!email) return;
-    toast.success('Thank you for subscribing! 💎');
-    setEmail('');
+    if (!email.trim() || sending) return;
+    setSending(true);
+    try {
+      const res = await newsletterService.subscribe(email.trim());
+      toast.success(res.data.alreadySubscribed ? 'You are already subscribed 💎' : 'Thank you for subscribing! 💎');
+      setEmail('');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not subscribe right now. Please try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -42,11 +52,11 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
-              <p className="section-subtitle mb-2">Exclusive Offers</p>
+              <p className="section-subtitle mb-2">Stay Connected</p>
               <h3 className="text-2xl md:text-3xl font-display text-white">
                 Join the <span className="text-gradient-gold">Inner Circle</span>
               </h3>
-              <p className="text-dark-400 mt-1 text-sm">Get 10% off your first order + new arrivals</p>
+              <p className="text-dark-400 mt-1 text-sm">Be the first to know about new arrivals</p>
             </div>
             <form id="newsletter-form" onSubmit={handleSubscribe} className="flex gap-3 w-full md:w-auto">
               <input
@@ -57,7 +67,7 @@ export default function Footer() {
                 className="input-dark flex-1 md:w-72"
                 required
               />
-              <button type="submit" className="btn-gold whitespace-nowrap">Subscribe</button>
+              <button type="submit" disabled={sending} className="btn-gold whitespace-nowrap disabled:opacity-60">{sending ? 'Subscribing…' : 'Subscribe'}</button>
             </form>
           </div>
         </div>
@@ -78,8 +88,8 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-dark-400 text-sm leading-relaxed max-w-xs">
-              Crafting timeless luxury jewelry since 2010. Every piece tells a story of elegance, 
-              craftsmanship, and heritage passed down through generations.
+              Crafting timeless luxury jewelry since 2021. Every piece tells a story of elegance, 
+              craftsmanship, and heritage.
             </p>
 
             {/* Contact Info */}

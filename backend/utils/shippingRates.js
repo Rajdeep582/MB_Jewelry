@@ -10,9 +10,9 @@
  */
 
 const SHIPPING_ZONES = Object.freeze({
-  '700131': Object.freeze({ area: 'New Barrackpore', charge: 1 }),
-  '700129': Object.freeze({ area: 'Madhyamgram',     charge: 1 }),
-  '700124': Object.freeze({ area: 'Barasat',         charge: 1 }),
+  '700131': Object.freeze({ area: 'New Barrackpore', charge: 100 }),
+  '700129': Object.freeze({ area: 'Madhyamgram',     charge: 100 }),
+  '700124': Object.freeze({ area: 'Barasat',         charge: 200 }),
 });
 
 // Indian PIN codes: 6 digits, first digit 1-9.

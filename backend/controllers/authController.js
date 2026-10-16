@@ -484,11 +484,20 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
  * idToken verified against GOOGLE_CLIENT_ID → payload.email_verified must be true.
  * @route POST /api/auth/google
  */
-const googleLogin = (req, res) => handleOAuthLogin(req, res, 'google', async () => {
+const googleLogin = (req, res) => {
+  // Fail closed: without a configured client ID, verifyIdToken() skips the
+  // audience check and would accept ID tokens issued to ANY Google app.
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    return res.status(503).json({ success: false, message: 'Google sign-in is not configured.' });
+  }
+  return handleOAuthLogin(req, res, 'google', googleExtract(req));
+};
+
+const googleExtract = (req) => async () => {
   const ticket = await googleClient.verifyIdToken({ idToken: req.body.idToken, audience: process.env.GOOGLE_CLIENT_ID });
   const p = ticket.getPayload();
   return { email: p.email, name: p.name, avatar: p.picture, providerId: p.sub, emailVerified: p.email_verified };
-});
+};
 
 // ─── Forgot Password / OTP Flows ───────────────────────────────────────────────
 

@@ -14,11 +14,11 @@ const PHONE = '09830424257';
 const ADDRESS = "BOYS' HIGH SCHOOL, 217/3, Netaji Subhash Bose Rd, beside NEW BARRACKPORE, New Barrackpur, West Bengal 700131";
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ADDRESS)}`;
 
-// Opening hours (IST). day: 0 = Sunday … 6 = Saturday; open/close in minutes from midnight.
+// Opening hours (IST). day: 0 = Sunday … 6 = Saturday. Slots in minutes from midnight.
+const OPEN_SLOTS = [[600, 810], [1110, 1290]]; // 10:00 AM – 1:30 PM, 6:30 PM – 9:30 PM
 const HOURS = [
-  { label: 'Mon – Wed, Friday', days: [1, 2, 3, 5], open: 600, close: 1140, text: '10:00 AM – 7:00 PM' },
-  { label: 'Thursday',          days: [4],          open: null, close: null, text: 'Closed' },
-  { label: 'Saturday – Sunday', days: [6, 0],       open: 600, close: 1020, text: '10:00 AM – 5:00 PM' },
+  { label: 'Mon – Sun', days: [0, 1, 2, 3, 5, 6], open: OPEN_SLOTS, text: ['10:00 AM – 1:30 PM', '6:30 PM – 9:30 PM'] },
+  { label: 'Thursday',                     days: [4],                open: null,       text: ['Closed'] },
 ];
 
 const FAQS = [
@@ -38,7 +38,7 @@ function nowInIndia() {
   }).formatToParts(new Date());
   const get = (t) => parts.find((p) => p.type === t)?.value;
   const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday'));
-  return { day, minutes: Number(get('hour')) * 60 + Number(get('minute')) };
+  return { day, minutes: (Number(get('hour')) % 24) * 60 + Number(get('minute')) };
 }
 
 const fmtTime = (m) => {
@@ -49,20 +49,17 @@ const fmtTime = (m) => {
 
 function getStoreStatus() {
   const { day, minutes } = nowInIndia();
-  const today = HOURS.find((h) => h.days.includes(day));
-  if (today?.open != null && minutes >= today.open && minutes < today.close) {
-    return { open: true, label: `Open now · closes ${fmtTime(today.close)}`, day };
-  }
-  if (today?.open != null && minutes < today.open) {
-    return { open: false, label: `Closed · opens ${fmtTime(today.open)} today`, day };
-  }
-  // find next opening day
+  const slots = HOURS.find((h) => h.days.includes(day))?.open || [];
+  const current = slots.find(([o, c]) => minutes >= o && minutes < c);
+  if (current) return { open: true, label: `Open now · closes ${fmtTime(current[1])}`, day };
+  const later = slots.find(([o]) => minutes < o);
+  if (later) return { open: false, label: `Closed · opens ${fmtTime(later[0])} today`, day };
   for (let i = 1; i <= 7; i += 1) {
     const d = (day + i) % 7;
-    const next = HOURS.find((h) => h.days.includes(d) && h.open != null);
+    const next = HOURS.find((h) => h.days.includes(d) && h.open);
     if (next) {
       const name = i === 1 ? 'tomorrow' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d];
-      return { open: false, label: `Closed · opens ${fmtTime(next.open)} ${name}`, day };
+      return { open: false, label: `Closed · opens ${fmtTime(next.open[0][0])} ${name}`, day };
     }
   }
   return { open: false, label: 'Closed', day };
@@ -380,7 +377,9 @@ export default function Contact() {
                         {h.label}
                         {isToday && <span className="rounded-full bg-gold-500 px-1.5 py-px text-[9px] font-bold uppercase tracking-wider text-dark-900">Today</span>}
                       </span>
-                      <span className={`shrink-0 whitespace-nowrap text-right ${h.open == null ? 'text-red-400' : 'text-white'}`}>{h.text}</span>
+                      <span className={`shrink-0 whitespace-nowrap text-right ${h.open == null ? 'text-red-400' : 'text-white'}`}>
+                        {h.text.map((t) => <span key={t} className="block">{t}</span>)}
+                      </span>
                     </li>
                   );
                 })}

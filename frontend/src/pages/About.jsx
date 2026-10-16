@@ -32,24 +32,24 @@ function useScriptFont() {
 
 // ─── Content ──────────────────────────────────────────────────────────────────
 const stats = [
-  { to: 15,  suffix: '+',  label: 'Years of Excellence' },
-  { to: 10,  suffix: 'K+', label: 'Happy Customers' },
+  { to: 5,   suffix: '+',  label: 'Years of Excellence' },
+  { to: 5,   suffix: 'K+', label: 'Happy Customers' },
   { to: 500, suffix: '+',  label: 'Unique Designs' },
   { to: 4.9, suffix: '★',  label: 'Average Rating', decimals: 1 },
 ];
 
 const values = [
-  { icon: FiAward, title: 'Craftsmanship',    desc: 'Every piece is hand-finished by master artisans with decades of goldsmithing experience.' },
+  { icon: FiAward, title: 'Craftsmanship',    desc: 'Every piece is hand-finished by skilled artisans with deep goldsmithing experience.' },
   { icon: FiHeart, title: 'Love For Detail',  desc: 'We obsess over every facet, every curve, every shine — because perfection is in the details.' },
-  { icon: FiGlobe, title: 'Ethical Sourcing', desc: 'All our diamonds and gemstones are ethically sourced with full traceability.' },
-  { icon: FiUsers, title: 'Family Heritage',  desc: 'Founded by a family of jewelers, M.B. JEWELLERS carries forward three generations of artisanal tradition.' },
+  { icon: FiGlobe, title: 'Ethical Sourcing', desc: 'Our diamonds and gemstones are carefully sourced from trusted suppliers.' },
+  { icon: FiUsers, title: 'Family Heritage',  desc: 'Rooted in family values, M.B. JEWELLERS carries forward a proud tradition of fine craftsmanship.' },
 ];
 
 const chapters = [
   {
-    key: 'heritage', numeral: 'I', eyebrow: 'Since 2010', title: 'Two Lineages, One Legacy',
-    text: 'M.B. JEWELLERS was born from a passion for creating pieces that transcend time. Founded by the Mehta and Bose families — two lineages of master jewelers from Rajasthan and Bengal — we combined our heritages to create something truly unique.',
-    art: 'bangles', caption: 'Two bangles, intertwined — like the families behind every piece.',
+    key: 'heritage', numeral: 'I', eyebrow: 'Since 2021', title: 'A Passion, A Legacy',
+    text: 'M.B. JEWELLERS was born from a passion for creating pieces that transcend time — bringing together traditional artistry and a love for fine jewellery to create something truly unique.',
+    art: 'bangles', caption: 'Two bangles, intertwined — tradition and design in every piece.',
   },
   {
     key: 'gold', numeral: 'II', eyebrow: 'The Metal', title: 'Pure, Hallmarked Gold',
@@ -58,17 +58,17 @@ const chapters = [
   },
   {
     key: 'brilliance', numeral: 'III', eyebrow: 'The Brilliance', title: 'Diamonds that Hold the Light',
-    text: 'We work with GIA-certified diamonds and hand-selected gemstones, ethically sourced with full traceability — each one chosen for the way it catches and returns the light.',
+    text: 'We work with certified diamonds and hand-selected gemstones from trusted sources — each one chosen for the way it catches and returns the light.',
     art: 'diamond', caption: 'Fifty-seven facets, one perfect sparkle.',
   },
   {
     key: 'artisans', numeral: 'IV', eyebrow: 'The Atelier', title: 'Shaped by Master Hands',
-    text: 'Our workshop employs over 50 skilled craftspeople who bring our designs to life — setting, engraving and polishing by hand, with meticulous attention to every detail.',
+    text: 'Our skilled craftspeople bring every design to life — setting, engraving and polishing by hand, with meticulous attention to every detail.',
     art: 'necklace', caption: 'Line by line, link by link — a necklace takes shape.',
   },
   {
     key: 'today', numeral: 'V', eyebrow: 'Today', title: 'A Piece of Forever',
-    text: 'Today, M.B. JEWELLERS serves customers across India and internationally — a seamless blend of traditional craftsmanship and contemporary design. Each purchase comes with a certificate of authenticity and a lifetime warranty on craftsmanship.',
+    text: 'Today, M.B. JEWELLERS brings its customers a seamless blend of traditional craftsmanship and contemporary design — every piece made with care and backed by our promise of quality.',
     art: 'ring', caption: 'Made to be worn for a lifetime — and handed down after.',
   },
 ];
@@ -379,7 +379,7 @@ function Hero() {
           initial={{ opacity: 0, letterSpacing: '0.1em' }} animate={{ opacity: 1, letterSpacing: '0.45em' }} transition={{ duration: 1.4, ease: EASE }}
           className="font-jakarta text-[11px] sm:text-xs font-semibold text-gold-500 uppercase mb-6"
         >
-          Our Heritage · Est. 2010
+          Our Heritage · Since 2021
         </motion.p>
         <motion.h1
           initial={{ opacity: 0, y: 30, filter: 'blur(8px)' }} animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }} transition={{ duration: 1.2, delay: 0.2, ease: EASE }}
@@ -401,7 +401,7 @@ function Hero() {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1, delay: 1.1 }}
           className={`${SERIF} italic text-dark-300 text-lg sm:text-xl mt-6 max-w-xl mx-auto leading-relaxed`}
         >
-          Two families. Three generations of craft. One promise — jewellery that outlives the moment.
+          Timeless craft. Trusted quality. One promise — jewellery that outlives the moment.
         </motion.p>
       </motion.div>
 

@@ -25,6 +25,8 @@
   }
 
   html {
+    overflow-x: hidden;                 /* fallback for browsers without `clip` */
+    overflow-x: clip;                   /* body-only clipping still lets mobile browsers widen the page sideways */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;

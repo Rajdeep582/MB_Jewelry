@@ -4,22 +4,24 @@ import { useDispatch, useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FiGrid, FiPackage, FiShoppingBag, FiUsers, FiTrendingUp,
-  FiLogOut, FiMenu, FiTruck, FiEdit2, FiChevronsLeft, FiUser,
+  FiLogOut, FiMenu, FiTruck, FiEdit2, FiChevronsLeft, FiUser, FiUserPlus,
 } from 'react-icons/fi';
 import { MdCurrencyRupee } from 'react-icons/md';
 import { logoutUser } from '../../store/authSlice';
 import BrandLogo from '../../components/common/BrandLogo';
 import { orderService, customOrderService } from '../../services/services';
 import toast from 'react-hot-toast';
+import { ADMIN_BASE } from '../../utils/adminPaths';
 
 const adminLinks = [
-  { to: '/admin',               label: 'Dashboard',     icon: FiGrid,          end: true,  attentionKey: null },
-  { to: '/admin/products',      label: 'Products',      icon: FiShoppingBag,   end: false, attentionKey: null },
-  { to: '/admin/pricing',       label: 'Pricing',       icon: MdCurrencyRupee, end: false, attentionKey: null },
-  { to: '/admin/orders',        label: 'Orders',        icon: FiPackage,       end: false, attentionKey: 'orders' },
-  { to: '/admin/custom-orders', label: 'Custom Orders', icon: FiEdit2,         end: false, attentionKey: 'customOrders' },
-  { to: '/admin/deliveries',    label: 'Deliveries',    icon: FiTruck,         end: false, attentionKey: 'deliveries' },
-  { to: '/admin/users',         label: 'Users',         icon: FiUsers,         end: false, attentionKey: null },
+  { to: ADMIN_BASE,               label: 'Dashboard',     icon: FiGrid,          end: true,  attentionKey: null },
+  { to: `${ADMIN_BASE}/products`,      label: 'Products',      icon: FiShoppingBag,   end: false, attentionKey: null },
+  { to: `${ADMIN_BASE}/pricing`,       label: 'Pricing',       icon: MdCurrencyRupee, end: false, attentionKey: null },
+  { to: `${ADMIN_BASE}/orders`,        label: 'Orders',        icon: FiPackage,       end: false, attentionKey: 'orders' },
+  { to: `${ADMIN_BASE}/custom-orders`, label: 'Custom Orders', icon: FiEdit2,         end: false, attentionKey: 'customOrders' },
+  { to: `${ADMIN_BASE}/deliveries`,    label: 'Deliveries',    icon: FiTruck,         end: false, attentionKey: 'deliveries' },
+  { to: `${ADMIN_BASE}/users`,         label: 'Users',         icon: FiUsers,         end: false, attentionKey: null },
+  { to: `${ADMIN_BASE}/leads`,         label: 'Leads',         icon: FiUserPlus,      end: false, attentionKey: null },
 ];
 
 function NavItem({ item, isActive, hasAttention, expanded, onClick }) {
@@ -143,7 +145,7 @@ export default function AdminLayout() {
 
         {/* Profile widget */}
         <Link
-          to="/admin/profile"
+          to={`${ADMIN_BASE}/profile`}
           className={`group relative flex items-center gap-3 rounded-xl transition-all duration-200 mb-1
             bg-gradient-to-r from-gold-500/8 to-transparent
             border border-gold-500/15 hover:border-gold-500/35

@@ -30,6 +30,25 @@ function DetailItem({ label, value, mono, gold, highlight }) {
 const formatDate = (dateStr) =>
   dateStr ? new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
+// Compact field styles for the product form (utilities override .input-dark / .label-dark padding & size)
+const FIELD_INPUT = 'input-dark px-3 py-2 text-sm rounded-lg';
+const FIELD_LABEL = 'block text-xs font-medium text-dark-300 mb-1';
+
+function FormStep({ n, title, hint, children }) {
+  return (
+    <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5 sm:p-4">
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className="w-6 h-6 rounded-full bg-gold-500/15 border border-gold-500/40 text-gold-400 text-xs font-semibold flex items-center justify-center flex-shrink-0">{n}</span>
+        <div className="min-w-0 flex flex-wrap items-baseline gap-x-2">
+          <h3 className="text-sm font-medium text-white">{title}</h3>
+          {hint && <span className="text-[11px] text-dark-500">{hint}</span>}
+        </div>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
 function ProductForm({ product, categories, onClose, onSaved }) {
   const validMaterials = ['Gold', 'Silver', 'Diamond'];
   const initialMaterial = validMaterials.includes(product?.material) ? product.material : 'Gold';
@@ -133,185 +152,195 @@ function ProductForm({ product, categories, onClose, onSaved }) {
   const currentPurities = PURITY_OPTIONS[form.material] || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto overscroll-contain glass rounded-2xl p-5 sm:p-6" data-lenis-prevent="true"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col glass rounded-2xl overflow-hidden border border-white/10"
       >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-xl text-white">{product ? 'Edit Product' : 'New Product'}</h2>
-          <button onClick={onClose} className="p-1.5 text-dark-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"><FiX /></button>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-5 sm:px-6 py-4 border-b border-white/[0.08]">
+          <div>
+            <h2 className="font-display text-lg sm:text-xl text-white leading-tight">{product ? 'Edit Product' : 'New Product'}</h2>
+            <p className="text-xs text-dark-500 mt-0.5">Complete the 4 steps below. Fields marked <span className="text-gold-500">*</span> are required.</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="p-1.5 -mr-1 text-dark-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"><FiX /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Name & Description */}
-          <div>
-            <label className="label-dark">Product Name *</label>
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-dark" required />
-          </div>
-          <div>
-            <label className="label-dark">Description *</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="input-dark resize-none" required />
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-5 sm:px-6 py-4 space-y-3" data-lenis-prevent="true">
 
-          {/* Weight / Unit / Stock */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
-            <div>
-              <label className="label-dark">Weight Value *</label>
-              <input
-                type="number"
-                min="0.001"
-                step="0.001"
-                value={form.weightValue}
-                onChange={(e) => setForm({ ...form, weightValue: e.target.value })}
-                onWheel={(e) => e.target.blur()}
-                placeholder="e.g. 5.5"
-                className="input-dark"
-                required
-              />
-            </div>
-            <div>
-              <label className="label-dark">Unit</label>
-              <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className="input-dark">
-                <option value="gram">Per Gram</option>
-                <option value="kg">Per KG</option>
-              </select>
-            </div>
-            <div className="col-span-2 sm:col-span-1">
-              <label className="label-dark">Stock *</label>
-              <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} onWheel={(e) => e.target.blur()} className="input-dark" required />
-            </div>
-          </div>
-
-          <p className="text-xs text-dark-500 -mt-2">Price is auto-calculated from weight × live rate (set in Pricing &amp; Discounts)</p>
-
-          {/* Material / Category */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label-dark">Material *</label>
-              <select value={form.material} onChange={(e) => handleMaterialChange(e.target.value)} className="input-dark">
-                {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label-dark">Category *</label>
-              <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-dark" required>
-                <option value="">Select...</option>
-                {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* Metal Specifications — Purity + Charges */}
-          <div className="bg-dark-900 border border-gold-500/20 p-3 rounded-lg space-y-3">
-            <p className="text-xs text-gold-500 uppercase tracking-wider">Metal Specifications</p>
-            <div>
-              <label className="label-dark">Purity *</label>
-              <select
-                value={form.purity}
-                onChange={(e) => setForm({ ...form, purity: e.target.value })}
-                className="input-dark"
-                required
-              >
-                {currentPurities.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3 items-end">
+            {/* Step 1 — Basic details */}
+            <FormStep n={1} title="Basic details" hint="What customers see first">
               <div>
-                <label className="label-dark">Making Charges (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={form.makingCharges}
-                  onChange={(e) => setForm({ ...form, makingCharges: e.target.value })}
-                  onWheel={(e) => e.target.blur()}
-                  className="input-dark"
-                />
+                <label className={FIELD_LABEL}>Product Name <span className="text-gold-500">*</span></label>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Floral Gold Necklace" className={FIELD_INPUT} required />
               </div>
               <div>
-                <label className="label-dark">GST (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={form.gst}
-                  onChange={(e) => setForm({ ...form, gst: e.target.value })}
-                  onWheel={(e) => e.target.blur()}
-                  className="input-dark"
-                />
+                <label className={FIELD_LABEL}>Description <span className="text-gold-500">*</span></label>
+                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Short description of design, finish, occasion…" className={`${FIELD_INPUT} resize-none`} required />
               </div>
-            </div>
-            <p className="text-xs text-dark-600">Defaults: 12% making charges, 3% GST. Override per product if needed.</p>
-          </div>
+            </FormStep>
 
-          {/* Featured */}
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="featured" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} className="accent-gold-500" />
-            <label htmlFor="featured" className="text-sm text-dark-400 cursor-pointer">Mark as Featured</label>
-          </div>
-
-          {/* Images */}
-          <div className="space-y-2">
-            <label className="label-dark">Images</label>
-
-            {product && existingImages.length > 0 && filePreviews.length === 0 && (
-              <div>
-                <p className="text-xs text-dark-500 mb-1.5 flex items-center gap-1"><FiImage size={11}/> Current images ({existingImages.length})</p>
-                <div className="flex gap-2 flex-wrap">
-                  {existingImages.map((img, idx) => (
-                    <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/10 bg-dark-800 flex-shrink-0">
-                      <img src={resolveImageUrl(img.url)} alt="" className="w-full h-full object-cover"
-                        onError={(e) => { e.target.style.display='none'; }}
-                      />
-                    </div>
-                  ))}
+            {/* Step 2 — Material / Purity / Category */}
+            <FormStep n={2} title="Material & category" hint="Purity options change with material">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className={FIELD_LABEL}>Material <span className="text-gold-500">*</span></label>
+                  <select value={form.material} onChange={(e) => handleMaterialChange(e.target.value)} className={FIELD_INPUT}>
+                    {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>Purity <span className="text-gold-500">*</span></label>
+                  <select
+                    value={form.purity}
+                    onChange={(e) => setForm({ ...form, purity: e.target.value })}
+                    className={FIELD_INPUT}
+                    required
+                  >
+                    {currentPurities.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className={FIELD_LABEL}>Category <span className="text-gold-500">*</span></label>
+                  <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className={FIELD_INPUT} required>
+                    <option value="">Select...</option>
+                    {categories.map((c) => <option key={c._id} value={c._id}>{c.name}</option>)}
+                  </select>
                 </div>
               </div>
-            )}
+            </FormStep>
 
-            {filePreviews.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs text-gold-500 flex items-center gap-1"><FiUpload size={11}/> {filePreviews.length} new image(s) — will {replaceImages ? 'replace all' : 'be added'}</p>
-                  <button type="button" onClick={clearNewFiles} className="text-xs text-dark-500 hover:text-red-400 transition-colors flex items-center gap-1"><FiX size={11}/> Clear</button>
+            {/* Step 3 — Weight / Stock / Charges */}
+            <FormStep n={3} title="Weight, stock & charges" hint="Price is calculated automatically">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className={FIELD_LABEL}>Weight <span className="text-gold-500">*</span></label>
+                  <input
+                    type="number"
+                    min="0.001"
+                    step="0.001"
+                    value={form.weightValue}
+                    onChange={(e) => setForm({ ...form, weightValue: e.target.value })}
+                    onWheel={(e) => e.target.blur()}
+                    placeholder="e.g. 5.5"
+                    className={FIELD_INPUT}
+                    required
+                  />
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  {filePreviews.map((src, idx) => (
-                    <div key={idx} className="w-16 h-16 rounded-lg overflow-hidden border border-gold-500/30 bg-dark-800 flex-shrink-0">
-                      <img src={src} alt="" className="w-full h-full object-cover" />
-                    </div>
-                  ))}
+                <div>
+                  <label className={FIELD_LABEL}>Unit</label>
+                  <select value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} className={FIELD_INPUT}>
+                    <option value="gram">Per Gram</option>
+                    <option value="kg">Per KG</option>
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className={FIELD_LABEL}>Stock (qty) <span className="text-gold-500">*</span></label>
+                  <input type="number" min="0" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} onWheel={(e) => e.target.blur()} className={FIELD_INPUT} required />
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>Making Charges (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={form.makingCharges}
+                    onChange={(e) => setForm({ ...form, makingCharges: e.target.value })}
+                    onWheel={(e) => e.target.blur()}
+                    className={FIELD_INPUT}
+                  />
+                </div>
+                <div>
+                  <label className={FIELD_LABEL}>GST (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={form.gst}
+                    onChange={(e) => setForm({ ...form, gst: e.target.value })}
+                    onWheel={(e) => e.target.blur()}
+                    className={FIELD_INPUT}
+                  />
                 </div>
               </div>
-            )}
+              <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-dark-500 bg-gold-500/[0.04] border border-gold-500/15 rounded-lg px-2.5 py-2">
+                <FiAlertCircle size={12} className="text-gold-500 mt-0.5 flex-shrink-0" />
+                <span>Price = weight × live rate (set in Pricing &amp; Discounts) + making charges + GST. Defaults: 12% making, 3% GST — change only if needed.</span>
+              </p>
+            </FormStep>
 
-            {product && filePreviews.length > 0 && (
-              <label className="flex items-center gap-2 text-xs text-dark-400 cursor-pointer">
-                <input type="checkbox" className="accent-gold-500" checked={replaceImages} onChange={(e) => setReplaceImages(e.target.checked)} />
-                Replace all existing images with new ones
+            {/* Step 4 — Images & visibility */}
+            <FormStep n={4} title="Photos & visibility" hint="Clear, well-lit photos sell better">
+              {product && existingImages.length > 0 && filePreviews.length === 0 && (
+                <div>
+                  <p className="text-xs text-dark-500 mb-1.5 flex items-center gap-1"><FiImage size={11}/> Current images ({existingImages.length})</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {existingImages.map((img, idx) => (
+                      <div key={idx} className="relative w-14 h-14 rounded-lg overflow-hidden border border-white/10 bg-dark-800 flex-shrink-0">
+                        <img src={resolveImageUrl(img.url)} alt="" className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display='none'; }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filePreviews.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-xs text-gold-500 flex items-center gap-1"><FiUpload size={11}/> {filePreviews.length} new image(s) — will {replaceImages ? 'replace all' : 'be added'}</p>
+                    <button type="button" onClick={clearNewFiles} className="text-xs text-dark-500 hover:text-red-400 transition-colors flex items-center gap-1"><FiX size={11}/> Clear</button>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {filePreviews.map((src, idx) => (
+                      <div key={idx} className="w-14 h-14 rounded-lg overflow-hidden border border-gold-500/30 bg-dark-800 flex-shrink-0">
+                        <img src={src} alt="" className="w-full h-full object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {product && filePreviews.length > 0 && (
+                <label className="flex items-center gap-2 text-xs text-dark-400 cursor-pointer">
+                  <input type="checkbox" className="accent-gold-500" checked={replaceImages} onChange={(e) => setReplaceImages(e.target.checked)} />
+                  Replace all existing images with new ones
+                </label>
+              )}
+
+              <label className="flex items-center justify-center gap-3 px-4 py-3.5 rounded-lg border border-dashed border-white/15 bg-dark-800/60 cursor-pointer hover:border-gold-500/50 hover:bg-gold-500/[0.03] transition-colors group">
+                <span className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center flex-shrink-0 group-hover:bg-gold-500/15 transition-colors">
+                  <FiUpload size={14} className="text-dark-400 group-hover:text-gold-400 transition-colors" />
+                </span>
+                <span className="text-left">
+                  <span className="block text-sm text-dark-300 group-hover:text-white transition-colors">
+                    {files.length > 0 ? `${files.length} file(s) selected — click to change` : 'Click to choose images'}
+                  </span>
+                  <span className="block text-[11px] text-dark-500">Up to 6 images · max 5MB each</span>
+                </span>
+                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
               </label>
-            )}
 
-            <label className="flex items-center gap-2 input-dark cursor-pointer hover:border-gold-500/50 transition-colors group">
-              <FiUpload size={14} className="text-dark-400 group-hover:text-gold-400 transition-colors" />
-              <span className="text-dark-400 text-sm group-hover:text-dark-300 transition-colors">
-                {files.length > 0 ? `${files.length} file(s) selected` : 'Choose images (max 6, 5MB each)'}
-              </span>
-              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-            </label>
+              <label htmlFor="featured" className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-dark-800/60 border border-white/[0.06] cursor-pointer hover:border-gold-500/30 transition-colors">
+                <input type="checkbox" id="featured" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} className="accent-gold-500 w-4 h-4" />
+                <FiStar size={13} className={form.isFeatured ? 'text-gold-400' : 'text-dark-500'} />
+                <span className="text-sm text-dark-300">Mark as Featured</span>
+              </label>
+            </FormStep>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={saving} className="btn-gold flex-1 py-2.5 disabled:opacity-60">
+          {/* Footer actions */}
+          <div className="flex gap-3 px-5 sm:px-6 py-3.5 border-t border-white/[0.08] bg-dark-950/40">
+            <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5 text-sm hover:translate-y-0">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-gold flex-[2] py-2.5 text-sm hover:translate-y-0 disabled:opacity-60">
               {saving ? 'Saving...' : product ? 'Update Product' : 'Create Product'}
             </button>
-            <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5">Cancel</button>
           </div>
         </form>
       </motion.div>

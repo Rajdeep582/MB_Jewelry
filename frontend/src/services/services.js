@@ -3,6 +3,10 @@ import api from './api';
 // Image uploads go through the API to Cloudinary — allow more than the default 15s.
 const UPLOAD_OPTS = { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 };
 
+export const newsletterService = {
+  subscribe: (email) => api.post('/subscribe', { email }),
+};
+
 export const reviewService = {
   getFeatured: () => api.get('/products/reviews/featured'),
 };
@@ -72,6 +76,8 @@ export const adminService = {
   // Delivery records (independent collection)
   getDeliveryRecords:       (params)            => api.get('/admin/deliveries', { params }),
   getDeliveryRecordStats:   ()                  => api.get('/admin/deliveries/stats'),
+  // Leads (all customer accounts + footer newsletter emails)
+  getLeads:                 ()                  => api.get('/admin/leads'),
 };
 
 export const deliveryService = {

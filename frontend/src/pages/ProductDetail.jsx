@@ -839,7 +839,6 @@ function ProductDetailView({ id }) {
                     <FiPlus size={13} />
                   </button>
                 </div>
-                <span className={`font-jakarta text-xs ${stock <= 5 ? 'text-amber-400' : 'text-dark-500'}`}>{stock} in stock</span>
               </div>
             )}
 

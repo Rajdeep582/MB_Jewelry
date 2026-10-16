@@ -73,12 +73,6 @@ const story = [
   },
 ];
 
-const testimonials = [
-  { name: 'Priya Sharma', rating: 5, text: 'Absolutely gorgeous ring! The craftsmanship is impeccable and arrived beautifully packaged.', location: 'Mumbai' },
-  { name: 'Anita Reddy',  rating: 5, text: 'I bought a necklace for my wedding — everyone kept asking where it was from. Truly luxury!', location: 'Hyderabad' },
-  { name: 'Kavita Nair',  rating: 5, text: 'Exceptional quality and the customer service was outstanding. My go-to jewelry store now.', location: 'Kochi' },
-];
-
 const collections = [
   { name: 'Rings',     keyword: 'Ring',     image: imgRing },
   { name: 'Necklaces', keyword: 'Necklace', image: imgNecklace },
@@ -177,7 +171,7 @@ function Hero() {
           </div>
           {/* single quiet badge */}
           <div className="absolute -left-4 sm:-left-10 bottom-10 rounded-2xl border border-gold-500/30 bg-dark-900/90 backdrop-blur-md px-5 py-3.5 shadow-xl">
-            <p className="font-jakarta text-[10px] uppercase tracking-[0.25em] text-gold-500">Since 2010</p>
+            <p className="font-jakarta text-[10px] uppercase tracking-[0.25em] text-gold-500">Since 2021</p>
             <p className={`${SERIF} text-white text-xl font-semibold leading-tight mt-0.5`}>Handcrafted with care</p>
           </div>
         </motion.div>
@@ -472,11 +466,11 @@ function HeritageBanner() {
         <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ duration: 0.9, delay: 0.1, ease: EASE }}>
           <Eyebrow className="mb-4">Our Heritage</Eyebrow>
           <h2 className={`${SERIF} text-white text-4xl sm:text-5xl font-medium leading-tight pt-0`}>
-            15 Years of Crafting Masterpieces
+            A Legacy of Crafting Masterpieces
           </h2>
           <p className="font-jakarta text-dark-300 leading-relaxed mt-5 mb-8 max-w-lg">
             From our family workshop to the finest boutiques, every M.B. JEWELLERS piece is hand-crafted
-            with generations of goldsmithing expertise and an uncompromising eye for detail.
+            with deep goldsmithing expertise and an uncompromising eye for detail.
           </p>
           <Link to="/about" className="btn-gold text-sm">
             Discover Our Story <FiArrowRight size={14} />
@@ -487,33 +481,98 @@ function HeritageBanner() {
   );
 }
 
-// ─── 6. Testimonials ─────────────────────────────────────────────────────────
-function Testimonials() {
+// ─── 6. Purity seals — 22K, 18K and hallmarked silver, stamped by scroll ────
+const SEAL_WORDS = ['Hallmarked', 'Handcrafted', 'Made to Order'];
+
+const SEALS = [
+  { key: 'g22', mark: '22K',    sub: '916 GOLD',   stops: ['#FBEFC4', '#E5AB28', '#D4AF37', '#8A6018'], glow: 'rgba(212,175,55,0.30)', text: '#E5D3A1', size: 64 },
+  { key: 'g18', mark: '18K',    sub: '750 GOLD',   stops: ['#FCE7C8', '#E9B872', '#C9925A', '#7A4F2A'], glow: 'rgba(214,160,100,0.26)', text: '#EBCFAE', size: 64 },
+  { key: 'ag',  mark: 'Silver', sub: 'HALLMARKED', stops: ['#FFFFFF', '#D9DEE6', '#AEB6C2', '#6E7682'], glow: 'rgba(200,208,220,0.22)', text: '#D9DEE6', size: 46 },
+];
+
+function Seal({ seal, progress, index }) {
+  const reduce = useReducedMotion();
+  // Each seal stamps a little after the previous one
+  const d     = index * 0.08;
+  const spin  = useTransform(progress, [0, 1], [-90 + index * 30, 0]);
+  const ring  = useTransform(progress, [0.1 + d, 0.6 + d], [0, 1]);
+  const inner = useTransform(progress, [0.25 + d, 0.7 + d], [0, 1]);
+  const mark  = useTransform(progress, [0.5 + d, 0.78 + d], [0, 1]);
+  const markS = useTransform(progress, [0.5 + d, 0.78 + d], [0.82, 1]);
+  const still = reduce ? 1 : undefined;
+  const gid = `mbSeal-${seal.key}`;
+
   return (
-    <section className="relative py-24 md:py-28 scroll-mt-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <SectionHeading eyebrow="Customer Love" title="What They Say" />
-        <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-6">
-          {testimonials.map(({ name, rating, text, location }, i) => (
-            <motion.figure
-              key={name}
-              initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.3 }} transition={{ delay: i * 0.1, duration: 0.8, ease: EASE }}
-              className="rounded-3xl border border-white/[0.06] bg-dark-800 p-8"
-            >
-              <div className="flex gap-1 mb-5">
-                {Array.from({ length: rating }).map((_, j) => (
-                  <FiStar key={`star-${name}-${j}`} size={14} className="fill-gold-400 text-gold-400" />
-                ))}
-              </div>
-              <blockquote className={`${SERIF} italic text-white/90 text-xl leading-relaxed`}>&ldquo;{text}&rdquo;</blockquote>
-              <figcaption className="flex items-center gap-3 mt-7 pt-5 border-t border-white/5">
-                <div className="w-10 h-10 rounded-full bg-gold-gradient flex items-center justify-center text-dark-900 font-bold text-sm">{name.charAt(0)}</div>
-                <div>
-                  <p className="font-jakarta text-white text-sm font-semibold">{name}</p>
-                  <p className="font-jakarta text-dark-500 text-xs">{location}</p>
-                </div>
-              </figcaption>
-            </motion.figure>
+    <svg viewBox="0 0 320 320" className="w-full h-auto pointer-events-none" aria-hidden="true">
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+          {seal.stops.map((c, i) => <stop key={c} offset={`${[0, 38, 68, 100][i]}%`} stopColor={c} />)}
+        </linearGradient>
+        <radialGradient id={`${gid}-glow`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0%" stopColor={seal.glow} />
+          <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+        </radialGradient>
+      </defs>
+      <circle cx="160" cy="160" r="156" fill={`url(#${gid}-glow)`} />
+      <motion.g style={{ rotate: reduce ? 0 : spin, transformOrigin: '160px 160px', transformBox: 'view-box' }}>
+        <circle cx="160" cy="160" r="146" fill="none" stroke={seal.stops[2]} strokeOpacity="0.35" strokeWidth="1.2" strokeDasharray="2 7" />
+        {[[160, 14], [306, 160], [160, 306], [14, 160]].map(([x, y]) => (
+          <rect key={`${x}-${y}`} x={x - 4} y={y - 4} width="8" height="8" fill={seal.stops[2]} transform={`rotate(45 ${x} ${y})`} />
+        ))}
+      </motion.g>
+      <motion.circle cx="160" cy="160" r="118" fill="none" stroke={`url(#${gid})`} strokeWidth="6"
+        transform="rotate(-90 160 160)" style={{ pathLength: still ?? ring }} />
+      <motion.circle cx="160" cy="160" r="100" fill="none" stroke={`url(#${gid})`} strokeOpacity="0.55" strokeWidth="1.4"
+        transform="rotate(-90 160 160)" style={{ pathLength: still ?? inner }} />
+      <motion.g style={{ opacity: still ?? mark, scale: still ?? markS, transformOrigin: '160px 160px', transformBox: 'view-box' }}>
+        <path d="M160 90 L169 103 L160 116 L151 103 Z" fill={`url(#${gid})`} />
+        <text x="160" y="182" textAnchor="middle" fill={`url(#${gid})`} style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: seal.size, fontWeight: 600 }}>{seal.mark}</text>
+        <text x="160" y="214" textAnchor="middle" fill={seal.text} className="hidden sm:inline" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 13, letterSpacing: 4 }}>{seal.sub}</text>
+        <Twinkle x={236} y={92} size={10} delay={index * 0.7} />
+      </motion.g>
+    </svg>
+  );
+}
+Seal.propTypes = { seal: PropTypes.object.isRequired, progress: PropTypes.object.isRequired, index: PropTypes.number.isRequired };
+
+function PuritySeal() {
+  const ref = useRef(null);
+  const reduce = useReducedMotion();
+  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'center center'] });
+  // Driven 1:1 by scroll position (same feel as the ring above)
+  const p     = scrollYProgress;
+  const word0 = useTransform(p, [0.78, 0.88], [0, 1]);
+  const word1 = useTransform(p, [0.84, 0.94], [0, 1]);
+  const word2 = useTransform(p, [0.9, 1], [0, 1]);
+  const words = [word0, word1, word2];
+
+  return (
+    <section className="relative py-24 md:py-28 overflow-hidden">
+      <style>{SWING_CSS}</style>
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] bg-[radial-gradient(closest-side,rgba(212,175,55,0.07),transparent)] pointer-events-none" aria-hidden="true" />
+      <div ref={ref} className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <Eyebrow className="mb-4">Our Promise</Eyebrow>
+        <h2 className={`${SERIF} text-white text-4xl sm:text-5xl font-medium leading-tight pt-0`}>
+          Purity You Can{' '}
+          <span style={SCRIPT} className="text-gradient-gold font-normal text-[1.3em] px-1 inline-block whitespace-nowrap">Trust</span>
+        </h2>
+
+        <div className="mt-10 grid grid-cols-3 gap-3 sm:gap-8 md:gap-12 max-w-4xl mx-auto">
+          {SEALS.map((seal, i) => (
+            <div key={seal.key}>
+              <Seal seal={seal} progress={p} index={i} />
+              {/* small screens: the seal's sub-label is too small to read inside the SVG */}
+              <p className="sm:hidden mt-1 font-jakarta text-[10px] uppercase tracking-[0.18em]" style={{ color: seal.text }}>{seal.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 sm:gap-x-4 gap-y-2">
+          {SEAL_WORDS.map((w, i) => (
+            <motion.span key={w} style={{ opacity: reduce ? 1 : words[i] }} className="flex items-center gap-4 font-jakarta text-xs sm:text-sm uppercase tracking-[0.22em] text-dark-300">
+              {i > 0 && <span className="hidden sm:inline-block w-1.5 h-1.5 rotate-45 bg-gold-500/70" aria-hidden="true" />}
+              {w}
+            </motion.span>
           ))}
         </div>
       </div>
@@ -537,7 +596,7 @@ function NecklaceFinale() {
       <div className="absolute left-1/2 bottom-0 -translate-x-1/2 w-[900px] h-[420px] bg-[radial-gradient(50%_55%_at_50%_70%,rgba(212,175,55,0.10),transparent_70%)] pointer-events-none" aria-hidden="true" />
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
         <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ duration: 0.9, ease: EASE }}>
-          <Eyebrow className="mb-4">M.B. Jewellers · Since 2010</Eyebrow>
+          <Eyebrow className="mb-4">M.B. Jewellers · Since 2021</Eyebrow>
           <h2 className={`${SERIF} text-white text-4xl sm:text-5xl font-medium leading-tight pt-0`}>
             Jewellery that Tells{' '}
             <span style={SCRIPT} className="text-gradient-gold font-normal text-[1.3em] px-1 inline-block whitespace-nowrap">Your Story</span>
@@ -664,7 +723,7 @@ export default function Home() {
       <CollectionsSection categories={categories} />
       <FeaturedShowcase featured={featured} loading={loading} railRef={railRef} scrollRail={scrollRail} pauseRail={pauseRail} />
       <HeritageBanner />
-      <Testimonials />
+      <PuritySeal />
       <NecklaceFinale />
     </div>
   );
