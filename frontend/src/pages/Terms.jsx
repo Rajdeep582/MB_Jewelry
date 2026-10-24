@@ -24,7 +24,7 @@ function Section({ index, highlight = false, children }) {
           <Icon size={18} className="text-gold-500" />
         </div>
         <div className="space-y-3 min-w-0">
-          <h2 className="text-lg md:text-xl font-serif font-semibold text-white leading-snug">
+          <h2 className="text-lg md:text-xl font-sans font-semibold text-white leading-snug">
             {index + 1}. {title}
           </h2>
           <div className="space-y-3 text-dark-300 text-sm md:text-base leading-relaxed">{children}</div>
@@ -60,7 +60,7 @@ export default function Terms() {
         {/* Header */}
         <div className="text-center mb-10">
           <p className="section-subtitle mb-2">Legal & Policies</p>
-          <h1 className="text-3xl md:text-4xl font-serif text-white font-normal leading-tight">Terms & Conditions</h1>
+          <h1 className="text-3xl md:text-4xl font-sans text-white font-normal leading-tight">Terms & Conditions</h1>
           <div className="gold-divider mt-4 mb-4" />
           <p className="text-dark-400 text-sm max-w-xl mx-auto">
             Please read these Terms & Conditions carefully before using our website or placing an order.

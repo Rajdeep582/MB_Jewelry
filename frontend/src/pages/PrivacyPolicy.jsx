@@ -22,7 +22,7 @@ function Section({ index, children }) {
           <Icon size={18} className="text-gold-500" />
         </div>
         <div className="space-y-3 min-w-0">
-          <h2 className="text-lg md:text-xl font-serif font-semibold text-white leading-snug">
+          <h2 className="text-lg md:text-xl font-sans font-semibold text-white leading-snug">
             {index + 1}. {title}
           </h2>
           <div className="space-y-3 text-dark-300 text-sm md:text-base leading-relaxed">{children}</div>
@@ -67,7 +67,7 @@ export default function PrivacyPolicy() {
         {/* Header */}
         <div className="text-center mb-10">
           <p className="section-subtitle mb-2">Transparency & Trust</p>
-          <h1 className="text-3xl md:text-4xl font-serif text-white font-normal leading-tight">Privacy Policy</h1>
+          <h1 className="text-3xl md:text-4xl font-sans text-white font-normal leading-tight">Privacy Policy</h1>
           <div className="gold-divider mt-4 mb-4" />
           <p className="text-dark-400 text-sm max-w-xl mx-auto">
             We respect your privacy and are committed to being clear and transparent about how your information is
