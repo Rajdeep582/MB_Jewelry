@@ -15,7 +15,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, deliveryOnly } = require('../middleware/auth');
-const { loginLimiter, authLimiter, otpLimiter } = require('../middleware/rateLimiter');
+const { loginLimiter, authLimiter, otpLimiter, emailOtpLimiter } = require('../middleware/rateLimiter');
 const { validateSchema, schemas } = require('../middleware/validation');
 const ctrl = require('../controllers/dpAuthController');
 
@@ -28,7 +28,7 @@ router.get('/profile',   protect, deliveryOnly, ctrl.getProfileDP);
 router.patch('/profile', protect, deliveryOnly, ctrl.updateProfileDP);
 
 // Forgot password (public)
-router.post('/forgot-password',  otpLimiter,  validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
+router.post('/forgot-password',  otpLimiter,  emailOtpLimiter, validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
 router.post('/verify-reset-otp', authLimiter, validateSchema(schemas.verifyResetOtp), ctrl.verifyResetOtp);
 router.post('/reset-password',   authLimiter, validateSchema(schemas.resetPassword),  ctrl.resetPassword);
 

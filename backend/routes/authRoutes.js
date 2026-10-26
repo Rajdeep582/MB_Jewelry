@@ -29,7 +29,7 @@
 const express = require('express');
 const router = express.Router();
 const { validateSchema, schemas } = require('../middleware/validation');
-const { otpLimiter, loginLimiter, authLimiter } = require('../middleware/rateLimiter');
+const { otpLimiter, loginLimiter, authLimiter, emailOtpLimiter } = require('../middleware/rateLimiter');
 
 // ─── Validation rule sets ─────────────────────────────────────────────────────
 // Validation is imported from validation.js
@@ -40,7 +40,7 @@ const { protect } = require('../middleware/auth');
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 // MOBILE_AUTH_DISABLED: uncomment to re-enable mobile OTP route
 // router.post('/send-mobile-otp', otpLimiter,  validateSchema(schemas.sendMobileOtp), ctrl.sendMobileOtp);
-router.post('/register',        authLimiter, validateSchema(schemas.register),       ctrl.register);
+router.post('/register',        authLimiter, emailOtpLimiter, validateSchema(schemas.register),       ctrl.register);
 router.post('/verify-otp',      authLimiter, validateSchema(schemas.verifyOtp),      ctrl.verifyOTP);
 router.post('/login',           loginLimiter, validateSchema(schemas.login),         ctrl.login);
 router.post('/google',          authLimiter, validateSchema(schemas.googleOAuth),    ctrl.googleLogin);
@@ -49,7 +49,7 @@ router.post('/refresh',                                                         
 router.get('/me',               protect,                                             ctrl.getMe);
 
 // Forgot password
-router.post('/forgot-password',   otpLimiter, validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
+router.post('/forgot-password',   otpLimiter, emailOtpLimiter, validateSchema(schemas.forgotPassword), ctrl.forgotPassword);
 router.post('/verify-reset-otp',  otpLimiter, validateSchema(schemas.verifyResetOtp), ctrl.verifyResetOtp);
 router.post('/reset-password',  authLimiter, validateSchema(schemas.resetPassword),   ctrl.resetPassword);
 

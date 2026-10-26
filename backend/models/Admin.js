@@ -33,6 +33,8 @@ const adminSchema = new mongoose.Schema(
     pwdResetOtpAttempts:  { type: Number, default: 0, select: false },
     pwdResetTokenHash:    { type: String, select: false },
     pwdResetTokenExpires: { type: Date,   select: false },
+    pwdResetFails:        { type: Number, default: 0, select: false }, // wrong reset codes in the current 24 h window (utils/resetGuard.js)
+    pwdResetFailsSince:   { type: Date,   select: false },
     lastLogin: { type: Date },
     sessions: [{
       sessionId: { type: String, required: true },
@@ -51,6 +53,11 @@ const adminSchema = new mongoose.Schema(
     // Brute-force guard: incremented on each wrong OTP attempt.
     // Locked at >= 5. Reset to 0 when correct OTP accepted or new OTP issued.
     emailOtpAttempts:  { type: Number, default: 0, select: false },
+    // ── Login 2-step verification (email code after the password) ──
+    loginOtpHash:       { type: String, select: false },
+    loginOtpExpiry:     { type: Date,   select: false },
+    loginOtpAttempts:   { type: Number, default: 0, select: false },
+    loginChallengeHash: { type: String, select: false }, // proves the password step was passed
     adminId: { type: String, unique: true, sparse: true },
     auditLogs: [{
       action: String,

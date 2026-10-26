@@ -45,6 +45,8 @@ const deliveryPartnerSchema = new mongoose.Schema(
     pwdResetOtpAttempts:  { type: Number, default: 0, select: false },
     pwdResetTokenHash:    { type: String, select: false },
     pwdResetTokenExpires: { type: Date,   select: false },
+    pwdResetFails:        { type: Number, default: 0, select: false }, // wrong reset codes in the current 24 h window (utils/resetGuard.js)
+    pwdResetFailsSince:   { type: Date,   select: false },
     lastLogin: { type: Date },
     sessions: [{
       sessionId: { type: String, required: true },

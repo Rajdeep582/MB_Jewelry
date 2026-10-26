@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import PropTypes from 'prop-types';
 import {
@@ -7,12 +8,17 @@ import {
   FiChevronDown, FiArrowUpRight, FiPenTool, FiUser, FiMessageSquare, FiTag,
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
+import { contactService, userService } from '../services/services';
+import { selectIsAuthenticated, selectUser } from '../store/authSlice';
 
 // ─── Store details ────────────────────────────────────────────────────────────
 const EMAIL = 'mbjewellers2021@gmail.com';
 const PHONE = '09830424257';
 const ADDRESS = "BOYS' HIGH SCHOOL, 217/3, Netaji Subhash Bose Rd, beside NEW BARRACKPORE, New Barrackpur, West Bengal 700131";
-const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ADDRESS)}`;
+// Opens the shop's own Google Maps listing (place id), not a text search — the address starts
+// with the school next door, so searching the text alone lands on the school.
+const MAPS_PLACE_ID = 'ChIJM8rRFMuf-DkR5sT5O_pjgE4'; // M.B.JEWELLERS on Google Maps
+const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('M.B. JEWELLERS, 217/3 Netaji Subhash Bose Rd, New Barrackpur 700131')}&query_place_id=${MAPS_PLACE_ID}`;
 
 // Opening hours (IST). day: 0 = Sunday … 6 = Saturday. Slots in minutes from midnight.
 const OPEN_SLOTS = [[600, 810], [1110, 1290]]; // 10:00 AM – 1:30 PM, 6:30 PM – 9:30 PM
@@ -234,12 +240,29 @@ const INPUT = 'input-dark !bg-dark-900/50 font-jakarta text-sm py-2.5 pl-10';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function Contact() {
-  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+  const user = useSelector(selectUser);
+  const [form, setForm] = useState({ name: '', subject: '', message: '' });
+  // Google sign-in → the Google name is used as the sender (no name field)
+  const [googleName, setGoogleName] = useState(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) return undefined;
+    let alive = true;
+    userService.getProfile()
+      .then((res) => {
+        const u = res.data?.user;
+        const isGoogle = (u?.providers || []).some((p) => p.providerType === 'google');
+        if (alive) setGoogleName(isGoogle ? (u?.name || user?.name || '') : null);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [isAuthenticated, user?.name]);
   const [submitting, setSubmitting] = useState(false);
   const [openFaq, setOpenFaq] = useState(0);
   const [status, setStatus] = useState(getStoreStatus);
 
-  useEffect(() => { document.title = 'Contact Us — M.B. JEWELLERS'; }, []);
+  // Page title / description / canonical: components/common/RouteSeo.jsx
 
   // Keep the open/closed badge current while the page is open
   useEffect(() => {
@@ -247,18 +270,23 @@ export default function Contact() {
     return () => clearInterval(t);
   }, []);
 
+  // Sent by the server to the shop inbox; replies go to the signed-in customer's account email
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.message.trim().length < 5) {
+      toast.error('Please write a little more in your message.');
+      return;
+    }
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 600));
-
-    const subject = encodeURIComponent(form.subject || 'Inquiry — M.B. JEWELLERS');
-    const body = encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\n\nMessage:\n${form.message}`);
-    window.location.href = `mailto:${EMAIL}?subject=${subject}&body=${body}`;
-
-    toast.success('Message sent! We\'ll reply within 24 hours. 💍');
-    setForm({ name: '', email: '', subject: '', message: '' });
-    setSubmitting(false);
+    try {
+      const res = await contactService.send({ name: googleName !== null ? '' : form.name.trim(), subject: form.subject.trim(), message: form.message.trim() });
+      toast.success(res.data?.message || 'Message sent! We\'ll reply within 24 hours. 💍');
+      setForm({ name: '', subject: '', message: '' });
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.response?.data?.errors?.[0]?.message || 'Could not send your message. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -305,25 +333,44 @@ export default function Contact() {
               <span className="w-9 h-9 rounded-xl bg-gold-500/10 border border-gold-500/20 text-gold-400 flex items-center justify-center"><FiMessageSquare size={16} /></span>
               <div>
                 <h2 className="font-serif text-lg sm:text-xl text-white font-semibold leading-tight pt-0">Send a message</h2>
-                <p className="font-jakarta text-xs text-dark-500">Opens in your email app, ready to send.</p>
+                <p className="font-jakarta text-xs text-dark-500">
+                  {isAuthenticated && user?.email ? <>We&apos;ll reply to <span className="text-dark-300">{user.email}</span></> : 'Sign in to send us a message.'}
+                </p>
               </div>
             </div>
 
+            {!isAuthenticated ? (
+              <div className="rounded-xl border border-dashed border-gold-500/25 bg-gold-500/[0.04] px-5 py-8 text-center">
+                <p className="font-jakarta text-sm text-dark-300 mb-1">Please sign in to send us a message.</p>
+                <p className="font-jakarta text-xs text-dark-500 mb-4">We reply to the email on your account — no need to type it.</p>
+                <Link to="/login" state={{ from: { pathname: '/contact' } }} className="btn-gold py-2.5 px-6 text-sm inline-flex">
+                  Sign in
+                </Link>
+                <p className="font-jakarta text-[11px] text-dark-500 mt-4">Or call us at {PHONE}</p>
+              </div>
+            ) : (
             <form id="contact-form" onSubmit={handleSubmit} className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <Field id="contact-name" label="Full Name" icon={FiUser}>
-                  <input id="contact-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Your name" autoComplete="name" className={INPUT} required />
-                </Field>
-                <Field id="contact-email" label="Email" icon={FiMail}>
-                  <input id="contact-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="you@example.com" autoComplete="email" className={INPUT} required />
+                {googleName !== null ? (
+                  <div>
+                    <p className="block font-jakarta text-xs font-medium text-dark-300 mb-1.5">Name</p>
+                    <p className="flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-dark-900/50 px-3.5 py-2.5 font-jakarta text-sm text-white">
+                      <FiUser size={14} className="text-gold-400 flex-shrink-0" />
+                      <span className="truncate">{googleName || 'Google account'}</span>
+                      <span className="ml-auto text-[10px] uppercase tracking-wider text-dark-500">Google</span>
+                    </p>
+                  </div>
+                ) : (
+                  <Field id="contact-name" label="Name (optional)" icon={FiUser}>
+                    <input id="contact-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      autoComplete="name" maxLength={60} className={INPUT} />
+                  </Field>
+                )}
+                <Field id="contact-subject" label="Subject (optional)" icon={FiTag}>
+                  <input id="contact-subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
+                    placeholder="Order inquiry, custom design…" maxLength={120} className={INPUT} />
                 </Field>
               </div>
-              <Field id="contact-subject" label="Subject" icon={FiTag}>
-                <input id="contact-subject" value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                  placeholder="Order inquiry, custom design, etc." className={INPUT} required />
-              </Field>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label htmlFor="contact-message" className="font-jakarta text-xs font-medium text-dark-300">Message</label>
@@ -348,6 +395,7 @@ export default function Contact() {
                 </button>
               </div>
             </form>
+            )}
           </motion.section>
 
           {/* Store + hours */}

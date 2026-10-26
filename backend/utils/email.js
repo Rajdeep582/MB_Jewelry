@@ -50,11 +50,21 @@ const getSender = () => {
  * sendViaBrevoApi — sends through Brevo's HTTPS API (port 443).
  * Needed on hosts that block outbound SMTP ports 25/465/587 (e.g. Railway Hobby/Free plans).
  */
-const sendViaBrevoApi = async ({ to, subject, html }) => {
+const BRAND_NAME = 'M.B. Jewellers';
+/** Display name from a `"Name" <addr>` from-header (falls back to the brand name). */
+const senderName = (from) => (typeof from === 'string' && /^"([^"]+)"/.exec(from)?.[1]) || BRAND_NAME;
+
+const sendViaBrevoApi = async ({ from, to, subject, html, replyTo }) => {
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: { 'api-key': process.env.BREVO_API_KEY.trim(), 'content-type': 'application/json', accept: 'application/json' },
-    body: JSON.stringify({ sender: { name: 'M&B Jewelry', email: getSender() }, to: [{ email: to }], subject, htmlContent: html }),
+    body: JSON.stringify({
+      sender: { name: senderName(from), email: getSender() },
+      to: [{ email: to }],
+      ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      subject,
+      htmlContent: html,
+    }),
     signal: AbortSignal.timeout(15_000),
   });
   const data = await res.json().catch(() => ({}));
@@ -92,12 +102,12 @@ const sendVerificationEmail = async (userEmail, userName, otpCode) => {
     const from = getSender();
 
     const mailOptions = {
-      from: `"M&B Jewelry" <${from}>`,
+      from: `"${BRAND_NAME}" <${from}>`,
       to: userEmail,
-      subject: '💍 M&B Jewelry - Your Verification Code',
+      subject: '💍 M.B. Jewellers - Your Verification Code',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-          <h2 style="color: #B8860B; text-align: center;">Welcome to M&B Jewelry!</h2>
+          <h2 style="color: #B8860B; text-align: center;">Welcome to M.B. Jewellers!</h2>
           <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(userName)},</p>
           <p style="font-size: 16px; color: #333;">Please use the following 6-digit code to verify your email address. This code is valid for <strong>10 minutes</strong>.</p>
           <div style="text-align: center; margin: 30px 0;">
@@ -133,15 +143,15 @@ const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
     const from = getSender();
 
     const mailOptions = {
-      from: `"M&B Jewelry" <${from}>`,
+      from: `"${BRAND_NAME}" <${from}>`,
       to: userEmail,
-      subject: '🔐 M&B Jewelry - Password Reset Code',
+      subject: '🔐 M.B. Jewellers - Password Reset Code',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
           <h2 style="color: #B8860B; text-align: center;">Password Reset Request</h2>
           <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(userName)},</p>
           <p style="font-size: 16px; color: #333;">
-            We received a request to reset the password for your M&B Jewelry account.
+            We received a request to reset the password for your M.B. Jewellers account.
             Use the code below to proceed. It is valid for <strong>10 minutes</strong>.
           </p>
           <div style="text-align: center; margin: 30px 0;">
@@ -155,7 +165,7 @@ const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
               Your password will remain unchanged. Do not share this code with anyone.
             </p>
           </div>
-          <p style="color: #999; font-size: 12px; text-align: center;">M&B Jewelry will never ask for your password via email or phone.</p>
+          <p style="color: #999; font-size: 12px; text-align: center;">M.B. Jewellers will never ask for your password via email or phone.</p>
         </div>
       `,
     };
@@ -169,4 +179,101 @@ const sendPasswordResetEmail = async (userEmail, userName, otpCode) => {
   }
 };
 
-module.exports = { sendVerificationEmail, sendPasswordResetEmail };
+/**
+ * sendAdminLoginCode — 2-step verification code for admin sign-in (valid 10 minutes).
+ * Includes time + IP so the admin can spot a login they did not start.
+ */
+const sendAdminLoginCode = async (adminEmail, adminName, otpCode, { ip = '', when = new Date() } = {}) => {
+  const from = getSender();
+  const time = new Date(when).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' });
+  const info = await deliver({
+    from: `"M.B. Jewellers Admin" <${from}>`,
+    to: adminEmail,
+    subject: `${otpCode} is your M.B. Jewellers admin login code`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #B8860B; text-align: center;">Admin sign-in code</h2>
+        <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(adminName || 'Admin')},</p>
+        <p style="font-size: 16px; color: #333;">Someone entered your admin password. Use this code to finish signing in. It is valid for <strong>10 minutes</strong>.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <span style="display: inline-block; background-color: #B8860B; color: #fff; padding: 15px 30px; font-size: 26px; font-weight: bold; border-radius: 6px; letter-spacing: 6px;">${otpCode}</span>
+        </div>
+        <p style="color: #666; font-size: 13px;">Time: ${escapeHtml(time)} IST${ip ? `<br/>IP: ${escapeHtml(ip)}` : ''}</p>
+        <p style="color: #b91c1c; font-size: 14px;"><strong>Not you?</strong> Do not share this code with anyone. Change your admin password right away (Forgot password on the admin login page).</p>
+      </div>`,
+  });
+  logger.info(`Admin login code sent to ${adminEmail}. MsgID: ${info.messageId}`);
+  return true;
+};
+
+/**
+ * sendAdminAlert — emails every active, verified admin about something that needs action
+ * (e.g. a payment that arrived after its stock hold expired). Never throws to the caller's flow
+ * beyond the returned promise; callers attach .catch().
+ */
+const sendAdminAlert = async (subject, html) => {
+  const Admin = require('../models/Admin');
+  const admins = await Admin.find({ isActive: true, isEmailVerified: true }).select('email').lean();
+  for (const a of admins) {
+    try {
+      await deliver({ from: `"M.B. Jewellers Alerts" <${getSender()}>`, to: a.email, subject, html });
+    } catch (err) {
+      logger.error(`Admin alert to ${a.email} failed: ${err.message}`);
+    }
+  }
+};
+
+/**
+ * sendGoogleAccountNotice — someone asked for a password reset on an account that signs in with
+ * Google only. The website gives everyone the same reply; the real owner learns why by email.
+ */
+const sendGoogleAccountNotice = async (userEmail, userName) => {
+  const from = getSender();
+  const info = await deliver({
+    from: `"M.B. Jewellers" <${from}>`,
+    to: userEmail,
+    subject: 'About your M.B. Jewellers password reset request',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #B8860B; text-align: center;">Password reset request</h2>
+        <p style="font-size: 16px; color: #333;">Hi ${escapeHtml(userName || 'there')},</p>
+        <p style="font-size: 16px; color: #333;">We received a request to reset your password. Your account signs in with <strong>Google</strong>, so it has no separate password.</p>
+        <p style="font-size: 16px; color: #333;">Please use <strong>Continue with Google</strong> on the sign-in page.</p>
+        <p style="color: #666; font-size: 13px;">If you did not ask for this, you can ignore this email.</p>
+      </div>`,
+  });
+  logger.info(`Google-account notice sent to ${userEmail}. MsgID: ${info.messageId}`);
+  return true;
+};
+
+/**
+ * sendContactMessage — "Send a message" form on the Contact page (signed-in customers only).
+ * Goes to the shop inbox (CONTACT_EMAIL, default the shop's Gmail). Reply-To is the customer's
+ * account email, so pressing Reply in the inbox answers the customer directly.
+ * Text arrives with "<" already turned into "&lt;" (request sanitiser) — undone here, then the
+ * whole text is HTML-escaped once.
+ */
+const CONTACT_INBOX_DEFAULT = 'mbjewellers2021@gmail.com';
+const sendContactMessage = async ({ name, email, subject, message }) => {
+  const inbox = (process.env.CONTACT_EMAIL || CONTACT_INBOX_DEFAULT).trim();
+  const plain = (v) => escapeHtml(String(v || '').replace(/&lt;/g, '<'));
+  const who = plain(name) || 'Anonymous';
+  const subj = String(subject || '').replace(/&lt;/g, '<').trim() || 'Website message';
+  const info = await deliver({
+    from: `"M.B. Jewellers Website" <${getSender()}>`,
+    to: inbox,
+    replyTo: email,
+    subject: `Contact form: ${subj}`.slice(0, 150),
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <h2 style="color: #B8860B; margin-top: 0;">New message from the website</h2>
+        <p style="font-size: 14px; color: #333;"><strong>From:</strong> ${who}<br/><strong>Email:</strong> ${plain(email)}<br/><strong>Subject:</strong> ${plain(subj)}</p>
+        <div style="font-size: 15px; color: #222; white-space: pre-wrap; border-left: 3px solid #D4AF37; padding: 8px 12px; background: #faf7ef;">${plain(message)}</div>
+        <p style="color: #888; font-size: 12px;">Reply to this email to answer the customer directly.</p>
+      </div>`,
+  });
+  logger.info(`Contact message from ${email} delivered to shop inbox. MsgID: ${info.messageId}`);
+  return true;
+};
+
+module.exports = { sendVerificationEmail, sendPasswordResetEmail, sendAdminAlert, sendAdminLoginCode, sendGoogleAccountNotice, sendContactMessage };

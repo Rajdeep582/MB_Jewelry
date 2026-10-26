@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiPlus, FiEdit3, FiTrash2, FiSearch, FiX, FiUpload, FiImage, FiAlertCircle, FiChevronDown, FiChevronLeft, FiChevronRight, FiStar } from 'react-icons/fi';
+import { FiPlus, FiEdit3, FiTrash2, FiSearch, FiX, FiImage, FiAlertCircle, FiChevronDown, FiChevronLeft, FiChevronRight, FiStar } from 'react-icons/fi';
 import { productService, categoryService, adminService } from '../../services/services';
 import { formatPrice, resolveImageUrl } from '../../utils/helpers';
 import toast from 'react-hot-toast';
@@ -8,6 +8,29 @@ import toast from 'react-hot-toast';
 const MATERIALS = ['Gold', 'Silver', 'Diamond'];
 
 // Purity options per material (all dynamic-pricing compatible)
+const MAX_IMAGES = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** PhotoTile — one square photo in the product form, with a bin button to remove it. */
+function PhotoTile({ src, cover, isNew, onRemove }) {
+  return (
+    <div className={`relative aspect-square rounded-xl overflow-hidden bg-dark-800 border ${isNew ? 'border-gold-500/40' : 'border-white/10'}`}>
+      <img src={src} alt="" className="w-full h-full object-cover" onError={(e) => { e.target.style.opacity = '0.2'; }} />
+      {cover && <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-black/70 text-[9px] uppercase tracking-wide text-gold-300">Cover</span>}
+      {isNew && <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-gold-500 text-[9px] font-semibold text-dark-900">New</span>}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Remove photo"
+        title="Remove photo"
+        className="absolute top-1 right-1 w-7 h-7 rounded-lg bg-black/70 border border-white/10 flex items-center justify-center text-red-300 hover:bg-red-500 hover:text-white active:scale-90 transition"
+      >
+        <FiTrash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 const PURITY_OPTIONS = {
   Gold: ['22K', '18K'],
   Silver: ['Normal', 'Hallmarked'],
@@ -70,34 +93,36 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     gst: product?.gst ?? 3,
   });
 
-  const [files, setFiles] = useState([]);
-  const [filePreviews, setFilePreviews] = useState([]);
-  const [replaceImages, setReplaceImages] = useState(false);
+  // Photos: existing ones kept (edit) + newly picked files. Max MAX_IMAGES in total.
+  const [keptImages, setKeptImages] = useState(() => product?.images || []);
+  const [newImages, setNewImages] = useState([]); // [{ file, preview }]
   const [saving, setSaving] = useState(false);
   const fileInputRef = useRef(null);
+  const newImagesRef = useRef(newImages);
+  newImagesRef.current = newImages;
 
-  useEffect(() => {
-    return () => filePreviews.forEach((u) => URL.revokeObjectURL(u));
-  }, [filePreviews]);
+  // Free preview URLs when the modal closes
+  useEffect(() => () => newImagesRef.current.forEach((n) => URL.revokeObjectURL(n.preview)), []);
+
+  const totalImages = keptImages.length + newImages.length;
 
   const handleFileChange = (e) => {
-    const selected = Array.from(e.target.files);
-    setFiles(selected);
-    const previews = selected.map((f) => URL.createObjectURL(f));
-    setFilePreviews((prev) => {
-      prev.forEach((u) => URL.revokeObjectURL(u));
-      return previews;
-    });
-    if (selected.length > 0 && product) setReplaceImages(true);
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    const tooBig = picked.filter((f) => f.size > MAX_IMAGE_BYTES);
+    if (tooBig.length) toast.error(`${tooBig.length} image(s) over 5MB skipped`);
+    const ok = picked.filter((f) => f.size <= MAX_IMAGE_BYTES);
+    const room = MAX_IMAGES - totalImages;
+    if (ok.length > room) toast.error(`Only ${MAX_IMAGES} photos allowed — ${ok.length - room} skipped`);
+    const add = ok.slice(0, Math.max(room, 0)).map((file) => ({ file, preview: URL.createObjectURL(file) }));
+    if (add.length) setNewImages((prev) => [...prev, ...add]);
   };
 
-  const clearNewFiles = () => {
-    filePreviews.forEach((u) => URL.revokeObjectURL(u));
-    setFiles([]);
-    setFilePreviews([]);
-    setReplaceImages(false);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  const removeKept = (publicId) => setKeptImages((prev) => prev.filter((img) => img.publicId !== publicId));
+  const removeNew = (idx) => setNewImages((prev) => {
+    URL.revokeObjectURL(prev[idx].preview);
+    return prev.filter((_, i) => i !== idx);
+  });
 
   const handleMaterialChange = (mat) => {
     const opts = PURITY_OPTIONS[mat] || [];
@@ -112,6 +137,7 @@ function ProductForm({ product, categories, onClose, onSaved }) {
       toast.error('Enter a valid weight value');
       return;
     }
+    if (totalImages === 0) { toast.error('Add at least one photo'); return; }
     setSaving(true);
 
     const fd = new FormData();
@@ -128,8 +154,12 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     fd.append('gst', form.gst);
     fd.append('tags', JSON.stringify([]));
 
-    files.forEach((f) => fd.append('images', f));
-    if (product && replaceImages) fd.append('replaceImages', 'true');
+    newImages.forEach((n) => fd.append('images', n.file));
+    if (product) {
+      const keptIds = new Set(keptImages.map((img) => img.publicId));
+      const removed = (product.images || []).filter((img) => !keptIds.has(img.publicId)).map((img) => img.publicId);
+      if (removed.length) fd.append('removeImages', JSON.stringify(removed));
+    }
 
     try {
       if (product) {
@@ -148,7 +178,6 @@ function ProductForm({ product, categories, onClose, onSaved }) {
     }
   };
 
-  const existingImages = product?.images || [];
   const currentPurities = PURITY_OPTIONS[form.material] || [];
 
   return (
@@ -276,56 +305,31 @@ function ProductForm({ product, categories, onClose, onSaved }) {
 
             {/* Step 4 — Images & visibility */}
             <FormStep n={4} title="Photos & visibility" hint="Clear, well-lit photos sell better">
-              {product && existingImages.length > 0 && filePreviews.length === 0 && (
-                <div>
-                  <p className="text-xs text-dark-500 mb-1.5 flex items-center gap-1"><FiImage size={11}/> Current images ({existingImages.length})</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {existingImages.map((img, idx) => (
-                      <div key={idx} className="relative w-14 h-14 rounded-lg overflow-hidden border border-white/10 bg-dark-800 flex-shrink-0">
-                        <img src={resolveImageUrl(img.url)} alt="" className="w-full h-full object-cover"
-                          onError={(e) => { e.target.style.display='none'; }}
-                        />
-                      </div>
-                    ))}
-                  </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-dark-400 flex items-center gap-1"><FiImage size={11}/> Photos <span className="text-dark-500">({totalImages}/{MAX_IMAGES})</span></p>
+                  <p className="text-[11px] text-dark-500">First photo is the cover · max 5MB each</p>
                 </div>
-              )}
-
-              {filePreviews.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <p className="text-xs text-gold-500 flex items-center gap-1"><FiUpload size={11}/> {filePreviews.length} new image(s) — will {replaceImages ? 'replace all' : 'be added'}</p>
-                    <button type="button" onClick={clearNewFiles} className="text-xs text-dark-500 hover:text-red-400 transition-colors flex items-center gap-1"><FiX size={11}/> Clear</button>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {filePreviews.map((src, idx) => (
-                      <div key={idx} className="w-14 h-14 rounded-lg overflow-hidden border border-gold-500/30 bg-dark-800 flex-shrink-0">
-                        <img src={src} alt="" className="w-full h-full object-cover" />
-                      </div>
-                    ))}
-                  </div>
+                <div className="grid grid-cols-4 gap-2 sm:gap-3">
+                  {keptImages.map((img, idx) => (
+                    <PhotoTile key={img.publicId} src={resolveImageUrl(img.url)} cover={idx === 0} onRemove={() => removeKept(img.publicId)} />
+                  ))}
+                  {newImages.map((n, idx) => (
+                    <PhotoTile key={n.preview} src={n.preview} isNew cover={keptImages.length === 0 && idx === 0} onRemove={() => removeNew(idx)} />
+                  ))}
+                  {totalImages < MAX_IMAGES && (
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="aspect-square rounded-xl border border-dashed border-white/15 bg-dark-800/60 flex flex-col items-center justify-center gap-1 text-dark-400 hover:text-gold-300 hover:border-gold-500/50 hover:bg-gold-500/[0.04] transition-colors"
+                    >
+                      <FiPlus size={20} />
+                      <span className="text-[11px]">Add photo</span>
+                    </button>
+                  )}
                 </div>
-              )}
-
-              {product && filePreviews.length > 0 && (
-                <label className="flex items-center gap-2 text-xs text-dark-400 cursor-pointer">
-                  <input type="checkbox" className="accent-gold-500" checked={replaceImages} onChange={(e) => setReplaceImages(e.target.checked)} />
-                  Replace all existing images with new ones
-                </label>
-              )}
-
-              <label className="flex items-center justify-center gap-3 px-4 py-3.5 rounded-lg border border-dashed border-white/15 bg-dark-800/60 cursor-pointer hover:border-gold-500/50 hover:bg-gold-500/[0.03] transition-colors group">
-                <span className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center flex-shrink-0 group-hover:bg-gold-500/15 transition-colors">
-                  <FiUpload size={14} className="text-dark-400 group-hover:text-gold-400 transition-colors" />
-                </span>
-                <span className="text-left">
-                  <span className="block text-sm text-dark-300 group-hover:text-white transition-colors">
-                    {files.length > 0 ? `${files.length} file(s) selected — click to change` : 'Click to choose images'}
-                  </span>
-                  <span className="block text-[11px] text-dark-500">Up to 6 images · max 5MB each</span>
-                </span>
-                <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileChange} />
-              </label>
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={handleFileChange} />
+              </div>
 
               <label htmlFor="featured" className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-dark-800/60 border border-white/[0.06] cursor-pointer hover:border-gold-500/30 transition-colors">
                 <input type="checkbox" id="featured" checked={form.isFeatured} onChange={(e) => setForm({ ...form, isFeatured: e.target.checked })} className="accent-gold-500 w-4 h-4" />

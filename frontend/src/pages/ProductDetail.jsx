@@ -11,6 +11,7 @@ import { fetchProduct, selectCurrentProduct } from '../store/productSlice';
 import { addToCart, openCart } from '../store/cartSlice';
 import { selectIsAuthenticated, selectUser, setUser } from '../store/authSlice';
 import { formatPrice, formatDate, resolveImageUrl } from '../utils/helpers';
+import { applySeo, setJsonLd, SITE_URL, SITE_NAME } from '../utils/seo';
 import { productService, orderService, userService } from '../services/services';
 import { ProductDetailSkeleton, ProductCardSkeleton } from '../components/common/Skeletons';
 import ProductCard from '../components/shop/ProductCard';
@@ -386,9 +387,41 @@ function ProductDetailView({ id }) {
     return () => { alive = false; };
   }, [id, dispatch]);
 
+  // Search / share tags + Google product data for this piece (utils/seo.js)
   useEffect(() => {
-    if (product) document.title = `${product.name} — M.B. JEWELLERS`;
-  }, [product]);
+    if (!product || String(product._id) !== String(id)) return;
+    const path = `/products/${product._id}`;
+    const image = product.images?.[0]?.url ? resolveImageUrl(product.images[0].url) : undefined;
+    const pricePart = [product.purity && product.purity !== 'None' ? product.purity : '', product.material].filter(Boolean).join(' ');
+    applySeo({
+      title: pricePart ? `${product.name} – ${pricePart}` : product.name,
+      description: product.description || `${product.name} by M.B. Jewellers, New Barrackpore.`,
+      path,
+      image,
+    });
+    const price = product.discountedPrice || product.price;
+    setJsonLd('product', {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description: product.description || undefined,
+      image: (product.images || []).map((im) => resolveImageUrl(im.url)).filter(Boolean),
+      sku: product.productId || String(product._id),
+      brand: { '@type': 'Brand', name: SITE_NAME },
+      material: pricePart || undefined,
+      category: product.category?.name || undefined,
+      offers: price > 0 ? {
+        '@type': 'Offer',
+        url: `${SITE_URL}${path}`,
+        priceCurrency: 'INR',
+        price: Math.round(price * 100) / 100,
+        availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        itemCondition: 'https://schema.org/NewCondition',
+        seller: { '@id': `${SITE_URL}/#store` },
+      } : undefined,
+      ...(product.numReviews > 0 ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: product.averageRating, reviewCount: product.numReviews } } : {}),
+    });
+  }, [product, id]);
 
   if (loading) {
     return (

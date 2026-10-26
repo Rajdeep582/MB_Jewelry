@@ -4,6 +4,9 @@ const CustomOrder = require('../models/CustomOrder');
 const Transaction  = require('../models/Transaction');
 const { razorpay, isRazorpayConfigured } = require('../config/razorpay');
 const { verifyRazorpaySignature }        = require('../utils/razorpayHelper');
+const { secureCapture }                  = require('../utils/paymentCapture');
+const { destroyCustomOrderImages, uploadedFilesAsImages } = require('../utils/customOrderImages');
+const { checkRazorpayOrder, confirmFromRazorpay } = require('../utils/paymentReconcile');
 const { ORDER_STATUSES } = require('../utils/constants');
 
 const logger = require('../utils/logger');
@@ -11,7 +14,7 @@ const GlobalPricing = require('../models/GlobalPricing');
 const { upsertDeliverySnapshot } = require('../utils/deliverySnapshot');
 const { buildOrderSearch } = require('../utils/orderSearch');
 const { getShippingForPincode, getSupportedZones } = require('../utils/shippingRates');
-const { assignInvoiceNumber } = require('../utils/invoiceNumber');
+const { assignInvoiceNumber, assignAdvanceReceiptNumber } = require('../utils/invoiceNumber');
 
 // Fields a customer must never receive (internal notes + payment signatures)
 const CUSTOMER_HIDDEN = '-advancePayment.razorpaySignature -finalPayment.razorpaySignature -adminNotes';
@@ -46,10 +49,31 @@ function validateAddress(addr) {
   return null;
 }
 
+// ─── Abuse limits ──────────────────────────────────────────────────────────────
+// A customer may have at most MAX_OPEN_CUSTOM_ORDERS requests waiting (not yet paid or cancelled).
+// Runs before the photo upload, so a refused request stores nothing.
+const MAX_OPEN_CUSTOM_ORDERS = 3;
+const limitOpenCustomOrders = async (req, res, next) => {
+  const open = await CustomOrder.countDocuments({ user: req.user._id, status: { $in: ['pending', 'quoted'] } });
+  if (open >= MAX_OPEN_CUSTOM_ORDERS) {
+    return res.status(429).json({
+      success: false,
+      code: 'TOO_MANY_OPEN_REQUESTS',
+      message: `You already have ${open} custom order requests waiting. Please complete or cancel one before sending another.`,
+    });
+  }
+  return next();
+};
+
 // ─── Create Custom Order (User submits inquiry) ───────────────────────────────
 // @route   POST /api/custom-orders
 // @access  Private
 const createCustomOrder = async (req, res) => {
+  // Photos are already uploaded by multer — a rejected request must not leave them in storage
+  const rejectWith = async (status, body) => {
+    await destroyCustomOrderImages(uploadedFilesAsImages(req.files));
+    return res.status(status).json(body);
+  };
   const {
     type, material, purity, description,
     fingerSize, neckSize, wristSize, weight, budget,
@@ -58,18 +82,18 @@ const createCustomOrder = async (req, res) => {
 
   // Required field validation
   if (!type || !material || !description) {
-    return res.status(400).json({ success: false, message: 'type, material, and description are required' });
+    return rejectWith(400, { success: false, message: 'type, material, and description are required' });
   }
 
   const addrError = validateAddress(shippingAddress);
   if (addrError) {
-    return res.status(400).json({ success: false, message: addrError });
+    return rejectWith(400, { success: false, message: addrError });
   }
 
   // Same delivery rule as shop orders: only PIN codes in utils/shippingRates.js
   const zone = getShippingForPincode(shippingAddress.pincode);
   if (!zone.ok) {
-    return res.status(400).json({ success: false, code: zone.code, message: zone.message, supportedZones: getSupportedZones() });
+    return rejectWith(400, { success: false, code: zone.code, message: zone.message, supportedZones: getSupportedZones() });
   }
   shippingAddress.pincode = zone.pincode;
 
@@ -85,20 +109,26 @@ const createCustomOrder = async (req, res) => {
     };
   });
 
-  const customOrder = await CustomOrder.create({
-    user: req.user._id,
-    type, material, purity: purity || 'None',
-    description,
-    fingerSize:  fingerSize  || '',
-    neckSize:    neckSize    || '',
-    wristSize:   wristSize   || '',
-    weight:      weight      || '',
-    budget:      budget      || '',
-    referenceImages,
-    shippingAddress,
-    preferredDeliveryDate: preferredDeliveryDate || undefined,
-    status: 'pending',
-  });
+  let customOrder;
+  try {
+    customOrder = await CustomOrder.create({
+      user: req.user._id,
+      type, material, purity: purity || 'None',
+      description,
+      fingerSize:  fingerSize  || '',
+      neckSize:    neckSize    || '',
+      wristSize:   wristSize   || '',
+      weight:      weight      || '',
+      budget:      budget      || '',
+      referenceImages,
+      shippingAddress,
+      preferredDeliveryDate: preferredDeliveryDate || undefined,
+      status: 'pending',
+    });
+  } catch (err) {
+    await destroyCustomOrderImages(referenceImages); // invalid input → nothing kept
+    throw err;
+  }
 
   logger.info(`Custom order created: ${customOrder._id} by user ${req.user._id}`);
 
@@ -278,6 +308,24 @@ const createCustomPayment = async (req, res) => {
     return res.status(503).json({ success: false, message: 'Payment gateway is not configured.' });
   }
 
+  // Double-payment guard: the previous attempt for this phase may already be paid on Razorpay
+  // (bank approved, confirmation still in progress). Settle that one instead of charging again.
+  const prevRzpId = order[`${phase}Payment`]?.razorpayOrderId;
+  if (prevRzpId && order[`${phase}Payment`]?.status === 'pending') {
+    const prev = await checkRazorpayOrder(prevRzpId);
+    if (prev.state === 'captured' || prev.state === 'authorized') {
+      const ok = await confirmFromRazorpay({ orderType: 'CustomOrder', orderId: customOrderId, phase, razorpayOrderId: prevRzpId, paymentId: prev.paymentId });
+      logger.warn(`Custom order ${customOrderId} ${phase}: new payment blocked — earlier payment ${prev.paymentId} ${ok ? 'confirmed now' : 'still being confirmed'}`);
+      return res.status(409).json({
+        success: false,
+        code: 'ALREADY_PAID',
+        message: ok
+          ? 'Your earlier payment has been received and confirmed.'
+          : 'Your earlier payment was received and is being confirmed. Please wait a few minutes — do not pay again.',
+      });
+    }
+  }
+
   // Atomic: update order payment status + create transaction
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -432,7 +480,8 @@ async function confirmCustomPayment({ customOrderId, phase, razorpayOrderId, raz
     await session.commitTransaction();
     session.endSession();
     logger.info(`Custom order payment (${phase}) confirmed via ${via}: order=${customOrderId}`);
-    // Tax invoice for the full value is issued once the balance is paid (after the commit)
+    // After the commit: receipt voucher for the advance; tax invoice for the full value once the balance is paid
+    if (phase === 'advance') await assignAdvanceReceiptNumber(CustomOrder, customOrderId, updated.advancePayment?.paidAt);
     if (phase === 'final') await assignInvoiceNumber(CustomOrder, customOrderId, updated.finalPayment?.paidAt);
     return { ok: true };
   } catch (err) {
@@ -464,6 +513,8 @@ async function confirmCustomPayment({ customOrderId, phase, razorpayOrderId, raz
  *      Prevents payment-swap attack: user reusing another payment's ID on this order.
  *   5. Idempotency → 200 if already paid (no double-write)
  *   6. Razorpay HMAC signature verification → 400 on mismatch
+ *   7. Razorpay money check (secureCapture) → captured / we capture an authorized payment;
+ *      otherwise 202 pending (nothing marked paid) or 400
  *
  * WHY SIGNATURE IS LAST (not first):
  *   Checking signature before ownership leaks order existence via timing:
@@ -525,6 +576,27 @@ const verifyCustomPayment = async (req, res) => {
       { status: 'failed', failReason: 'Signature mismatch' }
     );
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
+  }
+
+  // 7. Money check: confirm only a payment Razorpay has CAPTURED (authorized → we capture it).
+  //    Not captured yet → 202, phase stays pending; webhook / cleanup / sweep confirm it later.
+  const capture = await secureCapture({ razorpayOrderId, paymentId: razorpayPaymentId });
+  if (capture.state !== 'captured') {
+    logger.warn(`custom verify: order=${customOrderId} ${phase} payment=${razorpayPaymentId} not confirmed — ${capture.state}: ${capture.reason || ''}`);
+    if (capture.state === 'pending' || capture.state === 'unreachable') {
+      return res.status(202).json({
+        success: true,
+        pending: true,
+        message: 'Payment received — we are confirming it with your bank. This page will update in a few minutes.',
+        order: await customerView(customOrderId),
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      message: capture.state === 'mismatch'
+        ? 'This payment could not be matched to your order. Please contact support — any amount taken will be refunded.'
+        : 'Payment was not completed. No money has been taken. Please try again.',
+    });
   }
 
   const result = await confirmCustomPayment({
@@ -979,5 +1051,7 @@ module.exports = {
   getCustomOrderStats,
   // internal helpers shared with the webhook (orderController) and adminController
   confirmCustomPayment,
+  limitOpenCustomOrders,
+  MAX_OPEN_CUSTOM_ORDERS,
   commitCustomOrderStatus,
 };

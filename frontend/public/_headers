@@ -1,0 +1,14 @@
+# Netlify security headers — applied to every page and file of the site.
+# HSTS is already sent by Netlify by default (strict-transport-security: max-age=31536000).
+#
+# The Content-Security-Policy below is REPORT-ONLY: the browser only logs what it would block
+# (DevTools → Console), nothing is blocked. After checking checkout, Google login, images and
+# fonts with no CSP messages, rename "Content-Security-Policy-Report-Only" to
+# "Content-Security-Policy" to enforce it.
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=()
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://checkout.razorpay.com https://*.razorpay.com https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://api.mbjewellers.store https://*.razorpay.com https://accounts.google.com/gsi/ https://*.sentry.io; frame-src https://api.razorpay.com https://*.razorpay.com https://accounts.google.com/gsi/; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://*.razorpay.com; frame-ancestors 'none'; upgrade-insecure-requests

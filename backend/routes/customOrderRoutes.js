@@ -38,17 +38,21 @@ const {
   setQuote,
   updateCustomOrderStatus,
   getCustomOrderStats,
+  limitOpenCustomOrders,
 } = require('../controllers/customOrderController');
 
 const { protect, adminOnly, userOnly } = require('../middleware/auth');
 const { uploadCustomOrderImages }      = require('../middleware/upload');
+const { customOrderLimiter }          = require('../middleware/rateLimiter');
+const { validateSchema, schemas }     = require('../middleware/validation');
 
 // ── User Routes ───────────────────────────────────────────────────────────────
-router.post('/', protect, userOnly, uploadCustomOrderImages, createCustomOrder);
+// Limits run BEFORE the photo upload: 5 requests / hour / customer, max 3 open (unpaid) requests
+router.post('/', protect, userOnly, customOrderLimiter, limitOpenCustomOrders, uploadCustomOrderImages, createCustomOrder);
 router.get('/my-orders',       protect, userOnly, getMyCustomOrders);
 router.post('/create-payment', protect, userOnly, createCustomPayment);
 router.post('/verify-payment', protect, userOnly, verifyCustomPayment);
-router.post('/fail-payment',   protect, userOnly, failCustomPayment);
+router.post('/fail-payment',   protect, userOnly, validateSchema(schemas.customFailPayment), failCustomPayment);
 router.put('/:id/cancel',      protect, userOnly, cancelCustomOrderUser);
 
 // ── Admin Routes ──────────────────────────────────────────────────────────────

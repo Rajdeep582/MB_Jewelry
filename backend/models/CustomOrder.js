@@ -66,6 +66,7 @@ const customOrderSchema = new mongoose.Schema(
     budget:      { type: String, default: '' }, // user's stated budget range
 
     referenceImages: { type: [referenceImageSchema], default: [] },
+    imagesPurgedAt:  { type: Date }, // photos deleted from storage (cancelled > 30 days, utils/customOrderImages.js)
 
     shippingAddress: { type: shippingAddressSchema, required: true },
     preferredDeliveryDate: { type: Date },
@@ -150,6 +151,11 @@ const customOrderSchema = new mongoose.Schema(
     invoiceNumber:  { type: String, unique: true, sparse: true }, // e.g. MBJ/26-27/00001
     invoiceDate:    { type: Date },                               // = payment date
     invoiceClaimAt: { type: Date, select: false },                // internal: in-flight assignment lock
+
+    // ── Advance receipt voucher (CGST Rule 50) — issued once, when the 70% advance is paid ──
+    advanceReceiptNumber:  { type: String, unique: true, sparse: true }, // e.g. MBRV/26-27/00001
+    advanceReceiptDate:    { type: Date },                               // = advance payment date
+    advanceReceiptClaimAt: { type: Date, select: false },                // internal: in-flight assignment lock
   },
   { timestamps: true }
 );

@@ -6,6 +6,10 @@
  * after payment is confirmed (custom orders: after the final balance is paid), and the
  * invoice date is the payment date.
  *
+ * Custom-order ADVANCE (70%): a receipt voucher (CGST Rule 50) gets its own series,
+ * MBRV/26-27/00001, issued when the advance is paid. The tax invoice for the full value
+ * still follows on the final payment (it lists the advance as already received).
+ *
  * Assignment never blocks or fails a payment: callers ignore errors, and
  * backfillInvoiceNumbers() (run on startup) numbers anything that was missed.
  */
@@ -24,50 +28,85 @@ function financialYear(date = new Date()) {
   return `${two(start)}-${two(start + 1)}`;
 }
 
-/** Atomically take the next number in the financial year of `date`. */
-async function nextInvoiceNumber(date = new Date()) {
+/**
+ * Document series. Each has its own consecutive counter per financial year.
+ *   invoice        — tax invoice: shop orders on payment, custom orders on the final balance
+ *   advanceReceipt — receipt voucher (CGST Rule 50) for the 70% custom-order advance,
+ *                    format MBRV/26-27/00001 (≤ 16 characters)
+ */
+const SERIES = {
+  invoice:        { prefix: PREFIX, counter: 'invoice', numberField: 'invoiceNumber', dateField: 'invoiceDate', claimField: 'invoiceClaimAt', label: 'Invoice' },
+  advanceReceipt: { prefix: 'MBRV', counter: 'receipt', numberField: 'advanceReceiptNumber', dateField: 'advanceReceiptDate', claimField: 'advanceReceiptClaimAt', label: 'Advance receipt' },
+};
+
+/** Atomically take the next number of a series in the financial year of `date`. */
+async function nextSeriesNumber(series, date = new Date()) {
   const fy = financialYear(date);
   const counter = await Counter.findOneAndUpdate(
-    { _id: `invoice-${fy}` },
+    { _id: `${series.counter}-${fy}` },
     { $inc: { seq: 1 } },
     { upsert: true, new: true }
   );
-  return `${PREFIX}/${fy}/${String(counter.seq).padStart(5, '0')}`;
+  return `${series.prefix}/${fy}/${String(counter.seq).padStart(5, '0')}`;
 }
 
 /**
- * assignInvoiceNumber — give a paid order its invoice number exactly once.
- * A short-lived claim on the order guarantees only one caller takes a number from the
+ * assignNumber — give a document its number exactly once.
+ * A short-lived claim on the record guarantees only one caller takes a number from the
  * counter (so parallel verify + webhook calls cannot burn numbers and leave gaps).
- * @returns {Promise<{invoiceNumber: string, invoiceDate: Date} | null>}
+ * @returns {Promise<{number: string, date: Date} | null>}
  */
-async function assignInvoiceNumber(Model, id, paidAt) {
+async function assignNumber(series, Model, id, paidAt) {
+  const { numberField: nf, dateField: df, claimField: cf } = series;
   try {
     const now = new Date();
     const claimed = await Model.findOneAndUpdate(
       {
         _id: id,
         $and: [
-          { $or: [{ invoiceNumber: { $exists: false } }, { invoiceNumber: null }, { invoiceNumber: '' }] },
-          { $or: [{ invoiceClaimAt: { $exists: false } }, { invoiceClaimAt: null }, { invoiceClaimAt: { $lt: new Date(now - CLAIM_TTL_MS) } }] },
+          { $or: [{ [nf]: { $exists: false } }, { [nf]: null }, { [nf]: '' }] },
+          { $or: [{ [cf]: { $exists: false } }, { [cf]: null }, { [cf]: { $lt: new Date(now - CLAIM_TTL_MS) } }] },
         ],
       },
-      { $set: { invoiceClaimAt: now } },
+      { $set: { [cf]: now } },
       { new: true, projection: { _id: 1 } }
     );
     if (!claimed) {
-      const existing = await Model.findById(id).select('invoiceNumber invoiceDate').lean();
-      return existing?.invoiceNumber ? { invoiceNumber: existing.invoiceNumber, invoiceDate: existing.invoiceDate } : null;
+      const existing = await Model.findById(id).select(`${nf} ${df}`).lean();
+      return existing?.[nf] ? { number: existing[nf], date: existing[df] } : null;
     }
-    const invoiceDate = paidAt ? new Date(paidAt) : now;
-    const invoiceNumber = await nextInvoiceNumber(invoiceDate);
-    await Model.updateOne({ _id: id }, { $set: { invoiceNumber, invoiceDate }, $unset: { invoiceClaimAt: 1 } });
-    logger.info(`Invoice ${invoiceNumber} issued for ${Model.modelName} ${id}`);
-    return { invoiceNumber, invoiceDate };
+    const date = paidAt ? new Date(paidAt) : now;
+    const number = await nextSeriesNumber(series, date);
+    await Model.updateOne({ _id: id }, { $set: { [nf]: number, [df]: date }, $unset: { [cf]: 1 } });
+    logger.info(`${series.label} ${number} issued for ${Model.modelName} ${id}`);
+    return { number, date };
   } catch (err) {
-    logger.error(`assignInvoiceNumber failed for ${Model.modelName} ${id}: ${err.message}`);
+    logger.error(`${series.label} numbering failed for ${Model.modelName} ${id}: ${err.message}`);
     return null;
   }
+}
+
+/** Atomically take the next invoice number in the financial year of `date`. */
+function nextInvoiceNumber(date = new Date()) {
+  return nextSeriesNumber(SERIES.invoice, date);
+}
+
+/**
+ * assignInvoiceNumber — give a paid order its tax invoice number exactly once.
+ * @returns {Promise<{invoiceNumber: string, invoiceDate: Date} | null>}
+ */
+async function assignInvoiceNumber(Model, id, paidAt) {
+  const r = await assignNumber(SERIES.invoice, Model, id, paidAt);
+  return r ? { invoiceNumber: r.number, invoiceDate: r.date } : null;
+}
+
+/**
+ * assignAdvanceReceiptNumber — receipt voucher number for a paid custom-order advance (once).
+ * @returns {Promise<{advanceReceiptNumber: string, advanceReceiptDate: Date} | null>}
+ */
+async function assignAdvanceReceiptNumber(CustomOrder, id, paidAt) {
+  const r = await assignNumber(SERIES.advanceReceipt, CustomOrder, id, paidAt);
+  return r ? { advanceReceiptNumber: r.number, advanceReceiptDate: r.date } : null;
 }
 
 /** Number every fully-paid order that has no invoice yet, oldest payment first. Idempotent. */
@@ -89,7 +128,17 @@ async function backfillInvoiceNumbers() {
     if (await assignInvoiceNumber(job.Model, job.id, job.paidAt)) issued += 1;
   }
   if (issued) logger.info(`Invoice backfill: issued ${issued} invoice number(s)`);
+
+  // Receipt vouchers for paid custom-order advances (oldest first)
+  const noReceipt = { $or: [{ advanceReceiptNumber: { $exists: false } }, { advanceReceiptNumber: null }, { advanceReceiptNumber: '' }] };
+  const advances = await CustomOrder.find({ 'advancePayment.status': 'paid', ...noReceipt })
+    .select('advancePayment.paidAt createdAt').sort({ 'advancePayment.paidAt': 1 }).lean();
+  let receipts = 0;
+  for (const o of advances) {
+    if (await assignAdvanceReceiptNumber(CustomOrder, o._id, o.advancePayment?.paidAt || o.createdAt)) receipts += 1;
+  }
+  if (receipts) logger.info(`Receipt backfill: issued ${receipts} advance receipt number(s)`);
   return issued;
 }
 
-module.exports = { financialYear, nextInvoiceNumber, assignInvoiceNumber, backfillInvoiceNumbers };
+module.exports = { financialYear, nextInvoiceNumber, assignInvoiceNumber, assignAdvanceReceiptNumber, backfillInvoiceNumbers };

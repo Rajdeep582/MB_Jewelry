@@ -58,7 +58,6 @@ export default function Shop() {
   }, [location.state]);
 
   useEffect(() => {
-    document.title = 'Shop — M.B. JEWELLERS';
     
     // Parse ALL possible filters from URL perfectly
     const newFilters = {

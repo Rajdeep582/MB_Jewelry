@@ -9,6 +9,40 @@ const DB_OPTIONS = {
 };
 
 /**
+ * syncAllIndexes — make the database indexes match the model definitions, on every startup.
+ * Creates missing ones (e.g. the cart auto-delete TTL), rebuilds changed ones (e.g. users.email
+ * as sparse) and drops stale ones no model uses any more. One model failing (e.g. duplicate
+ * values block a unique index) is logged and never stops the server.
+ * Also removes the legacy, unused `subscribers` collection when it is empty
+ * (newsletter sign-ups are stored as leads).
+ */
+const syncAllIndexes = async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.join(__dirname, '../models');
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) require(path.join(dir, file));
+
+  for (const name of mongoose.modelNames()) {
+    try {
+      const dropped = await mongoose.model(name).syncIndexes();
+      if (dropped?.length) logger.info(`Indexes: ${name} — removed stale ${dropped.join(', ')}`);
+    } catch (err) {
+      logger.warn(`Indexes: ${name} could not be synced: ${err.message}`);
+    }
+  }
+
+  try {
+    const legacy = await mongoose.connection.db.listCollections({ name: 'subscribers' }).toArray();
+    if (legacy.length && (await mongoose.connection.db.collection('subscribers').countDocuments()) === 0) {
+      await mongoose.connection.db.dropCollection('subscribers');
+      logger.info('Removed empty legacy collection: subscribers');
+    }
+  } catch (err) {
+    logger.warn(`Legacy collection cleanup skipped: ${err.message}`);
+  }
+};
+
+/**
  * deduplicateGlobalPricing — one-time startup cleanup for GlobalPricing collection.
  * Keeps the newest entry per material/purity/unit combination, deletes older duplicates.
  * Then calls syncIndexes() to ensure the unique compound index is in place.
@@ -78,6 +112,8 @@ const connectDB = async () => {
       logger.info(`✅ MongoDB Connected: ${conn.connection.host} | DB: ${conn.connection.name}`);
       await deduplicateGlobalPricing();
       await seedCategories();
+      // Not awaited: index builds must never delay the server start
+      syncAllIndexes().catch((e) => logger.warn(`Index sync failed: ${e.message}`));
       break;
     } catch (error) {
       retries -= 1;
@@ -92,3 +128,4 @@ const connectDB = async () => {
 };
 
 module.exports = connectDB;
+module.exports.syncAllIndexes = syncAllIndexes;

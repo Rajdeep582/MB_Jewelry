@@ -24,6 +24,7 @@
  *
  * Leads:
  *   GET    /leads                    — all customer accounts + footer newsletter emails (newest first)
+ *   PUT    /leads/note               — save the admin's note for a lead { email, note }
  *
  * Delivery Records (snapshot collection):
  *   GET    /deliveries               — list all delivery records
@@ -47,7 +48,7 @@ const {
   deleteDeliveryPartner,
 } = require('../controllers/adminController');
 const { getDeliveries, getDeliveryRecordStats } = require('../controllers/deliveryRecordController');
-const { listLeads } = require('../controllers/leadController');
+const { listLeads, saveLeadNote } = require('../controllers/leadController');
 const { protect, adminOnly } = require('../middleware/auth');
 
 router.get('/global-pricing', protect, adminOnly, getGlobalPricing);
@@ -71,5 +72,6 @@ router.get('/deliveries/stats', protect, adminOnly, getDeliveryRecordStats);
 
 // Leads (customer accounts + newsletter emails)
 router.get('/leads', protect, adminOnly, listLeads);
+router.put('/leads/note', protect, adminOnly, saveLeadNote);
 
 module.exports = router;

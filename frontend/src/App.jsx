@@ -24,6 +24,7 @@ import Terms from './pages/Terms';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import DiamondComingSoon from './pages/DiamondComingSoon';
 import { ADMIN_BASE, ADMIN_LOGIN, ADMIN_REGISTER } from './utils/adminPaths';
+import RouteSeo from './components/common/RouteSeo';
 
 // Pages
 const Home = lazy(() => import('./pages/Home'));
@@ -170,6 +171,7 @@ export default function App() {
         <BrowserRouter>
           <AppInitializer />
         <ScrollToTop />
+        <RouteSeo />
         <DeliveryRedirect />
         <AdminRedirect />
         <ErrorBoundary>

@@ -32,6 +32,25 @@ export const loginAdmin = createAsyncThunk('auth/loginAdmin', async (data, { rej
   }
 });
 
+// Admin 2-step login: password → 6-digit code emailed to the admin → session
+export const verifyAdminLogin = createAsyncThunk('auth/verifyAdminLogin', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/admin-auth/login/verify', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Verification failed', { code: err.response?.data?.code || null });
+  }
+});
+
+export const resendAdminLoginCode = createAsyncThunk('auth/resendAdminLoginCode', async (data, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/admin-auth/login/resend', data);
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.message || 'Could not resend code', { code: err.response?.data?.code || null });
+  }
+});
+
 export const registerAdmin = createAsyncThunk('auth/registerAdmin', async (data, { rejectWithValue }) => {
   try {
     const res = await api.post('/admin-auth/register', data);
@@ -231,13 +250,16 @@ const authSlice = createSlice({
 
       // Admin Login
       .addCase(loginAdmin.pending, handlePending)
-      .addCase(loginAdmin.fulfilled, (state, { payload }) => {
+      .addCase(loginAdmin.fulfilled, (state) => { state.loading = false; }) // password OK → code emailed, no session yet
+      .addCase(loginAdmin.rejected, handleRejected)
+      .addCase(verifyAdminLogin.pending, handlePending)
+      .addCase(verifyAdminLogin.fulfilled, (state, { payload }) => {
         state.loading = false;
         state.user = payload.user;
         state.accessToken = payload.accessToken;
         persistUser(payload.user);
       })
-      .addCase(loginAdmin.rejected, handleRejected)
+      .addCase(verifyAdminLogin.rejected, handleRejected)
 
       // Admin Register
       .addCase(registerAdmin.pending, handlePending)

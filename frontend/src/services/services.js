@@ -7,6 +7,11 @@ export const newsletterService = {
   subscribe: (email) => api.post('/subscribe', { email }),
 };
 
+// Contact page "Send a message" — signed-in customers; the account email is used for replies
+export const contactService = {
+  send: (data) => api.post('/contact', data),
+};
+
 export const reviewService = {
   getFeatured: () => api.get('/products/reviews/featured'),
 };
@@ -18,6 +23,8 @@ export const orderService = {
   verifyPayment: (data) => api.post('/orders/verify-payment', data),
   failPayment: (data) => api.post('/orders/fail-payment', data),
   retryVerify: (id) => api.post(`/orders/${id}/retry-verify`),   // recovery path for failed network/browser crash
+  cancelOrder: (id, data) => api.post(`/orders/${id}/cancel`, data),  // admin: { reason, confirmText: 'CANCEL' }
+  markRefunded: (id, data) => api.post(`/orders/${id}/refund`, data), // admin: { note, reference?, amount?, confirmText: 'REFUNDED' }
   getMyOrders: () => api.get('/orders/my-orders'),
   getOrder: (id) => api.get(`/orders/${id}`),
   getAllOrders: (params) => api.get('/orders', { params }),
@@ -78,6 +85,7 @@ export const adminService = {
   getDeliveryRecordStats:   ()                  => api.get('/admin/deliveries/stats'),
   // Leads (all customer accounts + footer newsletter emails)
   getLeads:                 ()                  => api.get('/admin/leads'),
+  saveLeadNote:             (email, note)       => api.put('/admin/leads/note', { email, note }),
 };
 
 export const deliveryService = {

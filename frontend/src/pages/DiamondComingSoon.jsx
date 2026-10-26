@@ -1,12 +1,9 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { GiCutDiamond } from 'react-icons/gi';
 
 export default function DiamondComingSoon() {
 
-  useEffect(() => {
-    document.title = 'Diamond Collection — Coming Soon | M.B. JEWELLERS';
-  }, []);
+  // Page title / description / canonical: components/common/RouteSeo.jsx
 
 
   return (

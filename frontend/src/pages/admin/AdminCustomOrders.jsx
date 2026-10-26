@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FiX, FiSearch, FiChevronDown, FiRadio, FiDownload, FiLock, FiUser, FiMail, FiPhone, FiMapPin, FiTruck, FiPackage, FiCreditCard, FiCalendar, FiEdit3, FiInbox } from 'react-icons/fi';
 import { customOrderService, adminService, orderService } from '../../services/services';
-import { downloadCustomOrderInvoice } from '../../utils/invoice';
+import { downloadCustomOrderInvoice, downloadAdvanceReceipt } from '../../utils/invoice';
 import { formatPrice, formatDateTime, formatCalendarDate, todayInputValue, getCustomOrderStatusColor } from '../../utils/helpers';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -808,8 +808,18 @@ function CustomOrderDetails({ order, onImage }) {
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
                 <KV label="Quoted on">{order.quotedAt ? formatDateTime(order.quotedAt) : null}</KV>
                 <KV label="Quoted delivery">{order.expectedDeliveryDate ? formatCalendarDate(order.expectedDeliveryDate, 'short') : null}</KV>
+                <KV label="Advance receipt no." mono>{order.advanceReceiptNumber || null}</KV>
                 <KV label="Invoice no." mono>{order.invoiceNumber || null}</KV>
               </dl>
+              {pay.advPaid && (
+                <button
+                  type="button"
+                  onClick={() => downloadAdvanceReceipt(order)}
+                  className="mt-3 w-full py-2 text-xs inline-flex items-center justify-center gap-1.5 text-dark-200 bg-white/[0.03] border border-white/10 hover:border-gold-500/30 hover:text-gold-300 rounded-xl transition-colors"
+                >
+                  <FiDownload size={12} /> Download advance receipt
+                </button>
+              )}
               {pay.finPaid && (
                 <button
                   type="button"

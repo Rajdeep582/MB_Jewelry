@@ -51,6 +51,7 @@ const transactionSchema = new mongoose.Schema(
 
     // Human-readable failure reason for audit log
     failReason: { type: String, default: '' },
+    lastReconcileAt: { type: Date }, // last time utils/paymentReconcile.js asked Razorpay about this payment
 
     // Raw gateway response for debugging / dispute resolution
     gatewayResponse: {

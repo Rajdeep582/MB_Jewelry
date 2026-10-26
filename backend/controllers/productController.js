@@ -9,6 +9,32 @@ const mongoose = require('mongoose');
 
 const invalidProductId = (res) => res.status(400).json({ success: false, message: 'Invalid product ID' });
 
+const MAX_PRODUCT_IMAGES = 4;
+
+/** Delete stored images (Cloudinary or local disk). Failures are logged, never thrown. */
+async function destroyImages(images) {
+  for (const img of images) {
+    if (!img?.publicId) continue;
+    try {
+      if (img.url?.includes('/uploads/')) {
+        const fs = require('node:fs');
+        const path = require('node:path');
+        await fs.promises.unlink(path.join(__dirname, '../uploads/products', path.basename(img.publicId))).catch(() => {});
+      } else {
+        await cloudinary.uploader.destroy(img.publicId);
+      }
+    } catch (err) { logger.warn(`Image delete failed: ${err.message}`); }
+  }
+}
+
+/** Parse removeImages (JSON string or array of publicIds) → array of strings. */
+function parseRemoveImages(raw) {
+  if (raw == null || raw === '') return [];
+  let list = raw;
+  if (typeof raw === 'string') { try { list = JSON.parse(raw); } catch { return []; } }
+  return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
+}
+
 // GlobalPricing cache lives in utils/pricingCache.js — shared with checkout so the
 // shop and the order total always use the same live rates.
 
@@ -77,6 +103,45 @@ function buildSortOption(sort) {
   return sortMap[sort] || { createdAt: -1 };
 }
 
+// ─── Live-price sort / filter ─────────────────────────────────────────────────
+// Dynamic (gold/silver) products are priced from today's rate, so their stored `price` is
+// stale after a rate change. For price sort or a price range, the matching products are
+// priced live first and then filtered / sorted / paginated — exactly the price the shop shows
+// (the discounted price when there is one). The catalogue is small; LIVE_PRICE_SCAN_MAX caps it.
+const LIVE_PRICE_SCAN_MAX = 2000;
+const toPrice = (v) => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+
+function needsLivePriceQuery({ sort, minPrice, maxPrice }) {
+  return sort === 'price-asc' || sort === 'price-desc' || toPrice(minPrice) !== null || toPrice(maxPrice) !== null;
+}
+
+/** The price a customer pays (before GST): discounted price when there is one. */
+const sellingPrice = (p) => Number(p.discountedPrice ?? p.price) || 0;
+
+async function getProductsByLivePrice(query, params, skip, limitNum) {
+  const { price: _storedPrice, ...baseQuery } = query; // stored price is ignored here
+  const [all, pricingEntries] = await Promise.all([
+    Product.find(baseQuery).populate('category', 'name slug').sort({ createdAt: -1 }).limit(LIVE_PRICE_SCAN_MAX).lean(),
+    getCachedPricing(),
+  ]);
+  const pricingMap = buildGlobalPricingMap(pricingEntries);
+  let list = all.map((p) => applyLivePrice(p, pricingMap));
+
+  const min = toPrice(params.minPrice);
+  const max = toPrice(params.maxPrice);
+  if (min !== null) list = list.filter((p) => sellingPrice(p) >= min);
+  if (max !== null) list = list.filter((p) => sellingPrice(p) <= max);
+
+  if (params.sort === 'price-asc') list.sort((a, b) => sellingPrice(a) - sellingPrice(b));
+  else if (params.sort === 'price-desc') list.sort((a, b) => sellingPrice(b) - sellingPrice(a));
+  else {
+    const order = buildSortOption(params.sort);
+    const [field, dir] = Object.entries(order)[0];
+    list.sort((a, b) => ((Number(a[field]) || 0) - (Number(b[field]) || 0)) * dir || 0);
+  }
+  return { total: list.length, products: list.slice(skip, skip + limitNum) };
+}
+
 /**
  * getProducts
  * @route  GET /api/products
@@ -103,6 +168,16 @@ const getProducts = async (req, res) => {
   const pageNum = Math.max(1, Number(page) || 1);
   const limitNum = Math.min(50, Math.max(1, Number(limit) || 12));
   const skip = (pageNum - 1) * limitNum;
+
+  // Price sort / price filter must use the LIVE price (gold rate changes daily), not the stored one
+  if (needsLivePriceQuery(req.query)) {
+    const result = await getProductsByLivePrice(query, req.query, skip, limitNum);
+    return res.json({
+      success: true,
+      products: result.products,
+      pagination: { total: result.total, page: pageNum, pages: Math.ceil(result.total / limitNum), limit: limitNum },
+    });
+  }
 
   const [products, total, pricingEntries] = await Promise.all([
     Product.find(query)
@@ -228,24 +303,26 @@ async function recalcPriceIfNeeded(product, updates) {
 }
 
 /**
- * applyImageUpdates — mutates the `updates` object with new image data.
- * If req.body.replaceImages = 'true': deletes all old Cloudinary images, replaces array.
- * Otherwise: appends new images to existing array (no deletion).
- * Cloudinary deletion failures are logged as warnings and not thrown — non-blocking.
+ * planImageUpdates — works out the product's new image list. Nothing is deleted here.
+ *   replaceImages = 'true'  → old images replaced by the uploaded ones
+ *   removeImages  = [publicId…] → those existing images dropped, uploads appended
+ * Result: { images?, toDestroy, error? } — `images` undefined = unchanged.
+ * Rules: 1…MAX_PRODUCT_IMAGES images in total.
  */
-async function applyImageUpdates(product, updates, req) {
-  if (!req.files || req.files.length === 0) return;
-  const newImages = req.files.map((file) => buildImageUrl(file, 'products'));
-  if (req.body.replaceImages === 'true') {
-    for (const img of product.images) {
-      if (img.publicId) {
-        try { await cloudinary.uploader.destroy(img.publicId); } catch (err) { logger.warn(`Cloudinary delete failed: ${err.message}`); }
-      }
-    }
-    updates.images = newImages;
-  } else {
-    updates.images = [...product.images, ...newImages];
-  }
+function planImageUpdates(product, req) {
+  const newImages = (req.files || []).map((file) => buildImageUrl(file, 'products'));
+  const remove = new Set(parseRemoveImages(req.body.removeImages));
+  if (newImages.length === 0 && remove.size === 0 && req.body.replaceImages !== 'true') return { toDestroy: [] };
+
+  let kept;
+  if (req.body.replaceImages === 'true' && newImages.length > 0) kept = [];
+  else kept = product.images.filter((img) => !remove.has(img.publicId));
+  const toDestroy = product.images.filter((img) => !kept.includes(img));
+  const images = [...kept, ...newImages];
+
+  if (images.length === 0) return { error: 'A product needs at least one image.' };
+  if (images.length > MAX_PRODUCT_IMAGES) return { error: `A product can have at most ${MAX_PRODUCT_IMAGES} images.` };
+  return { images, toDestroy };
 }
 
 /**
@@ -268,6 +345,10 @@ const createProduct = async (req, res) => {
   const images = req.files && req.files.length > 0
     ? req.files.map((file) => buildImageUrl(file, 'products'))
     : [];
+  if (images.length > MAX_PRODUCT_IMAGES) {
+    await destroyImages(images);
+    return res.status(400).json({ success: false, message: `A product can have at most ${MAX_PRODUCT_IMAGES} images.` });
+  }
 
   const finalUnit = unit || 'gram';
   const mc = makingCharges != null ? Number(makingCharges) : 12;
@@ -340,7 +421,7 @@ function parseProductUpdates(body) {
  * Updates product fields. If pricing-critical fields changed (weight/material/purity/unit),
  * recalculates price from GlobalPricing → sets pricingType = 'dynamic' and re-applies the
  * product's existing discount % (an edit no longer wipes the discount).
- * Image updates handled by applyImageUpdates (replace or append mode).
+ * Image updates handled by planImageUpdates (remove selected, append new, max 4).
  */
 const updateProduct = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return invalidProductId(res);
@@ -350,9 +431,11 @@ const updateProduct = async (req, res) => {
   }
 
   const updates = parseProductUpdates(req.body);
+  const uploaded = (req.files || []).map((file) => buildImageUrl(file, 'products'));
 
   const priceResult = await recalcPriceIfNeeded(product, updates);
   if (priceResult?.error) {
+    await destroyImages(uploaded);
     return res.status(400).json({ success: false, message: priceResult.error });
   }
   if (priceResult?.price != null) {
@@ -361,12 +444,20 @@ const updateProduct = async (req, res) => {
     updates.discountedPrice = applyDiscount(priceResult.price, discountFraction(product));
   }
 
-  await applyImageUpdates(product, updates, req);
+  const plan = planImageUpdates(product, req);
+  if (plan.error) {
+    await destroyImages(uploaded);
+    return res.status(400).json({ success: false, message: plan.error });
+  }
+  if (plan.images) updates.images = plan.images;
 
   const updated = await Product.findByIdAndUpdate(req.params.id, updates, {
     new: true,
     runValidators: true,
   }).populate('category', 'name slug');
+
+  // Removed images are deleted from storage only after the product saved successfully
+  await destroyImages(plan.toDestroy);
 
   res.json({ success: true, product: updated });
 };

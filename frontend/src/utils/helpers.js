@@ -48,6 +48,7 @@ export const getOrderStatusColor = (status) => {
     delivered:        'badge-green',
     returned_refunded:'badge-red',
     failed:           'badge-red',
+    cancelled:        'badge-red',
   };
   return map[status] || 'badge-gold';
 };

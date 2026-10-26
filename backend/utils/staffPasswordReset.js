@@ -10,17 +10,19 @@
  *   - Step 1 always answers with the same generic message (never reveals whether an account exists).
  *   - OTP and reset token are stored only as SHA-256 hashes; both are single-use.
  *   - 5 wrong OTP attempts lock the code; a new code must be requested.
+ *   - 10 wrong codes per account in 24 h → no new codes, no code accepted (utils/resetGuard.js).
  *   - A successful reset clears the login lockout and signs the account out everywhere.
  */
 const crypto = require('node:crypto');
 const { sendPasswordResetEmail } = require('./email');
+const { RESET_GUARD_FIELDS, RESET_BLOCKED_MSG, resetBlocked, recordResetFail, clearResetFails } = require('./resetGuard');
 const logger = require('./logger');
 
 const OTP_TTL_MS    = 10 * 60 * 1000;
 const TOKEN_TTL_MS  = 15 * 60 * 1000;
 const MAX_ATTEMPTS  = 5;
 const GENERIC_OK    = { success: true, message: 'If this email is registered, a reset code has been sent.' };
-const RESET_FIELDS  = '+pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts +pwdResetTokenHash +pwdResetTokenExpires';
+const RESET_FIELDS  = `+pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts +pwdResetTokenHash +pwdResetTokenExpires ${RESET_GUARD_FIELDS}`;
 
 const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 const safeEqual = (a, b) => {
@@ -48,6 +50,10 @@ function makePasswordResetHandlers(Model, portal) {
     const email = String(req.body.email || '').toLowerCase();
     const account = await Model.findOne({ email }).select(RESET_FIELDS);
     if (!account || !account.isActive) return res.json(GENERIC_OK);
+    if (resetBlocked(account)) {
+      logger.warn(`[${portal}] reset code refused for ${account.email}: too many wrong codes in 24 h`);
+      return res.json(GENERIC_OK); // same reply — no new code sent
+    }
 
     const rawOtp = crypto.randomInt(100000, 1000000).toString();
     account.pwdResetOtpHash = hashToken(rawOtp);
@@ -76,6 +82,11 @@ function makePasswordResetHandlers(Model, portal) {
     if (!account || !account.pwdResetOtpHash) {
       return res.status(400).json({ success: false, message: 'Invalid or expired code. Please request a new one.' });
     }
+    if (resetBlocked(account)) {
+      clearOtp(account);
+      await account.save({ validateBeforeSave: false });
+      return res.status(429).json({ success: false, message: RESET_BLOCKED_MSG, code: 'RESET_LOCKED' });
+    }
 
     if ((account.pwdResetOtpAttempts || 0) >= MAX_ATTEMPTS || !account.pwdResetOtpExpires || Date.now() > account.pwdResetOtpExpires) {
       clearOtp(account);
@@ -85,6 +96,7 @@ function makePasswordResetHandlers(Model, portal) {
 
     if (!safeEqual(hashToken(otp), account.pwdResetOtpHash)) {
       account.pwdResetOtpAttempts = (account.pwdResetOtpAttempts || 0) + 1;
+      recordResetFail(account);
       await account.save({ validateBeforeSave: false });
       const left = MAX_ATTEMPTS - account.pwdResetOtpAttempts;
       return res.status(400).json({ success: false, message: left > 0 ? `Invalid code. ${left} attempt${left === 1 ? '' : 's'} left.` : 'Too many attempts. Please request a new code.' });
@@ -94,6 +106,7 @@ function makePasswordResetHandlers(Model, portal) {
     account.pwdResetTokenHash = hashToken(resetToken);
     account.pwdResetTokenExpires = new Date(Date.now() + TOKEN_TTL_MS);
     clearOtp(account);
+    clearResetFails(account);
     audit(account, 'PWD_RESET_OTP_VERIFIED', 'Password reset code verified', req.ip);
     await account.save({ validateBeforeSave: false });
 

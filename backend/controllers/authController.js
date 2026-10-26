@@ -12,12 +12,14 @@ const {
 } = require('../utils/generateToken');
 const { rotateRefreshSession } = require('../utils/refreshSessions');
 const crypto = require('node:crypto');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/email');
+const { sendVerificationEmail, sendPasswordResetEmail, sendGoogleAccountNotice } = require('../utils/email');
 const { sendSmsOtp } = require('../utils/sms');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { logAlert } = require('../utils/alerting');
 const { OAuth2Client } = require('google-auth-library');
+const { LOGIN_FAILED, otherPortalHint, equaliseTiming } = require('../utils/portalHint');
+const { RESET_GUARD_FIELDS, RESET_BLOCKED_MSG, resetBlocked, recordResetFail, clearResetFails } = require('../utils/resetGuard');
 
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
@@ -206,11 +208,9 @@ const register = async (req, res) => {
     return res.status(201).json({ success: true, message: 'Account created! Please check your email for the verification code.' });
   }
 
-  // Block registration if email belongs to another portal.
-  // Admin addresses get the same reply as any taken address — the public portal must not reveal admin accounts.
-  const portalMsg = await crossPortalCheck(email);
-  if (portalMsg === ADMIN_PORTAL_MSG) return res.status(400).json({ success: false, message: 'Email already registered' });
-  if (portalMsg) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+  // Block registration if email belongs to another portal — with the SAME reply as any taken
+  // address, so sign-up never reveals which portal (customer / delivery partner / admin) it is on.
+  if (await crossPortalCheck(email)) return res.status(400).json({ success: false, message: 'Email already registered' });
 
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -299,13 +299,14 @@ const login = async (req, res) => {
   const user = await User.findOne(query).select('+password +sessions');
 
   if (!user || user.isLocked()) {
-    // If email-based lookup failed, check other portals for a helpful message
-    if (!user && isEmail(identifier)) {
-      const portalMsg = await crossPortalCheck(identifier);
-      // Admin addresses fall through to the generic 401 (never reveal admin accounts here)
-      if (portalMsg && portalMsg !== ADMIN_PORTAL_MSG) return res.status(403).json({ success: false, message: portalMsg, code: 'WRONG_PORTAL' });
+    if (!user) {
+      // "Use the other portal" only for someone whose password is right there (never reveals accounts;
+      // admin accounts are never hinted here). Otherwise the same reply + timing as a wrong password.
+      const hint = isEmail(identifier) ? await otherPortalHint(identifier, password, ['delivery']) : null;
+      if (hint) return res.status(403).json({ success: false, message: hint, code: 'WRONG_PORTAL' });
+      await equaliseTiming(password);
     }
-    return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   const isMatch = await user.comparePassword(password);
@@ -317,7 +318,7 @@ const login = async (req, res) => {
       logAlert('ACCOUNT_LOCKED', `User ${identifier} locked out`, ipAddress);
     }
     await user.save({ validateBeforeSave: false });
-    return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   if (!user.isVerified || !user.isActive) {
@@ -442,9 +443,24 @@ const handleOAuthLogin = async (req, res, providerName, extractionLogic) => {
     if (!email) return res.status(400).json({ success: false, message: 'Provider did not return an email, which is required.' });
     if (!emailVerified) return res.status(400).json({ success: false, message: 'Email not verified by provider.' });
 
-    let user = await User.findOne({ email: String(email) }).select('+sessions');
+    let user = await User.findOne({ email: String(email) }).select('+sessions +password +otpHash +otpExpires');
 
     if (user) {
+      if (!user.isVerified) {
+        // An email sign-up that was never verified: anyone could have started it with this address.
+        // Google has just proved who owns the email, so the account becomes theirs — the unverified
+        // password and name are discarded (they may have been set by someone else) and any
+        // pending sign-up code is cancelled.
+        user.isVerified = true;
+        user.password = undefined;
+        user.providers = user.providers.filter((p) => p.providerType !== 'local');
+        if (name) user.name = name;
+        user.otpHash = undefined;
+        user.otpExpires = undefined;
+        user.otpAttempts = 0;
+        user.sessions = [];
+        addAuditLog(user, 'UNVERIFIED_SIGNUP_CLAIMED', `Unverified email sign-up claimed via ${providerName}; its password was removed`, req.ip);
+      }
       if (!user.providers.some(p => p.providerType === providerName)) {
         user.providers.push({ providerType: providerName, providerId });
         addAuditLog(user, 'OAUTH_LINKED', `Linked ${providerName}`, req.ip);
@@ -504,7 +520,8 @@ const googleExtract = (req) => async () => {
 /**
  * forgotPassword — sends a 6-digit password reset OTP to the user's email.
  * Returns GENERIC_OK regardless of whether the email exists (prevents user enumeration).
- * OAuth-only accounts (no password field) get a specific error — these can't reset passwords.
+ * OAuth-only accounts (no password) get the same generic reply; the owner is emailed that they sign in with Google.
+ * After 10 wrong codes in 24 h no new code is sent (utils/resetGuard.js).
  * OTP valid 10 min; previous OTP attempts reset to 0 on each new OTP issue.
  * @route POST /api/auth/forgot-password
  */
@@ -512,11 +529,14 @@ const forgotPassword = async (req, res) => {
   const { email } = req.body;
   const GENERIC_OK = { success: true, message: 'If email is known, a reset code was sent.' };
   
-  const user = await User.findOne({ email }).select('+password +pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts');
+  const user = await User.findOne({ email }).select(`+password +pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts ${RESET_GUARD_FIELDS}`);
   if (!user?.isVerified || !user?.isActive) return res.json(GENERIC_OK);
   if (!user.password) {
-    return res.status(400).json({ success: false, message: 'Your account is linked exclusively via an OAuth provider. Password reset is not available.' });
+    // Google-only account: same reply as everyone (never reveals the account type); the owner is told by email
+    try { await sendGoogleAccountNotice(user.email, user.name); } catch (e) { logger.error(`Google-account notice failed: ${e.message}`); }
+    return res.json(GENERIC_OK);
   }
+  if (resetBlocked(user)) return res.json(GENERIC_OK); // too many wrong codes today — no new code
 
   const rawOtp = crypto.randomInt(100000, 999999).toString();
   user.pwdResetOtpHash = hashToken(rawOtp);
@@ -541,8 +561,13 @@ const forgotPassword = async (req, res) => {
  */
 const verifyResetOtp = async (req, res) => {
   const { email, otp } = req.body;
-  const user = await User.findOne({ email }).select('+pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts +pwdResetTokenHash +pwdResetTokenExpires');
+  const user = await User.findOne({ email }).select(`+pwdResetOtpHash +pwdResetOtpExpires +pwdResetOtpAttempts +pwdResetTokenHash +pwdResetTokenExpires ${RESET_GUARD_FIELDS}`);
   if (!user) return res.status(400).json({ success: false, message: 'Invalid.' });
+  if (resetBlocked(user)) {
+    user.pwdResetOtpHash = undefined;
+    await user.save({ validateBeforeSave: false });
+    return res.status(429).json({ success: false, message: RESET_BLOCKED_MSG, code: 'RESET_LOCKED' });
+  }
 
   if (user.pwdResetOtpAttempts >= 5 || Date.now() > user.pwdResetOtpExpires) {
     user.pwdResetOtpHash = undefined;
@@ -551,6 +576,7 @@ const verifyResetOtp = async (req, res) => {
 
   if (hashToken(otp.toString()) !== user.pwdResetOtpHash) {
     user.pwdResetOtpAttempts += 1;
+    recordResetFail(user);
     await user.save({ validateBeforeSave: false });
     return res.status(400).json({ success: false, message: 'Invalid code.' });
   }
@@ -564,6 +590,7 @@ const verifyResetOtp = async (req, res) => {
   user.pwdResetOtpHash = undefined;
   user.pwdResetOtpExpires = undefined;
   user.pwdResetOtpAttempts = 0;
+  clearResetFails(user);
   addAuditLog(user, 'OTP_VERIFIED', 'Password reset code verified', req.ip);
   await user.save({ validateBeforeSave: false });
 

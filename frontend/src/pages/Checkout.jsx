@@ -283,6 +283,9 @@ export default function Checkout() {
           pendingOrderId: data.pendingOrderId,
         },
         theme: { color: '#D4AF37' },
+        // The item is held for this customer for 15 min (server); the payment window closes at 10
+        // so a payment can never finish after the hold has been given to someone else.
+        timeout: 600,
 
         // 4. Phase 2: Payment success → verify on backend
         handler: async (response) => {
@@ -298,7 +301,13 @@ export default function Checkout() {
             dispatch(clearCart());
             pendingOrderIdRef.current = null;
 
-            toast.success('Order placed successfully! 🎉', { duration: 5000 });
+            if (verifyRes.data.pending) {
+              // Bank approved the payment; the server is still confirming the capture with Razorpay.
+              // The order is confirmed automatically — do NOT report a failure here.
+              toast.success(verifyRes.data.message || 'Payment received — confirming your order.', { duration: 8000 });
+            } else {
+              toast.success('Order placed successfully! 🎉', { duration: 5000 });
+            }
             navigate(`/orders/${verifyRes.data.order._id}`);
           } catch (err) {
             const msg = err.response?.data?.message || 'Payment verification failed';
@@ -311,7 +320,7 @@ export default function Checkout() {
         modal: {
           ondismiss: async () => {
             toast.error('Payment cancelled');
-            // Report failure to backend (marks pending order as failed, no stock touched)
+            // Report failure to backend (marks pending order as failed + returns the held stock)
             await reportPaymentFailure('Payment cancelled by user');
             setProcessing(false);
           },
@@ -343,7 +352,7 @@ export default function Checkout() {
         setQuoteState({ key: quoteKey, data: { ...quote, pricing: body.pricing, delivery: body.delivery ?? quote?.delivery }, error: null });
       }
       const msg = body?.message || 'Something went wrong. Please try again.';
-      toast.error(msg, { duration: 5000 });
+      toast.error(msg, { duration: body?.code === 'OUT_OF_STOCK' ? 8000 : 5000 });
       setProcessing(false);
     }
   };

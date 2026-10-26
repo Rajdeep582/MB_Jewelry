@@ -11,8 +11,9 @@ const {
   readRefreshToken,
 } = require('../utils/generateToken');
 const { rotateRefreshSession } = require('../utils/refreshSessions');
-const { sendVerificationEmail } = require('../utils/email');
+const { sendVerificationEmail, sendAdminLoginCode } = require('../utils/email');
 const logger = require('../utils/logger');
+const { LOGIN_FAILED, otherPortalHint, equaliseTiming } = require('../utils/portalHint');
 const { makePasswordResetHandlers } = require('../utils/staffPasswordReset');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
@@ -215,15 +216,12 @@ const login = async (req, res) => {
   const admin = await Admin.findOne({ email: email.toLowerCase() }).select('+password +sessions');
   if (!admin || admin.isLocked()) {
     if (!admin) {
-      const emailLower = email.toLowerCase();
-      if (await User.findOne({ email: emailLower }).lean()) {
-        return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
-      }
-      if (await DeliveryPartner.findOne({ email: emailLower }).lean()) {
-        return res.status(403).json({ success: false, message: 'You are registered as Delivery Partner. Please login through the Delivery Partner portal.', code: 'WRONG_PORTAL' });
-      }
+      // Portal hint only when the password is right for that other account (never reveals accounts)
+      const hint = await otherPortalHint(email, password, ['user', 'delivery']);
+      if (hint) return res.status(403).json({ success: false, message: hint, code: 'WRONG_PORTAL' });
+      await equaliseTiming(password);
     }
-    return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   const isMatch = await admin.comparePassword(password);
@@ -231,7 +229,7 @@ const login = async (req, res) => {
     admin.loginAttempts = (admin.loginAttempts || 0) + 1;
     if (admin.loginAttempts >= 5) admin.lockUntil = Date.now() + 15 * 60 * 1000;
     await admin.save({ validateBeforeSave: false });
-    return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   if (!admin.isActive) {
@@ -248,8 +246,102 @@ const login = async (req, res) => {
     });
   }
 
+  // ── Step 2 of sign-in: email a one-time code (2-step verification) ──
+  // The password alone never signs an admin in. Tokens are issued by verifyLogin() once the
+  // 6-digit code from the admin's registered email is entered. The random `challenge` returned
+  // here ties the code to this password check, so the code can't be used without the password.
   admin.loginAttempts = 0;
   admin.lockUntil = undefined;
+  const loginOtp = issueLoginCode(admin);
+  const challenge = crypto.randomBytes(32).toString('hex');
+  admin.loginChallengeHash = hashToken(challenge);
+  await admin.save({ validateBeforeSave: false });
+
+  try {
+    await sendAdminLoginCode(admin.email, admin.name, loginOtp, { ip: req.ip });
+  } catch (err) {
+    logger.error(`Admin login code email failed for ${admin.email}: ${err.message}`);
+    return res.status(500).json({ success: false, message: 'Could not send the login code to your email. Please try again.' });
+  }
+  res.json({
+    success: true,
+    otpRequired: true,
+    challenge,
+    email: maskEmail(admin.email),
+    message: `We sent a 6-digit code to ${maskEmail(admin.email)}. Enter it to finish signing in.`,
+  });
+};
+
+const LOGIN_OTP_TTL_MS = 10 * 60 * 1000;
+const LOGIN_OTP_MAX_ATTEMPTS = 5;
+
+/** a****n@gmail.com — shown on screen so the admin knows where the code went. */
+function maskEmail(email) {
+  const [user, domain] = String(email).split('@');
+  if (!domain) return email;
+  const shown = user.length <= 2 ? `${user[0]}*` : `${user[0]}${'*'.repeat(Math.min(user.length - 2, 6))}${user.at(-1)}`;
+  return `${shown}@${domain}`;
+}
+
+/** Fresh 6-digit login code: hash stored on the admin (caller saves); plain code returned for the email only. */
+function issueLoginCode(admin) {
+  const { otp, hash } = generateOtp();
+  admin.loginOtpHash = hash;
+  admin.loginOtpExpiry = new Date(Date.now() + LOGIN_OTP_TTL_MS);
+  admin.loginOtpAttempts = 0;
+  return otp;
+}
+
+/** Load the admin for a login challenge (email + challenge from step 1). */
+async function findChallengedAdmin(email, challenge) {
+  if (typeof email !== 'string' || typeof challenge !== 'string' || !/^[a-f0-9]{64}$/.test(challenge)) return null;
+  const admin = await Admin.findOne({ email: email.toLowerCase().trim() })
+    .select('+sessions +loginOtpHash +loginOtpExpiry +loginOtpAttempts +loginChallengeHash');
+  if (!admin?.loginChallengeHash) return null;
+  const a = Buffer.from(admin.loginChallengeHash);
+  const b = Buffer.from(hashToken(challenge));
+  return a.length === b.length && crypto.timingSafeEqual(a, b) ? admin : null;
+}
+
+// POST /api/admin-auth/login/verify   { email, challenge, otp }
+// Step 2 of admin sign-in: checks the emailed code, then issues the session (same as before).
+const verifyLogin = async (req, res) => {
+  const { email, challenge, otp } = req.body || {};
+  const admin = await findChallengedAdmin(email, challenge);
+  const expired = { success: false, message: 'This sign-in has expired. Please enter your password again.', code: 'LOGIN_EXPIRED' };
+  if (!admin) return res.status(401).json(expired);
+  if (!admin.isActive) return res.status(403).json({ success: false, message: 'Account deactivated.' });
+
+  if (!admin.loginOtpHash || !admin.loginOtpExpiry || admin.loginOtpExpiry < new Date()
+      || admin.loginOtpAttempts >= LOGIN_OTP_MAX_ATTEMPTS) {
+    admin.loginChallengeHash = undefined;
+    admin.loginOtpHash = undefined;
+    await admin.save({ validateBeforeSave: false });
+    return res.status(401).json(expired);
+  }
+
+  const code = typeof otp === 'string' || typeof otp === 'number' ? String(otp).trim() : '';
+  const given = Buffer.from(hashToken(code));
+  const stored = Buffer.from(admin.loginOtpHash);
+  if (!/^\d{6}$/.test(code) || given.length !== stored.length || !crypto.timingSafeEqual(given, stored)) {
+    admin.loginOtpAttempts = (admin.loginOtpAttempts || 0) + 1;
+    const left = LOGIN_OTP_MAX_ATTEMPTS - admin.loginOtpAttempts;
+    if (left <= 0) {
+      admin.loginChallengeHash = undefined;
+      admin.loginOtpHash = undefined;
+      logger.warn(`Admin login code failed ${LOGIN_OTP_MAX_ATTEMPTS} times for ${admin.email} from ${req.ip}`);
+    }
+    await admin.save({ validateBeforeSave: false });
+    return res.status(left <= 0 ? 401 : 400).json(left <= 0
+      ? expired
+      : { success: false, message: `Incorrect code. ${left} attempt${left === 1 ? '' : 's'} left.` });
+  }
+
+  // Code OK → single use, then sign in
+  admin.loginOtpHash = undefined;
+  admin.loginOtpExpiry = undefined;
+  admin.loginOtpAttempts = 0;
+  admin.loginChallengeHash = undefined;
 
   const accessToken  = generateAccessToken(admin._id, 'admin', 'admin');
   const refreshToken = generateRefreshToken(admin._id, 'admin');
@@ -260,8 +352,28 @@ const login = async (req, res) => {
   admin.markModified('sessions');
   await admin.save({ validateBeforeSave: false });
 
+  logger.info(`Admin ${admin.email} signed in (2-step) from ${req.ip}`);
   sendRefreshTokenCookie(res, refreshToken, 'admin');
   res.json({ success: true, accessToken, user: adminPayload(admin) });
+};
+
+// POST /api/admin-auth/login/resend   { email, challenge }
+// New code for the same sign-in (old code stops working). Per-email limit applies on the route.
+const resendLoginCode = async (req, res) => {
+  const { email, challenge } = req.body || {};
+  const admin = await findChallengedAdmin(email, challenge);
+  if (!admin || !admin.isActive) {
+    return res.status(401).json({ success: false, message: 'This sign-in has expired. Please enter your password again.', code: 'LOGIN_EXPIRED' });
+  }
+  const loginOtp = issueLoginCode(admin);
+  await admin.save({ validateBeforeSave: false });
+  try {
+    await sendAdminLoginCode(admin.email, admin.name, loginOtp, { ip: req.ip });
+  } catch (err) {
+    logger.error(`Admin login code resend failed for ${admin.email}: ${err.message}`);
+    return res.status(500).json({ success: false, message: 'Could not send the code. Please try again.' });
+  }
+  res.json({ success: true, message: `A new code was sent to ${maskEmail(admin.email)}.` });
 };
 
 // POST /api/admin-auth/logout
@@ -415,4 +527,4 @@ const confirmEmailChange = async (req, res) => {
 // Forgot password — POST /forgot-password, /verify-reset-otp, /reset-password
 const { forgotPassword, verifyResetOtp, resetPassword } = makePasswordResetHandlers(Admin, 'admin');
 
-module.exports = { register, verifyEmail, resendOtp, login, logout, getMe, refreshToken, updateName, requestEmailChange, confirmEmailChange, forgotPassword, verifyResetOtp, resetPassword };
+module.exports = { register, verifyEmail, resendOtp, login, verifyLogin, resendLoginCode, logout, getMe, refreshToken, updateName, requestEmailChange, confirmEmailChange, forgotPassword, verifyResetOtp, resetPassword };

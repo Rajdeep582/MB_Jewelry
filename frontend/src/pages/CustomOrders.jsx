@@ -4,16 +4,22 @@ import { motion } from 'framer-motion';
 import PropTypes from 'prop-types';
 import {
   FiChevronRight, FiTruck, FiCheck, FiAlertCircle, FiCreditCard, FiMessageSquare,
-  FiCalendar, FiFilter, FiPenTool, FiClock, FiPlus, FiImage, FiDownload,
+  FiCalendar, FiPenTool, FiClock, FiPlus, FiImage, FiDownload,
 } from 'react-icons/fi';
 import { useSelector } from 'react-redux';
 import { customOrderService } from '../services/services';
 import api from '../services/api';
 import { formatPrice, formatDate, formatDateTime, formatCalendarDate, formatTrackingNumber, getCustomOrderStatusColor, resolveImageUrl } from '../utils/helpers';
-import { downloadCustomOrderInvoice } from '../utils/invoice';
+import { downloadCustomOrderInvoice, downloadAdvanceReceipt } from '../utils/invoice';
 import { selectUser } from '../store/authSlice';
 import { OrderCardSkeleton } from '../components/common/Skeletons';
 import toast from 'react-hot-toast';
+
+/** "6" → "6 g"; free text such as "8–10g" or "approx 6 grams" is shown as entered. */
+const weightLabel = (w) => {
+  const t = String(w || '').trim();
+  return /^\d+(\.\d+)?$/.test(t) ? `${t} g` : t;
+};
 
 /**
  * quoteTotals — GST + grand total for a quoted custom order. The amounts the customer is
@@ -282,7 +288,7 @@ function CustomOrderCard({ order }) {
   const refImg     = photos[0]?.url;
   const status     = CARD_STATUS[order.status] || { label: order.status.replaceAll('_', ' '), tone: 'gold' };
   const price      = order.totalAmount > 0 ? order.totalAmount : order.quoteAmount;
-  const spec       = [order.material, order.purity && order.purity !== 'None' ? order.purity : null, order.weight || null]
+  const spec       = [order.material, order.purity && order.purity !== 'None' ? order.purity : null, order.weight ? weightLabel(order.weight) : null]
     .filter(Boolean).join(' · ');
   let paidLabel = null;
   if (order.finalPayment?.status === 'paid') paidLabel = 'Paid in full';
@@ -397,6 +403,18 @@ function CustomOrderCard({ order }) {
           <span className="flex-shrink-0 font-jakarta text-[11px] font-semibold text-gold-400 group-hover:text-gold-300">Review →</span>
         </div>
       )}
+      {order.status === 'shipped' && order.advancePayment?.status === 'paid' && order.finalPayment?.status !== 'paid' && (
+        <div className="relative flex items-center justify-between gap-3 border-t border-gold-500/15 bg-gold-500/[0.05] px-4 sm:px-6 py-2.5">
+          <p className="font-jakarta text-gold-300 text-xs font-medium flex items-center gap-2">
+            <span className="relative flex w-2 h-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-gold-400 opacity-60 animate-ping" />
+              <span className="relative inline-flex w-2 h-2 rounded-full bg-gold-400" />
+            </span>
+            Your piece has shipped — pay the balance{order.finalAmount > 0 ? ` of ${formatPrice(order.finalAmount)}` : ''} to complete delivery
+          </p>
+          <span className="flex-shrink-0 font-jakarta text-[11px] font-semibold text-gold-400 group-hover:text-gold-300">Pay →</span>
+        </div>
+      )}
     </Link>
   );
 }
@@ -421,18 +439,11 @@ CustomOrderCard.propTypes = {
 
 // ─── List View (same layout as My Orders) ─────────────────────────────────────
 function CustomOrdersListView({ orders, loading }) {
-  const [filter, setFilter] = useState('all');
-
   const counts = useMemo(() => {
     const c = {};
     LIST_FILTERS.forEach(({ value, match }) => { c[value] = orders.filter((o) => match(o.status)).length; });
     return c;
   }, [orders]);
-
-  const filtered = useMemo(() => {
-    const f = LIST_FILTERS.find((x) => x.value === filter) || LIST_FILTERS[0];
-    return orders.filter((o) => f.match(o.status));
-  }, [orders, filter]);
 
   if (loading) {
     return (
@@ -481,51 +492,9 @@ function CustomOrdersListView({ orders, loading }) {
         ))}
       </div>
 
-      {/* Filter bar */}
-      <div className="mb-5">
-        <div className="flex items-center gap-2 mb-2.5">
-          <FiFilter size={12} className="text-gold-600" />
-          <span className="font-jakarta text-dark-400 text-[11px] uppercase tracking-[0.2em] font-semibold">Filter by status</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {LIST_FILTERS.map(({ value, label }) => {
-            const count = counts[value] || 0;
-            if (value !== 'all' && count === 0) return null;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setFilter(value)}
-                className={`font-jakarta px-3.5 py-1.5 rounded-full text-[13px] font-medium border transition-all duration-300 flex items-center gap-2 ${
-                  filter === value
-                    ? 'bg-gradient-to-r from-gold-500/20 to-gold-600/10 border-gold-500/60 text-gold-300 shadow-[0_0_18px_rgba(212,175,55,0.15)]'
-                    : 'bg-white/[0.02] border-white/10 text-dark-300 hover:border-gold-500/30 hover:text-white'
-                }`}
-              >
-                {label}
-                <span className={`text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center ${
-                  filter === value ? 'bg-gold-500 text-dark-900' : 'bg-white/5 text-dark-400'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      <div className="space-y-3.5">
+        {orders.map((order) => <CustomOrderCard key={order._id} order={order} />)}
       </div>
-
-      {filtered.length === 0 ? (
-        <div className="text-center py-16">
-          <p className="font-jakarta text-dark-400 text-sm">No custom orders with this status.</p>
-          <button type="button" onClick={() => setFilter('all')} className="text-gold-400 text-sm mt-2 hover:text-gold-300">
-            Clear filter →
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-3.5">
-          {filtered.map((order) => <CustomOrderCard key={order._id} order={order} />)}
-        </div>
-      )}
     </>
   );
 }
@@ -627,12 +596,17 @@ function CustomOrderDetail({ id }) {
             pendingPayRef.current = null;
             if (verifyRes.data?.order) setOrder(verifyRes.data.order);
             setProcessing(false);
-            toast.success(
-              phase === 'advance'
-                ? 'Advance paid! Your order is now in production. 🎉'
-                : 'Final payment complete! We will confirm delivery shortly. 🎉',
-              { duration: 6000 }
-            );
+            if (verifyRes.data?.pending) {
+              // Bank approved the payment; the server is still confirming the capture with Razorpay
+              toast.success(verifyRes.data.message || 'Payment received — confirming it now.', { duration: 8000 });
+            } else {
+              toast.success(
+                phase === 'advance'
+                  ? 'Advance paid! Your order is now in production. 🎉'
+                  : 'Final payment complete! We will confirm delivery shortly. 🎉',
+                { duration: 6000 }
+              );
+            }
             customOrderService.getOrder(order._id)
               .then((res) => { if (res.data?.order) setOrder(res.data.order); })
               .catch(() => {});
@@ -662,7 +636,15 @@ function CustomOrderDetail({ id }) {
       });
       rzp.open();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Something went wrong. Please try again.', { duration: 5000 });
+      if (err.response?.data?.code === 'ALREADY_PAID') {
+        // An earlier payment for this phase was already received — never charge twice
+        toast.success(err.response.data.message, { duration: 8000 });
+        customOrderService.getOrder(order._id)
+          .then((res) => { if (res.data?.order) setOrder(res.data.order); })
+          .catch(() => {});
+      } else {
+        toast.error(err.response?.data?.message || 'Something went wrong. Please try again.', { duration: 5000 });
+      }
       setProcessing(false);
     }
   };
@@ -832,7 +814,9 @@ function CustomOrderDetail({ id }) {
                     {order.finalPayment?.status === 'paid' ? (
                       <p className="font-jakarta text-green-500 text-[10px] font-medium mt-1">Paid{order.finalPayment?.paidAt ? ` · ${formatDateTime(order.finalPayment.paidAt)}` : ''}</p>
                     ) : (
-                      <p className="font-jakarta text-dark-500 text-[10px] mt-1">Due when your order ships</p>
+                      <p className={`font-jakarta text-[10px] mt-1 ${['shipped', 'final_payment_pending'].includes(order.status) ? 'text-gold-400 font-medium' : 'text-dark-500'}`}>
+                        {['shipped', 'final_payment_pending'].includes(order.status) ? 'Due now — your order has shipped' : 'Due when your order ships'}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -879,17 +863,39 @@ function CustomOrderDetail({ id }) {
                   </>
                 )}
 
+                {order.advancePayment?.status === 'paid' && order.finalPayment?.status !== 'paid' && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5">
+                    <p className="font-jakarta text-dark-500 text-xs">
+                      Advance paid · Receipt{order.advanceReceiptNumber ? <> <span className="font-mono text-dark-300">{order.advanceReceiptNumber}</span></> : ''}
+                    </p>
+                    <button
+                      onClick={() => downloadAdvanceReceipt(order)}
+                      className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"
+                    >
+                      <FiDownload size={14} /> Download Receipt
+                    </button>
+                  </div>
+                )}
+
                 {order.finalPayment?.status === 'paid' && (
                   <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5">
                     <p className="font-jakarta text-dark-500 text-xs">
                       Fully paid · Tax invoice{order.invoiceNumber ? <> <span className="font-mono text-dark-300">{order.invoiceNumber}</span></> : ''}
                     </p>
-                    <button
-                      onClick={() => downloadCustomOrderInvoice(order)}
-                      className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"
-                    >
-                      <FiDownload size={14} /> Download Invoice
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => downloadAdvanceReceipt(order)}
+                        className="flex items-center gap-2 text-sm text-dark-300 hover:text-gold-400 bg-white/[0.03] border border-white/10 px-4 py-2 rounded-xl transition-all"
+                      >
+                        <FiDownload size={14} /> Advance Receipt
+                      </button>
+                      <button
+                        onClick={() => downloadCustomOrderInvoice(order)}
+                        className="flex items-center gap-2 text-sm text-gold-500 hover:text-gold-400 bg-gold-500/10 hover:bg-gold-500/15 border border-gold-500/20 px-4 py-2 rounded-xl transition-all"
+                      >
+                        <FiDownload size={14} /> Download Invoice
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -916,7 +922,7 @@ function CustomOrderDetail({ id }) {
             order.fingerSize && ['Finger Size', order.fingerSize],
             order.neckSize   && ['Neck Size',   order.neckSize],
             order.wristSize  && ['Wrist Size',  order.wristSize],
-            order.weight     && ['Est. Weight', order.weight],
+            order.weight     && ['Est. Weight', weightLabel(order.weight)],
             order.budget     && ['Budget',      order.budget],
           ].filter(Boolean).map(([k, v]) => (
             <div key={k}>

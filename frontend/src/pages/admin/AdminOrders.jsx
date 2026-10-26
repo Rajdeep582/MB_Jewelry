@@ -3,7 +3,7 @@ import {
   FiChevronDown, FiX, FiAlertCircle, FiRefreshCw, FiSearch,
   FiPackage, FiTruck, FiUser, FiMail, FiInbox,
   FiPhone, FiMapPin, FiCreditCard, FiCalendar,
-  FiEdit2, FiFilter, FiRadio, FiDownload,
+  FiEdit2, FiFilter, FiRadio, FiDownload, FiXCircle, FiRotateCcw,
 } from 'react-icons/fi';
 import PropTypes from 'prop-types';
 import { orderService, adminService } from '../../services/services';
@@ -31,7 +31,11 @@ const STATUS_LABELS = {
   ready_to_ship:    'Ready to Ship',
   shipped:          'Shipped',
   delivered:        'Delivered',
+  cancelled:        'Cancelled',
 };
+
+// Admin can cancel a PAID order in these states (never once delivered) — mirrors backend
+const CANCELLABLE = ['confirmed', 'ready_to_ship', 'shipped'];
 
 const PAYMENT_METHOD_LABELS = {
   razorpay: 'Razorpay (Online)',
@@ -44,6 +48,7 @@ const QUICK_FILTERS = [
   { label: 'Ready to Ship',   status: 'ready_to_ship',   paymentStatus: 'all' },
   { label: 'Shipped',         status: 'shipped',         paymentStatus: 'all' },
   { label: 'Delivered',       status: 'delivered',       paymentStatus: 'all' },
+  { label: 'Cancelled',       status: 'cancelled',       paymentStatus: 'all' },
 ];
 
 const STATUS_FILTER_OPTIONS = [
@@ -52,6 +57,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'ready_to_ship',   label: 'Ready to Ship' },
   { value: 'shipped',         label: 'Shipped' },
   { value: 'delivered',       label: 'Delivered' },
+  { value: 'cancelled',       label: 'Cancelled' },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -76,6 +82,20 @@ const orderPropType = PropTypes.shape({
   deliveredAt: PropTypes.string,
   deliveredByPartnerId: PropTypes.string,
   deliveryId: PropTypes.string,
+  stockIssue: PropTypes.string,
+  cancellation: PropTypes.shape({
+    cancelledAt: PropTypes.string,
+    cancelledByName: PropTypes.string,
+    reason: PropTypes.string,
+    previousStatus: PropTypes.string,
+    stockReturned: PropTypes.bool,
+    refundStatus: PropTypes.string,
+    refundAmount: PropTypes.number,
+    refundReference: PropTypes.string,
+    refundNote: PropTypes.string,
+    refundedAt: PropTypes.string,
+    refundedByName: PropTypes.string,
+  }),
   payment: PropTypes.shape({
     status: PropTypes.string,
     method: PropTypes.string,
@@ -405,7 +425,7 @@ const PAYMENT_CHIP = {
 const paymentChip = (order) => PAYMENT_CHIP[order.payment?.status] || PAYMENT_CHIP.pending;
 
 // ─── Order Details (expanded card) ──────────────────────────────────────────────
-function OrderDetails({ order }) {
+function OrderDetails({ order, onCancel, onRefund }) {
   const addr = order.shippingAddress || {};
   const pay = order.payment || {};
   const chip = paymentChip(order);
@@ -456,6 +476,12 @@ function OrderDetails({ order }) {
         <section className="min-w-0 lg:border-l lg:border-white/[0.06] lg:pl-4 space-y-4">
           <div>
             <SectionTitle icon={FiCreditCard} right={<Chip className={chip.cls}>{chip.label}</Chip>}>Payment</SectionTitle>
+            {order.stockIssue && (
+              <div className="mb-3 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                <FiAlertCircle size={14} className="mt-0.5 shrink-0 text-red-400" />
+                <span><b>Action needed:</b> {order.stockIssue}. Restock the item or refund the customer from the Razorpay dashboard.</span>
+              </div>
+            )}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               <KV label="Placed">{formatDateTime(order.createdAt)}</KV>
               <KV label="Paid">{pay.paidAt ? formatDateTime(pay.paidAt) : null}</KV>
@@ -470,13 +496,23 @@ function OrderDetails({ order }) {
               )}
               <KV label="Failure reason" className="col-span-2">{pay.failReason ? <span className="text-red-400">{pay.failReason}</span> : null}</KV>
             </dl>
-            {pay.status === 'paid' && (
+            {(pay.status === 'paid' || pay.status === 'refunded') && (
               <button
                 type="button"
                 onClick={() => downloadInvoice(order)}
                 className="mt-3 w-full py-2 text-xs inline-flex items-center justify-center gap-1.5 text-gold-300 bg-gold-500/10 border border-gold-500/20 hover:bg-gold-500/20 rounded-xl transition-colors"
               >
                 <FiDownload size={12} /> Download tax invoice
+              </button>
+            )}
+            {order.orderStatus === 'cancelled' && <CancellationPanel order={order} onRefund={onRefund} />}
+            {CANCELLABLE.includes(order.orderStatus) && pay.status === 'paid' && (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="mt-2 w-full py-2 text-xs inline-flex items-center justify-center gap-1.5 text-red-300 bg-red-500/5 border border-red-500/25 hover:bg-red-500/15 rounded-xl transition-colors"
+              >
+                <FiXCircle size={12} /> Cancel order
               </button>
             )}
           </div>
@@ -542,18 +578,194 @@ function OrderDetails({ order }) {
 }
 
 OrderDetails.propTypes = {
-  order: orderPropType.isRequired,
+  order:    orderPropType.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  onRefund: PropTypes.func.isRequired,
+};
+
+// ─── Cancellation (admin) ───────────────────────────────────────────────────────
+/** CancellationPanel — shown inside a cancelled order: why, who, when, and the manual refund record. */
+function CancellationPanel({ order, onRefund }) {
+  const c = order.cancellation || {};
+  const refunded = c.refundStatus === 'refunded';
+  return (
+    <div className="mt-3 rounded-xl border border-red-500/25 bg-red-500/[0.06] p-3 space-y-2 text-xs">
+      <p className="text-red-300 font-semibold flex items-center gap-1.5"><FiXCircle size={13} /> Cancelled{c.cancelledAt ? ` · ${formatDateTime(c.cancelledAt)}` : ''}</p>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+        <KV label="Reason" className="col-span-2">{c.reason}</KV>
+        <KV label="Cancelled by">{c.cancelledByName || null}</KV>
+        <KV label="Was">{STATUS_LABELS[c.previousStatus] || c.previousStatus || null}</KV>
+        <KV label="Stock">{c.stockReturned ? 'Returned to shop' : 'Not returned (stock issue order)'}</KV>
+        <KV label="Refund">{refunded ? <span className="text-sky-300">Refunded</span> : <span className="text-amber-300">Pending</span>}</KV>
+        {refunded && (
+          <>
+            <KV label="Refunded">{formatPrice(c.refundAmount ?? order.totalAmount)}</KV>
+            <KV label="On">{c.refundedAt ? formatDateTime(c.refundedAt) : null}</KV>
+            <KV label="Reference" mono>{c.refundReference || null}</KV>
+            <KV label="Recorded by">{c.refundedByName || null}</KV>
+            <KV label="Refund note" className="col-span-2">{c.refundNote}</KV>
+          </>
+        )}
+      </dl>
+      {!refunded && (
+        <button
+          type="button"
+          onClick={onRefund}
+          className="w-full py-2 inline-flex items-center justify-center gap-1.5 text-sky-200 bg-sky-500/10 border border-sky-500/25 hover:bg-sky-500/20 rounded-lg transition-colors"
+        >
+          <FiRotateCcw size={12} /> Mark as refunded
+        </button>
+      )}
+    </div>
+  );
+}
+
+CancellationPanel.propTypes = {
+  order:    orderPropType.isRequired,
+  onRefund: PropTypes.func.isRequired,
+};
+
+/**
+ * CancelRefundModal — two deliberate steps for both actions:
+ *   cancel: write a reason (5–500) + type CANCEL      → order cancelled (final), stock back
+ *   refund: write a note (5–500) [+ UTR, amount] + type REFUNDED → manual refund recorded
+ * The server checks the same rules again.
+ */
+function CancelRefundModal({ type, order, onClose, onDone }) {
+  const isCancel = type === 'cancel';
+  const word = isCancel ? 'CANCEL' : 'REFUNDED';
+  const [text, setText] = useState('');
+  const [reference, setReference] = useState('');
+  const [amount, setAmount] = useState(String(order.totalAmount ?? ''));
+  const [confirm, setConfirm] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const textOk = text.trim().length >= 5;
+  const amountNum = Number(amount);
+  const amountOk = isCancel || (Number.isFinite(amountNum) && amountNum > 0 && amountNum <= order.totalAmount);
+  const canSubmit = textOk && amountOk && confirm === word && !saving;
+  const items = order.items || [];
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setSaving(true);
+    try {
+      const res = isCancel
+        ? await orderService.cancelOrder(order._id, { reason: text.trim(), confirmText: confirm })
+        : await orderService.markRefunded(order._id, { note: text.trim(), reference: reference.trim(), amount: amountNum, confirmText: confirm });
+      toast.success(res.data?.message || (isCancel ? 'Order cancelled' : 'Refund recorded'));
+      onDone();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not save. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        className="w-full max-w-md max-h-[92vh] overflow-y-auto overscroll-contain glass rounded-2xl p-5 shadow-2xl" data-lenis-prevent="true"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className={`font-display text-lg ${isCancel ? 'text-red-300' : 'text-sky-200'}`}>{isCancel ? 'Cancel order' : 'Mark as refunded'}</h2>
+            <p className="text-dark-400 text-xs mt-0.5 font-mono">{displayOrderId(order)}</p>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 text-dark-400 hover:text-white transition-colors rounded-lg hover:bg-white/5" aria-label="Close">
+            <FiX size={18} />
+          </button>
+        </div>
+
+        {/* What exactly is being changed */}
+        <div className="mb-4 rounded-xl border border-white/[0.08] bg-dark-900/60 px-4 py-3 text-xs space-y-1">
+          <p className="flex justify-between gap-3"><span className="text-dark-500">Customer</span><span className="text-white text-right">{customerName(order)}</span></p>
+          <p className="flex justify-between gap-3"><span className="text-dark-500">Items</span><span className="text-white text-right truncate">{items.map((it) => `${it.name} ×${it.quantity}`).join(', ') || '—'}</span></p>
+          <p className="flex justify-between gap-3"><span className="text-dark-500">Paid</span><span className="text-gold-400 font-semibold">{formatPrice(order.totalAmount)}</span></p>
+          <p className="flex justify-between gap-3"><span className="text-dark-500">Status</span><span className="text-white">{STATUS_LABELS[order.orderStatus] || order.orderStatus}</span></p>
+        </div>
+
+        <div className={`mb-4 rounded-xl border px-3 py-2 text-xs leading-relaxed ${isCancel ? 'border-red-500/25 bg-red-500/[0.06] text-red-200' : 'border-sky-500/25 bg-sky-500/[0.06] text-sky-100'}`}>
+          {isCancel
+            ? 'This is final and cannot be undone. The item goes back to the shop and the customer will have to order again. The money is NOT sent back automatically — refund it manually, then use "Mark as refunded".'
+            : 'Only do this after the money has actually been sent back to the customer. This is final.'}
+        </div>
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <label htmlFor="cr-text" className="label-dark text-xs">{isCancel ? 'Reason for cancelling *' : 'Refund note * (how / when the money was sent)'}</label>
+            <textarea
+              id="cr-text"
+              value={text}
+              onChange={(e) => setText(e.target.value.slice(0, 500))}
+              rows={3}
+              placeholder={isCancel ? 'e.g. Customer requested cancellation on call' : 'e.g. Sent ₹… by UPI to customer on 25 Oct'}
+              className="input-dark w-full text-sm resize-none"
+            />
+            <p className="text-[11px] text-dark-500 mt-1 tabular-nums">{text.trim().length < 5 ? 'At least 5 characters' : `${text.length}/500`}</p>
+          </div>
+
+          {!isCancel && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="cr-amount" className="label-dark text-xs">Amount refunded (₹) *</label>
+                <input id="cr-amount" type="number" min="1" max={order.totalAmount} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} onWheel={(e) => e.target.blur()} className="input-dark w-full text-sm" />
+              </div>
+              <div>
+                <label htmlFor="cr-ref" className="label-dark text-xs">UTR / reference</label>
+                <input id="cr-ref" value={reference} onChange={(e) => setReference(e.target.value.slice(0, 100))} placeholder="Optional" className="input-dark w-full text-sm font-mono" />
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label htmlFor="cr-confirm" className="label-dark text-xs">Type <span className="font-mono text-white">{word}</span> to confirm</label>
+            <input
+              id="cr-confirm"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="off"
+              placeholder={word}
+              className="input-dark w-full text-sm font-mono tracking-wider"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={onClose} className="btn-dark flex-1 py-2.5 text-sm">Back</button>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isCancel ? 'bg-red-500 hover:bg-red-400 text-white' : 'bg-sky-500 hover:bg-sky-400 text-dark-900'}`}
+            >
+              {saving ? 'Saving…' : isCancel ? 'Cancel order' : 'Save refund'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+CancelRefundModal.propTypes = {
+  type:    PropTypes.oneOf(['cancel', 'refund']).isRequired,
+  order:   orderPropType.isRequired,
+  onClose: PropTypes.func.isRequired,
+  onDone:  PropTypes.func.isRequired,
 };
 
 // ─── Order Card (list row) ──────────────────────────────────────────────────────
-function OrderCard({ order, onUpdate, expanded, onToggle }) {
+function OrderCard({ order, onUpdate, onCancel, onRefund, expanded, onToggle }) {
   const addr = order.shippingAddress || {};
   const chip = paymentChip(order);
   const items = order.items || [];
   const thumb = items.find((it) => it.image)?.image;
   const itemCount = items.reduce((n, it) => n + (it.quantity || 1), 0);
   const awaitingAdmin = order.dpConfirmedAt && order.orderStatus === 'shipped';
-  const canUpdate = order.orderStatus !== 'delivered';
+  const canUpdate = !['delivered', 'cancelled'].includes(order.orderStatus);
+  const refundPending = order.orderStatus === 'cancelled' && order.cancellation?.refundStatus === 'pending';
 
   return (
     <div className={`rounded-2xl border transition-colors overflow-hidden ${expanded ? 'border-gold-500/30 bg-white/[0.02]' : 'border-white/[0.07] bg-dark-900/40 hover:border-white/15'}`}>
@@ -575,6 +787,8 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-gold-400 font-mono text-xs font-semibold">{displayOrderId(order)}</span>
               <span className={`${getOrderStatusColor(order.orderStatus)} !text-[10px] !px-2 !py-0.5`}>{STATUS_LABELS[order.orderStatus] || order.orderStatus?.replaceAll('_', ' ') || '—'}</span>
+              {order.stockIssue && <Chip className="text-red-300 bg-red-500/10 border-red-500/30" title={order.stockIssue}><FiAlertCircle size={11} />Stock issue</Chip>}
+              {refundPending && <Chip className="text-amber-300 bg-amber-500/10 border-amber-500/30" title="Order cancelled — refund not yet recorded"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />Refund pending</Chip>}
               {awaitingAdmin && <Chip className="text-amber-300 bg-amber-500/10 border-amber-500/25" title="Delivery partner confirmed — awaiting your confirmation"><span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />DP confirmed</Chip>}
             </div>
             <p className="text-white text-sm font-medium mt-0.5 truncate" title={items.map((it) => `${it.name} ×${it.quantity}`).join(', ')}>
@@ -618,7 +832,7 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
       </div>
 
       <AnimatePresence initial={false}>
-        {expanded && <OrderDetails order={order} />}
+        {expanded && <OrderDetails order={order} onCancel={onCancel} onRefund={onRefund} />}
       </AnimatePresence>
     </div>
   );
@@ -627,6 +841,8 @@ function OrderCard({ order, onUpdate, expanded, onToggle }) {
 OrderCard.propTypes = {
   order:    orderPropType.isRequired,
   onUpdate: PropTypes.func.isRequired,
+  onCancel: PropTypes.func.isRequired,
+  onRefund: PropTypes.func.isRequired,
   expanded: PropTypes.bool,
   onToggle: PropTypes.func.isRequired,
 };
@@ -646,6 +862,7 @@ export default function AdminOrders() {
   const [pages,           setPages]           = useState(1);
   const [stats,           setStats]           = useState(null);
   const [activeModal,     setActiveModal]     = useState(null);
+  const [actionModal,     setActionModal]     = useState(null); // { type: 'cancel' | 'refund', order }
   const [expandedRow,     setExpandedRow]     = useState(null);
   const [seenCounts,      setSeenCounts]      = useState({});
   const searchRef = useRef(null);
@@ -724,7 +941,8 @@ export default function AdminOrders() {
   // Failed-payment records stay hidden in normal views, but are shown when the admin is
   // explicitly looking at failed payments or searching for a specific customer's order.
   const showFailed = paymentFilter === 'failed' || statusFilter === 'needs_attention' || !!query;
-  const displayed = orders.filter(o => showFailed || !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus));
+  // Cancelled orders live in their own "Cancelled" tab (and in search), not in the working lists
+  const displayed = orders.filter(o => showFailed || (statusFilter === 'cancelled' && o.orderStatus === 'cancelled') || !['failed', 'returned_refunded', 'cancelled'].includes(o.orderStatus));
   const toProcess = (stats?.statusCounts?.confirmed || 0) + (stats?.statusCounts?.ready_to_ship || 0);
   const quickCount = (f) => (f.status ? stats?.statusCounts?.[f.status] : f.paymentStatus === 'paid' ? stats?.totalOrders : null);
 
@@ -861,6 +1079,8 @@ export default function AdminOrders() {
                 expanded={expandedRow === order._id}
                 onToggle={() => setExpandedRow(prev => prev === order._id ? null : order._id)}
                 onUpdate={() => { setActiveModal(order); setExpandedRow(null); }}
+                onCancel={() => setActionModal({ type: 'cancel', order })}
+                onRefund={() => setActionModal({ type: 'refund', order })}
               />
             ))}
           </div>
@@ -891,6 +1111,18 @@ export default function AdminOrders() {
             order={activeModal}
             onClose={() => setActiveModal(null)}
             onSaved={() => {
+              loadOrders();
+              orderService.getStats().then(r => setStats(r.data.stats)).catch(() => {});
+            }}
+          />
+        )}
+        {actionModal && (
+          <CancelRefundModal
+            type={actionModal.type}
+            order={actionModal.order}
+            onClose={() => setActionModal(null)}
+            onDone={() => {
+              setActionModal(null);
               loadOrders();
               orderService.getStats().then(r => setStats(r.data.stats)).catch(() => {});
             }}

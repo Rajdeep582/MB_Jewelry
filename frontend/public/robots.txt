@@ -1,0 +1,14 @@
+# M.B. Jewellers — https://mbjewellers.store
+User-agent: *
+Allow: /
+Disallow: /cart
+Disallow: /checkout
+Disallow: /orders
+Disallow: /profile
+Disallow: /custom-order
+Disallow: /custom-orders
+Disallow: /login
+Disallow: /register
+Disallow: /verify/
+
+Sitemap: https://mbjewellers.store/sitemap.xml

@@ -57,7 +57,7 @@ const orderSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true },
     orderStatus: {
       type: String,
-      enum: ['pending_payment', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'failed'],
+      enum: ['pending_payment', 'confirmed', 'ready_to_ship', 'shipped', 'delivered', 'failed', 'cancelled'],
       default: 'pending_payment',
     },
     deliveredAt: { type: Date },
@@ -82,6 +82,28 @@ const orderSchema = new mongoose.Schema(
     invoiceNumber:  { type: String, unique: true, sparse: true }, // e.g. MBJ/26-27/00001
     invoiceDate:    { type: Date },                               // = payment date
     invoiceClaimAt: { type: Date, select: false },                // internal: in-flight assignment lock
+    // ── Stock hold (utils/stockHold.js) — stock is reserved when payment STARTS ──
+    stockHeldAt:     { type: Date },              // set at create-payment (stock already taken)
+    stockReleasedAt: { type: Date },              // set once when the hold is returned (cancel / fail / expiry)
+    stockIssue:      { type: String, default: '' }, // paid but stock was gone (late payment) — admin must act
+
+    // ── Admin cancellation + manual refund record (rare; the shop has no online refunds) ──
+    // Set by POST /api/orders/:id/cancel, completed by POST /api/orders/:id/refund. Final — no restore.
+    cancellation: {
+      cancelledAt:     { type: Date },
+      cancelledBy:     { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+      cancelledByName: { type: String, default: '' },
+      reason:          { type: String, default: '' },
+      previousStatus:  { type: String, default: '' },  // status at the moment of cancelling
+      stockReturned:   { type: Boolean, default: false },
+      refundStatus:    { type: String, enum: ['pending', 'refunded', null], default: null },
+      refundAmount:    { type: Number },
+      refundReference: { type: String, default: '' },  // UTR / bank reference
+      refundNote:      { type: String, default: '' },
+      refundedAt:      { type: Date },
+      refundedBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'Admin' },
+      refundedByName:  { type: String, default: '' },
+    },
     trackingHistory: [trackingStepSchema],
   },
   { timestamps: true }

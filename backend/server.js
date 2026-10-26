@@ -12,7 +12,7 @@
  *   7. express.json()        — parse JSON request bodies (10 MB limit)
  *   8. cookieParser          — parse Cookie header (needed for refresh token + CSRF)
  *   9. mongoSanitize         — strip $ and . from request data → blocks NoSQL injection
- *  10. xss-clean             — sanitise HTML tags in request data → blocks XSS via body
+ *  10. xssSanitize           — escape "<" in request data → blocks XSS via body (replaces deprecated xss-clean)
  *  11. attachCsrfCookie      — sets XSRF-TOKEN cookie on every response
  *  12. validateCsrf          — checks x-csrf-token header on all /api mutation requests
  *  13. morgan (HTTP logging) — skipped in test env
@@ -24,7 +24,9 @@
  * Admin routes (/api/admin, /api/admin-auth) additionally pass through adminIpWhitelist.
  *
  * Background jobs (non-test env only):
- *   cleanupStaleOrders() — runs on startup + every 15 minutes via setInterval
+ *   cleanupStaleOrders() — every 2 min: asks Razorpay, confirms paid / fails unpaid (returns stock holds)
+ *   reconcileRecentPayments() — every 6 h: recovers payments marked failed that Razorpay shows as paid
+ *   purgeCancelledCustomOrderImages() — daily: deletes photos of custom orders cancelled > 30 days ago
  *
  * NODE_ENV=test: DB connection, stale-order cleanup, morgan, rate limiter all bypassed
  * so test files get a clean, deterministic server import.
@@ -68,7 +70,7 @@ const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const mongoSanitize = require('express-mongo-sanitize');
-const xss = require('xss-clean');
+const { xssSanitize } = require('./middleware/xssSanitize');
 
 const connectDB = require('./config/db');
 const logger = require('./utils/logger');
@@ -96,12 +98,25 @@ const { cleanupStaleOrders } = require('./utils/cleanupStaleOrders');
 // Connect to MongoDB, then start background jobs
 if (process.env.NODE_ENV !== 'test') {
   connectDB().then(() => {
-    // Run stale order cleanup immediately on startup, then every 15 minutes
-    cleanupStaleOrders();
-    setInterval(() => cleanupStaleOrders(), 15 * 60 * 1000);
+    // Stale-payment cleanup: immediately on startup, then every 2 minutes (stock holds expire after 15).
+    // It asks Razorpay before failing anything (utils/paymentReconcile.js). Never two runs at once.
+    const { reconcileRecentPayments } = require('./utils/paymentReconcile');
+    const singleFlight = (fn) => { let busy = false; return async () => { if (busy) return; busy = true; try { await fn(); } catch (e) { logger.error(`Background job failed: ${e.message}`); } finally { busy = false; } }; };
+    const runCleanup = singleFlight(() => cleanupStaleOrders());
+    const runSweep = singleFlight(() => reconcileRecentPayments());
+    runCleanup();
+    setInterval(runCleanup, 2 * 60 * 1000);
+    // Safety sweep: payments marked failed in the last 48 h that Razorpay shows as paid → recovered
+    setTimeout(runSweep, 60 * 1000);
+    setInterval(runSweep, 6 * 60 * 60 * 1000);
     // Give every paid order (incl. ones paid before invoice numbering existed) its invoice number
     require('./utils/invoiceNumber').backfillInvoiceNumbers().catch((e) => require('./utils/logger').error(`Invoice backfill failed: ${e.message}`));
-    logger.info('Stale-order cleanup scheduler started (every 15 min)');
+    // Daily: delete reference photos of custom orders cancelled more than 30 days ago
+    const { purgeCancelledCustomOrderImages } = require('./utils/customOrderImages');
+    const runPhotoPurge = singleFlight(() => purgeCancelledCustomOrderImages());
+    setTimeout(runPhotoPurge, 10 * 60 * 1000);
+    setInterval(runPhotoPurge, 24 * 60 * 60 * 1000);
+    logger.info('Payment cleanup (every 2 min) + Razorpay reconcile sweep (every 6 h) started');
   });
 }
 
@@ -174,7 +189,7 @@ app.use(cookieParser());
 app.use(mongoSanitize());
 
 // Data sanitization against XSS
-app.use(xss());
+app.use(xssSanitize());
 
 // ─── CSRF Protection ──────────────────────────────────────────────────────────
 // Attach CSRF cookie to all responses, validate on mutation requests
@@ -207,6 +222,24 @@ app.get('/api/ready', async (req, res) => {
   res.json({ success: true, message: 'Ready', dbState });
 });
 
+// ─── Sitemap (public; served as https://mbjewellers.store/sitemap.xml via Netlify) ───
+app.get('/api/sitemap.xml', require('./utils/sitemap').sitemapHandler);
+
+// ─── IP check (setup aid for TRUST_PROXY) ─────────────────────────────────────
+// Shows the caller ONLY their own address as this server sees it, plus the proxy chain.
+// Open it from a phone: "ipSeenByServer" must equal your real IP (whatismyip). If it shows a
+// 152.233.x.x / proxy address instead, raise TRUST_PROXY in Railway by 1 and check again.
+app.get('/api/ip-check', (req, res) => {
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    ipSeenByServer: req.ip,
+    forwardedChain: chain,
+    proxyHopsInChain: chain.length,
+    trustProxySetting: app.get('trust proxy'),
+  });
+});
+
 // ─── API Routes ───────────────────────────────────────────────────────────────
 const adminIpWhitelist = require('./middleware/adminIpWhitelist');
 
@@ -221,6 +254,7 @@ app.use('/api/custom-orders', customOrderRoutes);
 app.use('/api/delivery', deliveryRoutes);
 app.use('/api/dp-auth', dpAuthRoutes);
 app.use('/api/subscribe', require('./routes/subscriberRoutes'));
+app.use('/api/contact', require('./routes/contactRoutes'));
 
 // ─── Error Handling ───────────────────────────────────────────────────────────
 Sentry.setupExpressErrorHandler(app);

@@ -19,6 +19,7 @@
  */
 const express = require('express');
 const router = express.Router();
+const { validateSchema, schemas } = require('../middleware/validation');
 const {
   getProducts, getProduct, createProduct, updateProduct, deleteProduct, addReview, getFeaturedReviews,
 } = require('../controllers/productController');
@@ -42,6 +43,6 @@ router.get('/:id', getProduct);
 router.post('/', protect, adminOnly, uploadProductImages, createProduct);
 router.put('/:id', protect, adminOnly, uploadProductImages, updateProduct);
 router.delete('/:id', protect, adminOnly, deleteProduct);
-router.post('/:id/review', protect, addReview);
+router.post('/:id/review', protect, validateSchema(schemas.review), addReview);
 
 module.exports = router;

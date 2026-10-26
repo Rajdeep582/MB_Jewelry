@@ -11,7 +11,8 @@
  * Exports
  *   downloadInvoice(order)              — shop order (Order model shape)
  *   downloadCustomOrderInvoice(order)   — custom order (CustomOrder model shape)
- * Both return false (and open nothing) when the order is not paid yet.
+ *   downloadAdvanceReceipt(order)       — receipt voucher for a paid custom-order advance (70%)
+ * All return false (and open nothing) when the payment is not made yet.
  *
  * Seller GSTIN comes from VITE_SELLER_GSTIN (frontend .env). Without it the document is
  * titled "Invoice" instead of "Tax Invoice".
@@ -89,6 +90,8 @@ function fromOrder(order) {
   const p = order.payment || {};
   return {
     kind: 'order',
+    cancelled: order.orderStatus === 'cancelled',
+    refunded: order.cancellation?.refundStatus === 'refunded',
     invoiceNumber: order.invoiceNumber || fallbackNo(orderId),
     invoiceDate: order.invoiceDate || p.paidAt || order.createdAt,
     orderId,
@@ -132,6 +135,25 @@ function fromCustomOrder(order) {
   };
 }
 
+/** Receipt voucher (CGST Rule 50) for the 70% advance of a custom order. */
+function fromAdvanceReceipt(order) {
+  const base = fromCustomOrder(order);
+  const adv = order.advancePayment || {};
+  const advance = order.advanceAmount || 0;
+  return {
+    ...base,
+    receipt: true,
+    invoiceNumber: order.advanceReceiptNumber || `RV-${fallbackNo(base.orderId).slice(4)}`,
+    invoiceDate: order.advanceReceiptDate || adv.paidAt || order.updatedAt,
+    received: advance,
+    balance: Math.max(0, r2((order.totalAmount || 0) - advance)),
+    payments: adv.status === 'paid'
+      ? [{ label: 'Advance (70%)', amount: advance, paidAt: adv.paidAt, ref: adv.razorpayPaymentId, method: 'razorpay' }]
+      : [],
+    paid: adv.status === 'paid',
+  };
+}
+
 // ─── HTML ─────────────────────────────────────────────────────────────────────
 function renderInvoice(doc) {
   const a = Object.fromEntries(Object.entries(doc.address || {}).map(([k, v]) => [k, esc(v)]));
@@ -141,7 +163,9 @@ function renderInvoice(doc) {
   const cgst = intra ? r2(doc.tax / 2) : 0;
   const sgst = intra ? r2(doc.tax - cgst) : 0;
   const igst = intra ? 0 : r2(doc.tax);
-  const title = SELLER.gstin ? 'Tax Invoice' : 'Invoice';
+  const title = doc.receipt ? 'Receipt Voucher' : (SELLER.gstin ? 'Tax Invoice' : 'Invoice');
+  const noLabel = doc.receipt ? 'Receipt No.' : 'Invoice No.';
+  const dateLabel = doc.receipt ? 'Receipt Date' : 'Invoice Date';
   const methodLabel = (m) => (m === 'razorpay' || !m ? 'Online · Razorpay' : esc(m));
 
   // HSN-wise tax summary (tax shared in proportion to taxable value)
@@ -171,7 +195,7 @@ function renderInvoice(doc) {
       <div class="pay-amt">${rupees(p.amount)}</div>
     </div>`).join('');
 
-  const fileTitle = `Invoice ${doc.invoiceNumber.replaceAll('/', '-')} · ${SELLER.name}`;
+  const fileTitle = `${doc.receipt ? 'Advance Receipt' : 'Invoice'} ${doc.invoiceNumber.replaceAll('/', '-')} · ${SELLER.name}`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -208,6 +232,8 @@ function renderInvoice(doc) {
   .doc h1 { font-family: 'Playfair Display', Georgia, serif; font-size: 27px; font-weight: 700; color: var(--ink); letter-spacing: 1px; text-transform: uppercase; }
   .doc .copy { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
   .paid { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 12px; border-radius: 999px; background: #ECFDF3; border: 1px solid #A7E3BD; color: var(--green); font-weight: 700; font-size: 10.5px; letter-spacing: 1.5px; }
+  .paid.cancelled { background: #FEF2F2; border-color: #FCA5A5; color: #B91C1C; }
+  .paid.cancelled i { background: #B91C1C; }
   .paid i { width: 15px; height: 15px; border-radius: 50%; background: var(--green); color: #fff; font-style: normal; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; }
 
   /* Meta strip */
@@ -316,13 +342,15 @@ function renderInvoice(doc) {
         <div class="doc">
           <h1>${title}</h1>
           <div class="copy">Original for recipient</div>
-          <div class="paid"><i>✓</i> PAID</div>
+          ${doc.cancelled
+            ? `<div class="paid cancelled"><i>✕</i> CANCELLED${doc.refunded ? ' · REFUNDED' : ''}</div>`
+            : `<div class="paid"><i>✓</i> ${doc.receipt ? 'ADVANCE PAID' : 'PAID'}</div>`}
         </div>
       </div>
 
       <div class="meta">
-        <div><div class="k">Invoice No.</div><div class="v big mono">${esc(doc.invoiceNumber)}</div></div>
-        <div><div class="k">Invoice Date</div><div class="v">${dateLong(doc.invoiceDate)}</div></div>
+        <div><div class="k">${noLabel}</div><div class="v big mono">${esc(doc.invoiceNumber)}</div></div>
+        <div><div class="k">${dateLabel}</div><div class="v">${dateLong(doc.invoiceDate)}</div></div>
         <div><div class="k">${doc.kind === 'custom' ? 'Custom Order' : 'Order No.'}</div><div class="v mono">${esc(doc.orderId)}</div></div>
         <div><div class="k">Order Date</div><div class="v">${dateLong(doc.orderDate)}</div></div>
         <div><div class="k">Place of Supply</div><div class="v">${esc(pos.name)}${pos.code ? ` (${pos.code})` : ''}</div></div>
@@ -352,19 +380,24 @@ function renderInvoice(doc) {
         <tbody>${itemRows}</tbody>
       </table>
 
-      <table class="tax" style="margin-top:10px">
+      ${doc.receipt ? '' : `<table class="tax" style="margin-top:10px">
             <caption>Tax summary · HSN-wise</caption>
             <thead><tr><th>HSN</th><th>Taxable ₹</th>${intra ? '<th>CGST %</th><th>CGST ₹</th><th>SGST %</th><th>SGST ₹</th>' : '<th>IGST %</th><th>IGST ₹</th>'}<th>Tax ₹</th></tr></thead>
             <tbody>${hsnRows}</tbody>
             <tfoot><tr><td>Total</td><td class="r">${money(doc.taxable)}</td>${intra ? `<td></td><td class="r">${money(cgst)}</td><td></td><td class="r">${money(sgst)}</td>` : `<td></td><td class="r">${money(igst)}</td>`}<td class="r">${money(doc.tax)}</td></tr></tfoot>
-          </table>
+          </table>`}
 
       <div class="lower">
         <div>
           ${doc.payments.length ? `<div class="pays"><h3>Payments received</h3>${paymentRows}</div>` : ''}
         </div>
 
-        <div class="totals">
+        ${doc.receipt ? `<div class="totals">
+          <div class="trow"><span>Order value (incl. GST &amp; shipping)</span><span>${rupees(doc.total)}</span></div>
+          <div class="trow"><span>Balance due on completion (30%)</span><span>${rupees(doc.balance)}</span></div>
+          <div class="grand"><span class="gl">Advance received</span><span class="ga">${rupees(doc.received)}</span></div>
+          <div class="words"><b>In words:</b> ${amountInWords(doc.received)}</div>
+        </div>` : `<div class="totals">
           <div class="trow"><span>Taxable value</span><span>${rupees(doc.taxable)}</span></div>
           ${intra
             ? `<div class="trow"><span>CGST @ ${r2(rate / 2)}%</span><span>${rupees(cgst)}</span></div><div class="trow"><span>SGST @ ${r2(rate / 2)}%</span><span>${rupees(sgst)}</span></div>`
@@ -372,13 +405,14 @@ function renderInvoice(doc) {
           <div class="trow"><span>Shipping &amp; delivery${a.pincode ? ` (PIN ${a.pincode})` : ''}</span><span>${doc.shipping > 0 ? rupees(doc.shipping) : 'Free'}</span></div>
           <div class="grand"><span class="gl">Grand total</span><span class="ga">${rupees(doc.total)}</span></div>
           <div class="words"><b>In words:</b> ${amountInWords(doc.total)}</div>
-        </div>
+        </div>`}
       </div>
 
       <div class="foot">
         <div class="decl">
-          <b>Declaration:</b> We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.
-          Prices of goods exclude GST; GST is charged as shown above.<br/>This is a computer-generated invoice and does not require a physical signature.
+          ${doc.receipt
+            ? '<b>Note:</b> This receipt acknowledges the advance received against the made-to-order item described above. The tax invoice for the full value, showing GST, is issued when the balance is paid.<br/>This is a computer-generated receipt and does not require a physical signature.'
+            : '<b>Declaration:</b> We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct. Prices of goods exclude GST; GST is charged as shown above.<br/>This is a computer-generated invoice and does not require a physical signature.'}
         </div>
         <div class="sign">
           <div class="for">For ${esc(SELLER.name)}</div>
@@ -390,7 +424,7 @@ function renderInvoice(doc) {
 
     <div class="thanks">
       <div class="t1">Thank you for choosing M.B. Jewellers ✦</div>
-      <div class="t2">Questions about this invoice?<br/>${esc(SELLER.email)} · ${esc(SELLER.phone)}</div>
+      <div class="t2">Questions about this ${doc.receipt ? 'receipt' : 'invoice'}?<br/>${esc(SELLER.email)} · ${esc(SELLER.phone)}</div>
     </div>
   </div>
 
@@ -438,5 +472,9 @@ export function downloadCustomOrderInvoice(order) {
   return openInvoice(fromCustomOrder(order));
 }
 
+export function downloadAdvanceReceipt(order) {
+  return openInvoice(fromAdvanceReceipt(order));
+}
+
 // Exposed for tests
-export const __invoiceInternals = { amountInWords, placeOfSupply, fromOrder, fromCustomOrder, renderInvoice };
+export const __invoiceInternals = { amountInWords, placeOfSupply, fromOrder, fromCustomOrder, fromAdvanceReceipt, renderInvoice };

@@ -1,11 +1,11 @@
 const Joi = require('joi');
-const xss = require('xss-clean/lib/xss').clean;
+const { clean: xssClean } = require('./xssSanitize');
 
 /**
  * validateSchema — Joi schema validation + XSS sanitization middleware factory.
  *
  * FLOW per request:
- *   1. Sanitize req.body through xss-clean (strips script tags, event attrs)
+ *   1. Sanitize req.body ("<" → "&lt;", middleware/xssSanitize.js)
  *   2. Validate sanitized body against provided Joi schema
  *      - abortEarly=false: collect ALL field errors, not just the first
  *      - stripUnknown=true: remove fields not in schema (prevents mass assignment)
@@ -17,7 +17,7 @@ const xss = require('xss-clean/lib/xss').clean;
 const validateSchema = (schema) => (req, res, next) => {
   // Sanitize req.body for XSS first
   if (req.body) {
-    req.body = JSON.parse(xss(JSON.stringify(req.body)));
+    req.body = xssClean(req.body);
   }
 
   const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true });
@@ -228,5 +228,33 @@ const schemas = {
     password: Joi.string().required().messages({ 'string.empty': 'Password is required' }),
   }),
 };
+
+// ─── Payments / reviews ───────────────────────────────────────────────────────
+const OBJECT_ID = Joi.string().hex().length(24);
+// Text only; long gateway messages are cut to 300 characters (never rejected — a failure must always be recorded)
+const FAIL_REASON = Joi.string().trim().allow('').custom((v) => v.slice(0, 300));
+
+schemas.failPayment = Joi.object({
+  pendingOrderId: OBJECT_ID.required(),
+  reason: FAIL_REASON,
+});
+
+schemas.customFailPayment = Joi.object({
+  customOrderId: OBJECT_ID.required(),
+  phase: Joi.string().valid('advance', 'final').required(),
+  reason: FAIL_REASON,
+});
+
+schemas.review = Joi.object({
+  rating: Joi.number().integer().min(1).max(5).required(),
+  title: Joi.string().trim().max(100).allow(''),
+  comment: Joi.string().trim().min(10).max(1000).required(),
+});
+
+schemas.contactMessage = Joi.object({
+  name: Joi.string().trim().max(60).allow(''),
+  subject: Joi.string().trim().max(120).allow(''),
+  message: Joi.string().trim().min(5).max(1000).required(),
+});
 
 module.exports = { validateSchema, schemas };

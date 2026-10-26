@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
-import { loginAdmin, selectAuthLoading, selectAuthError, clearError, selectIsAdmin } from '../../store/authSlice';
+import { loginAdmin, verifyAdminLogin, resendAdminLoginCode, selectAuthLoading, selectAuthError, clearError, selectIsAdmin } from '../../store/authSlice';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiArrowLeft, FiArrowRight } from 'react-icons/fi';
+import { FiMail, FiLock, FiEye, FiEyeOff, FiShield, FiArrowLeft, FiArrowRight, FiKey, FiRefreshCw } from 'react-icons/fi';
 import BrandLogo from '../../components/common/BrandLogo';
 import StaffForgotPassword from '../../components/common/StaffForgotPassword';
 import toast from 'react-hot-toast';
@@ -19,6 +19,10 @@ export default function AdminLogin() {
   const [form, setForm]       = useState({ email: '', password: '' });
   const [showPwd, setShowPwd] = useState(false);
   const [forgot, setForgot]   = useState(false);
+  // 2-step: after the password is accepted the backend emails a 6-digit code
+  const [otpStep, setOtpStep] = useState(null); // { challenge, email (masked) }
+  const [otp, setOtp]         = useState('');
+  const [resending, setResending] = useState(false);
 
   if (isAdmin) return <Navigate to={ADMIN_BASE} replace />;
 
@@ -31,9 +35,50 @@ export default function AdminLogin() {
     e.preventDefault();
     const result = await dispatch(loginAdmin({ email: form.email, password: form.password }));
     if (loginAdmin.fulfilled.match(result)) {
-      navigate(ADMIN_BASE, { replace: true });
+      const { challenge, email, message } = result.payload || {};
+      if (!challenge) { toast.error('Login failed'); return; }
+      setOtp('');
+      setOtpStep({ challenge, email });
+      toast.success(message || 'Code sent to your email');
     } else if (loginAdmin.rejected.match(result)) {
       toast.error(result.payload || 'Login failed');
+    }
+  };
+
+  const backToPassword = (msg) => {
+    dispatch(clearError());
+    setOtpStep(null);
+    setOtp('');
+    setForm((f) => ({ ...f, password: '' }));
+    if (msg) toast.error(msg);
+  };
+
+  const handleVerify = async (e) => {
+    e.preventDefault();
+    if (otp.length !== 6) return;
+    const result = await dispatch(verifyAdminLogin({ email: form.email, challenge: otpStep.challenge, otp }));
+    if (verifyAdminLogin.fulfilled.match(result)) {
+      navigate(ADMIN_BASE, { replace: true });
+    } else if (result.meta?.code === 'LOGIN_EXPIRED') {
+      backToPassword(result.payload || 'Code expired. Please sign in again.');
+    } else {
+      setOtp('');
+      toast.error(result.payload || 'Incorrect code');
+    }
+  };
+
+  const handleResend = async () => {
+    setResending(true);
+    dispatch(clearError());
+    const result = await dispatch(resendAdminLoginCode({ email: form.email, challenge: otpStep.challenge }));
+    setResending(false);
+    if (resendAdminLoginCode.fulfilled.match(result)) {
+      setOtp('');
+      toast.success(result.payload?.message || 'New code sent');
+    } else if (result.meta?.code === 'LOGIN_EXPIRED') {
+      backToPassword(result.payload || 'Session expired. Please sign in again.');
+    } else {
+      toast.error(result.payload || 'Could not resend code');
     }
   };
 
@@ -74,8 +119,12 @@ export default function AdminLogin() {
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gold-500/25 bg-gold-500/[0.06] text-gold-400 text-[10px] uppercase tracking-[0.25em] font-semibold">
                 <FiShield size={11} /> Admin Portal
               </span>
-              <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-[1.75rem] font-semibold leading-tight pt-0 mt-3">Sign In</h1>
-              <p className="text-dark-400 text-xs mt-1">Welcome back — manage M.B. Jewellers</p>
+              <h1 className="font-['Cormorant_Garamond',Georgia,serif] text-white text-[1.75rem] font-semibold leading-tight pt-0 mt-3">{otpStep ? 'Verify It’s You' : 'Sign In'}</h1>
+              <p className="text-dark-400 text-xs mt-1">
+                {otpStep
+                  ? <>Enter the 6-digit code sent to <span className="text-gold-300">{otpStep.email}</span></>
+                  : 'Welcome back — manage M.B. Jewellers'}
+              </p>
             </div>
 
             <AnimatePresence>
@@ -91,6 +140,54 @@ export default function AdminLogin() {
               )}
             </AnimatePresence>
 
+            {otpStep ? (
+            <form onSubmit={handleVerify} className="space-y-3.5 mt-6">
+              <div className="space-y-1.5">
+                <label htmlFor="admin-otp" className="text-[11px] text-dark-400 uppercase tracking-wider font-medium">Login code</label>
+                <div className="relative group">
+                  <FiKey size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-dark-500 group-focus-within:text-gold-400 transition-colors" />
+                  <input
+                    id="admin-otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => { dispatch(clearError()); setOtp(e.target.value.replace(/\D/g, '').slice(0, 6)); }}
+                    placeholder="••••••"
+                    className={`${inputCls} tracking-[0.5em] text-center font-semibold tabular-nums`}
+                  />
+                </div>
+                <p className="text-[11px] text-dark-500">Code is valid for 10 minutes. Check spam if not received.</p>
+              </div>
+
+              <motion.button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                whileTap={loading ? undefined : { scale: 0.98 }}
+                className="group w-full btn-gold py-2.5 text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed !mt-5"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-dark-900/30 border-t-dark-900 rounded-full animate-spin" />
+                    Verifying…
+                  </span>
+                ) : (
+                  <>Verify &amp; Sign In <FiArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" /></>
+                )}
+              </motion.button>
+
+              <div className="flex items-center justify-between text-[11px] pt-1">
+                <button type="button" onClick={() => backToPassword()} className="inline-flex items-center gap-1 text-dark-400 hover:text-gold-400 transition-colors">
+                  <FiArrowLeft size={11} /> Use different account
+                </button>
+                <button type="button" onClick={handleResend} disabled={resending || loading} className="inline-flex items-center gap-1 text-gold-500 hover:text-gold-400 font-medium transition-colors disabled:opacity-50">
+                  <FiRefreshCw size={11} className={resending ? 'animate-spin' : ''} /> {resending ? 'Sending…' : 'Resend code'}
+                </button>
+              </div>
+            </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5 mt-6">
               <div className="space-y-1.5">
                 <label htmlFor="admin-email" className="text-[11px] text-dark-400 uppercase tracking-wider font-medium">Email</label>
@@ -155,6 +252,7 @@ export default function AdminLogin() {
                 )}
               </motion.button>
             </form>
+            )}
             </>)}
           </div>
 

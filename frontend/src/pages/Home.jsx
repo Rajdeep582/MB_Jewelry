@@ -710,7 +710,6 @@ export default function Home() {
   };
 
   useEffect(() => {
-    document.title = 'M.B. JEWELLERS — Luxury Fine Jewelry';
     dispatch(fetchFeaturedProducts());
     // To fetch from DB instead of static data:
     // reviewService.getFeatured().then(res => { if (res.data.success) setTestimonials(res.data.reviews); }).catch(() => {});

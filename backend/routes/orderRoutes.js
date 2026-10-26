@@ -29,6 +29,7 @@
  */
 const express = require('express');
 const router = express.Router();
+const { validateSchema, schemas } = require('../middleware/validation');
 const {
   createPayment,
   getCheckoutQuote,
@@ -42,6 +43,8 @@ const {
   updateOrderStatus,
   getStats,
   getDeliveryStats,
+  cancelOrder,
+  markOrderRefunded,
 } = require('../controllers/orderController');
 const { protect, adminOnly, userOnly } = require('../middleware/auth');
 const { paymentLimiter } = require('../middleware/rateLimiter');
@@ -51,7 +54,7 @@ router.get('/shipping-zones',    getShippingZones);                       // pub
 router.post('/quote',            protect, userOnly, getCheckoutQuote);   // display-only total (same calc as create-payment)
 router.post('/create-payment',   paymentLimiter, protect, userOnly, createPayment);
 router.post('/verify-payment',   paymentLimiter, protect, userOnly, verifyPayment);
-router.post('/fail-payment',     protect, userOnly, failPayment);
+router.post('/fail-payment',     protect, userOnly, validateSchema(schemas.failPayment), failPayment);
 
 // Recovery — users only
 router.post('/:id/retry-verify', protect, userOnly, retryVerifyPayment);
@@ -65,5 +68,7 @@ router.get('/delivery-stats', protect, adminOnly, getDeliveryStats);
 router.get('/',               protect, adminOnly, getAllOrders);
 router.get('/:id',            protect, getOrder);
 router.put('/:id/status',     protect, adminOnly, updateOrderStatus);
+router.post('/:id/cancel',    protect, adminOnly, cancelOrder);        // admin: cancel a paid order (final)
+router.post('/:id/refund',    protect, adminOnly, markOrderRefunded);  // admin: record the manual refund
 
 module.exports = router;

@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiFileText, FiAlertCircle, FiMapPin, FiPhoneCall, FiShoppingBag, FiCheckCircle, FiPackage, FiSlash } from 'react-icons/fi';
 
@@ -48,9 +47,7 @@ function Clause({ n, label, children }) {
 
 export default function Terms() {
 
-  useEffect(() => {
-    document.title = 'Terms & Conditions — M.B. JEWELLERS';
-  }, []);
+  // Page title / description / canonical: components/common/RouteSeo.jsx
 
 
   return (

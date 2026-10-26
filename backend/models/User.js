@@ -103,6 +103,8 @@ const userSchema = new mongoose.Schema(
     // Strict replacement for signed short-lived JWT strategy
     pwdResetTokenHash: { type: String, select: false },
     pwdResetTokenExpires: { type: Date, select: false },
+    pwdResetFails: { type: Number, default: 0, select: false },      // wrong reset codes in the current 24 h window (utils/resetGuard.js)
+    pwdResetFailsSince: { type: Date, select: false },
     loginAttempts: { type: Number, required: true, default: 0 },
     lockUntil: { type: Date },
     lastLogin: { type: Date },

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   FiPackage, FiChevronRight, FiTruck, FiCheck, FiAlertCircle,
   FiRefreshCw, FiClock, FiMapPin, FiPhone, FiUser, FiCreditCard,
-  FiCalendar, FiHash, FiChevronDown, FiArrowLeft, FiFilter, FiDownload,
+  FiCalendar, FiHash, FiChevronDown, FiArrowLeft, FiDownload,
 } from 'react-icons/fi';
 import { orderService } from '../services/services';
 import { formatPrice, getOrderStatusColor, getPaymentStatusColor, resolveImageUrl } from '../utils/helpers';
@@ -20,6 +20,7 @@ const STATUS_LABELS = {
   ready_to_ship:    'Ready to Ship',
   shipped:          'Shipped',
   delivered:        'Delivered',
+  cancelled:        'Cancelled',
 };
 
 const STATUS_DESCRIPTIONS = {
@@ -39,6 +40,7 @@ const FILTER_OPTIONS = [
   { value: 'ready_to_ship',  label: 'Ready to Ship' },
   { value: 'shipped',        label: 'Shipped' },
   { value: 'delivered',      label: 'Delivered' },
+  { value: 'cancelled',      label: 'Cancelled' },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -251,20 +253,35 @@ function OrderDetailView({ id }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
-            <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize`}>
-              {order.payment?.status}
-            </span>
-            <span className={getOrderStatusColor(order.orderStatus)}>
-              {STATUS_LABELS[order.orderStatus] || order.orderStatus}
-            </span>
+            {order.payment?.status === 'failed' ? (
+              <span className={getPaymentStatusColor('failed')}>Payment failed</span>
+            ) : (
+              <>
+                <span className={`${getPaymentStatusColor(order.payment?.status)} capitalize`}>
+                  {order.payment?.status}
+                </span>
+                <span className={getOrderStatusColor(order.orderStatus)}>
+                  {STATUS_LABELS[order.orderStatus] || order.orderStatus}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Progress stepper */}
-        <OrderProgressStepper order={order} />
+        {/* Progress stepper — or the cancellation notice */}
+        {order.orderStatus === 'cancelled' ? (
+          <CancelledNotice order={order} />
+        ) : order.payment?.status === 'failed' ? (
+          <p className="mt-4 flex items-center gap-2 text-sm text-dark-400">
+            <FiAlertCircle size={14} className="text-red-400 flex-shrink-0" />
+            Payment was not completed, so this order was not placed.
+          </p>
+        ) : (
+          <OrderProgressStepper order={order} />
+        )}
 
-        {/* Admin note — latest tracking comment (hidden when delivered) */}
-        {order.orderStatus !== 'delivered' && (() => {
+        {/* Admin note — latest tracking comment (hidden when delivered / cancelled) */}
+        {!['delivered', 'cancelled'].includes(order.orderStatus) && (() => {
           const latest = [...(order.trackingHistory || [])].reverse().find(e => e.comment?.trim());
           return latest ? (
             <div className="mt-3 flex items-start gap-2 text-sm bg-gold-500/5 border border-gold-500/15 rounded-xl px-4 py-3">
@@ -275,7 +292,7 @@ function OrderDetailView({ id }) {
         })()}
 
         {/* Invoice download */}
-        {order.payment?.status === 'paid' && (
+        {(order.payment?.status === 'paid' || order.payment?.status === 'refunded') && (
           <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-dark-500">
               Tax invoice{order.invoiceNumber ? <> <span className="font-mono text-dark-300">{order.invoiceNumber}</span></> : ''} · issued on payment
@@ -296,10 +313,10 @@ function OrderDetailView({ id }) {
           <div className="flex items-start gap-3 mb-4">
             <FiAlertCircle className="text-amber-400 flex-shrink-0 mt-0.5" size={20} />
             <div>
-              <p className="text-white font-medium mb-1">Payment status unclear</p>
+              <p className="text-white font-medium mb-1">Was money deducted?</p>
               <p className="text-dark-400 text-sm leading-relaxed">
-                Your payment may have been captured by Razorpay but we couldn't confirm it due to a
-                network issue. Click below to securely check and recover your order.
+                If your bank or UPI app shows this payment as successful, tap below — we will check with
+                Razorpay and confirm your order. If no money was taken, you can ignore this.
               </p>
             </div>
           </div>
@@ -502,12 +519,37 @@ function OrderDetailView({ id }) {
   );
 }
 
+/** CancelledNotice — shown instead of the progress steps when the shop cancelled the order. */
+function CancelledNotice({ order }) {
+  const c = order.cancellation || {};
+  const refunded = c.refundStatus === 'refunded';
+  return (
+    <div className="mt-4 rounded-xl border border-red-500/25 bg-red-500/[0.06] px-4 py-3 space-y-1.5 text-sm">
+      <p className="text-red-300 font-medium flex items-center gap-2">
+        <FiAlertCircle size={15} /> This order was cancelled{c.cancelledAt ? ` on ${formatDateTime(c.cancelledAt)}` : ''}.
+      </p>
+      {c.reason && <p className="text-dark-300"><span className="text-dark-500">Reason:</span> {c.reason}</p>}
+      <p className="text-dark-300">
+        <span className="text-dark-500">Refund:</span>{' '}
+        {refunded
+          ? <>₹{Number(c.refundAmount || order.totalAmount).toLocaleString('en-IN')} sent back{c.refundedAt ? ` on ${formatDateTime(c.refundedAt)}` : ''}{c.refundReference ? <> · ref <span className="font-mono">{c.refundReference}</span></> : ''}</>
+          : 'being arranged by the shop — they will contact you.'}
+      </p>
+      <p className="text-dark-500 text-xs">To get this piece, please place a new order.</p>
+    </div>
+  );
+}
+
+CancelledNotice.propTypes = {
+  order: PropTypes.object.isRequired,
+};
+
 OrderDetailView.propTypes = {
   id: PropTypes.string.isRequired,
 };
 
 // ─── Tag components ───────────────────────────────────────────────────────────
-function PayTag({ status }) {
+function PayTag({ status, label }) {
   const map = {
     paid:     { bg: 'bg-emerald-500/12', text: 'text-emerald-400', border: 'border-emerald-500/30', dot: 'bg-emerald-400' },
     pending:  { bg: 'bg-amber-500/12',   text: 'text-amber-400',   border: 'border-amber-500/30',   dot: 'bg-amber-400' },
@@ -518,13 +560,14 @@ function PayTag({ status }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-semibold tracking-wide ${c.bg} ${c.text} ${c.border}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-      <span className="capitalize">{status}</span>
+      <span className={label ? '' : 'capitalize'}>{label || status}</span>
     </span>
   );
 }
 
 PayTag.propTypes = {
   status: PropTypes.string.isRequired,
+  label: PropTypes.string,
 };
 
 function StatusTag({ status }) {
@@ -655,8 +698,14 @@ function OrderCard({ order }) {
           {/* Bottom: tags + progress + price */}
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <PayTag status={order.payment?.status} />
-              <StatusTag status={order.orderStatus} />
+              {order.payment?.status === 'failed' ? (
+                <PayTag status="failed" label="Payment failed" />
+              ) : (
+                <>
+                  <PayTag status={order.payment?.status} />
+                  <StatusTag status={order.orderStatus} />
+                </>
+              )}
             </div>
             <div className="text-right flex-shrink-0">
               <p className="font-jakarta text-dark-500 text-[10px] uppercase tracking-[0.18em]">Total</p>
@@ -693,7 +742,6 @@ OrderCard.propTypes = {
 function OrdersListView() {
   const [allOrders, setAllOrders] = useState([]);
   const [loading,   setLoading]   = useState(true);
-  const [filter,    setFilter]    = useState('all');
 
   useEffect(() => {
     document.title = 'My Orders — M.B. JEWELLERS';
@@ -702,11 +750,6 @@ function OrdersListView() {
       .catch(() => toast.error('Failed to load orders.'))
       .finally(() => setLoading(false));
   }, []);
-
-  const filtered = useMemo(() => {
-    if (filter === 'all') return allOrders;
-    return allOrders.filter(o => o.orderStatus === filter);
-  }, [allOrders, filter]);
 
   const counts = useMemo(() => {
     const c = { all: allOrders.length };
@@ -738,19 +781,9 @@ function OrdersListView() {
         </div>
       );
     }
-    if (filtered.length === 0) {
-      return (
-        <div className="text-center py-16">
-          <p className="font-jakarta text-dark-400 text-sm">No orders with status &quot;{FILTER_OPTIONS.find(f => f.value === filter)?.label}&quot;</p>
-          <button onClick={() => setFilter('all')} className="text-gold-400 text-sm mt-2 hover:text-gold-300">
-            Clear filter →
-          </button>
-        </div>
-      );
-    }
     return (
       <div className="space-y-3.5">
-        {filtered.map(order => <OrderCard key={order._id} order={order} />)}
+        {allOrders.map(order => <OrderCard key={order._id} order={order} />)}
       </div>
     );
   };
@@ -774,40 +807,6 @@ function OrdersListView() {
               <p className="font-jakarta text-white text-2xl sm:text-[1.75rem] font-bold leading-none tabular-nums">{value}</p>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Filter bar */}
-      {!loading && allOrders.length > 0 && (
-        <div className="mb-5">
-          <div className="flex items-center gap-2 mb-2.5">
-            <FiFilter size={12} className="text-gold-600" />
-            <span className="font-jakarta text-dark-400 text-[11px] uppercase tracking-[0.2em] font-semibold">Filter by status</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {FILTER_OPTIONS.map(({ value, label }) => {
-              const count = counts[value] || 0;
-              if (value !== 'all' && count === 0) return null;
-              return (
-                <button
-                  key={value}
-                  onClick={() => setFilter(value)}
-                  className={`font-jakarta px-3.5 py-1.5 rounded-full text-[13px] font-medium border transition-all duration-300 flex items-center gap-2 ${
-                    filter === value
-                      ? 'bg-gradient-to-r from-gold-500/20 to-gold-600/10 border-gold-500/60 text-gold-300 shadow-[0_0_18px_rgba(212,175,55,0.15)]'
-                      : 'bg-white/[0.02] border-white/10 text-dark-300 hover:border-gold-500/30 hover:text-white'
-                  }`}
-                >
-                  {label}
-                  <span className={`text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center ${
-                    filter === value ? 'bg-gold-500 text-dark-900' : 'bg-white/5 text-dark-400'
-                  }`}>
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
         </div>
       )}
 

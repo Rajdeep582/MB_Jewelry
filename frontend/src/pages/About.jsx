@@ -702,7 +702,7 @@ function ClosingCta() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function About() {
   useScriptFont();
-  useEffect(() => { document.title = 'About Us — M.B. JEWELLERS'; }, []);
+  // Page title / description / canonical: components/common/RouteSeo.jsx
 
   return (
     <div className="min-h-screen pt-16 bg-dark-900 overflow-x-clip">

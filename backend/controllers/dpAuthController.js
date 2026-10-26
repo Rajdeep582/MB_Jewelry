@@ -12,6 +12,7 @@ const {
 } = require('../utils/generateToken');
 const { rotateRefreshSession } = require('../utils/refreshSessions');
 const logger = require('../utils/logger');
+const { LOGIN_FAILED, otherPortalHint, equaliseTiming } = require('../utils/portalHint');
 const { makePasswordResetHandlers } = require('../utils/staffPasswordReset');
 
 const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
@@ -25,7 +26,7 @@ const hashToken = (t) => crypto.createHash('sha256').update(t).digest('hex');
  * Account is not usable until admin calls assignDeliveryRole.
  *
  * CROSS-PORTAL CHECK:
- *   If the email is already in User collection → 403 WRONG_PORTAL; an Admin address gets the plain 400 (admin accounts are never revealed).
+ *   An email already used by a customer or admin gets the same plain 400 as a taken partner email (never reveals which).
  *   Each portal (user/admin/dp) is a separate collection — no shared accounts.
  *
  * DOES NOT send verification email — DP registration is approved manually by admin.
@@ -41,13 +42,10 @@ const registerDP = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Email already registered.' });
   }
 
-  // Block if email belongs to another portal
+  // Block if email belongs to another portal — same reply as any taken address (never reveals
+  // whether it is a customer or an admin account)
   const emailLower = email.toLowerCase();
-  if (await User.findOne({ email: emailLower }).lean()) {
-    return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
-  }
-  // Admin addresses get the same reply as any taken address (never reveal admin accounts here)
-  if (await Admin.findOne({ email: emailLower }).lean()) {
+  if (await User.findOne({ email: emailLower }).lean() || await Admin.findOne({ email: emailLower }).lean()) {
     return res.status(400).json({ success: false, message: 'Email already registered.' });
   }
 
@@ -105,13 +103,13 @@ const loginDP = async (req, res) => {
   const dp = await DeliveryPartner.findOne({ email: email.toLowerCase() }).select('+password +sessions');
   if (!dp || dp.isLocked()) {
     if (!dp) {
-      const emailLower = email.toLowerCase();
-      if (await User.findOne({ email: emailLower }).lean()) {
-        return res.status(403).json({ success: false, message: 'You are registered as Customer. Please login through the Customer portal.', code: 'WRONG_PORTAL' });
-      }
-      // Admin addresses fall through to the generic 401 (never reveal admin accounts here)
+      // Portal hint only when the password is right for the customer account (never reveals accounts;
+      // admin accounts are never hinted here). Otherwise the same reply + timing as a wrong password.
+      const hint = await otherPortalHint(email, password, ['user']);
+      if (hint) return res.status(403).json({ success: false, message: hint, code: 'WRONG_PORTAL' });
+      await equaliseTiming(password);
     }
-    return res.status(401).json({ success: false, message: 'Invalid credentials or account locked.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   const isMatch = await dp.comparePassword(password);
@@ -121,7 +119,7 @@ const loginDP = async (req, res) => {
       dp.lockUntil = Date.now() + 15 * 60 * 1000;
     }
     await dp.save({ validateBeforeSave: false });
-    return res.status(401).json({ success: false, message: 'Invalid credentials.' });
+    return res.status(401).json({ success: false, message: LOGIN_FAILED });
   }
 
   if (!dp.isActive) {

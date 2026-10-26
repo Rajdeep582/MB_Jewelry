@@ -14,6 +14,10 @@ const { applyLivePrice, getGstRate } = require('../utils/pricingUtils');
 const { getPricingMap } = require('../utils/pricingCache');
 const { buildOrderSearch } = require('../utils/orderSearch');
 const { assignInvoiceNumber } = require('../utils/invoiceNumber');
+const { holdStock, withTransaction, failOrderAndReleaseStock, takeStockForConfirmedOrder, qtyByProduct } = require('../utils/stockHold');
+const { sendAdminAlert } = require('../utils/email');
+const { secureCapture } = require('../utils/paymentCapture');
+const { checkRazorpayOrder } = require('../utils/paymentReconcile');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -190,7 +194,9 @@ async function validateAndBuildItems(items) {
     }
     const totalQty = qtyByProduct.get(String(item.productId)) || qty;
     if (product.stock < totalQty) {
-      errors.push(`Insufficient stock for "${product.name}" (available: ${product.stock})`);
+      errors.push(product.stock > 0
+        ? `Only ${product.stock} of "${product.name}" available right now`
+        : `"${product.name}" is sold out or reserved by another customer right now. Please check again in about 15 minutes.`);
       continue;
     }
 
@@ -215,15 +221,18 @@ async function validateAndBuildItems(items) {
 }
 
 /**
- * Core atomic commit: decrement stock, confirm order, update transaction.
+ * Core atomic commit: confirm order, settle stock, update transaction.
  * Shared by verifyPayment, handleWebhook, and retryVerifyPayment.
  *
  * IDEMPOTENT + RACE-SAFE: browser verify, the Razorpay webhook and retry-verify can all fire
  * for the same payment at the same moment. The order is CLAIMED first with a conditional
- * update (payment.status != 'paid'); only one caller can win. A loser (claim returns null,
- * or a WriteConflict from the parallel transaction) re-reads the order and reports success
- * if it is now paid — it never overwrites a confirmed order with 'failed' and never
- * decrements stock twice.
+ * update (payment.status != 'paid'); only one caller can win. Write conflicts (e.g. with a
+ * parallel cancel/expiry releasing the stock hold) are retried by withTransaction.
+ *
+ * STOCK (utils/stockHold.js): stock was already reserved at create-payment, so normally nothing
+ * is decremented here. If the hold had been released (payment arrived after cancel/expiry) the
+ * stock is taken again when available; if it is gone the order is STILL confirmed (the money is
+ * real) and flagged `stockIssue` + admins are emailed. A captured payment is never marked failed.
  */
 async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId) {
   const alreadyPaid = async () => {
@@ -231,104 +240,100 @@ async function atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySigna
     return fresh?.payment?.status === 'paid' ? fresh : null;
   };
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+  let outcome;
   try {
-    // 1. Claim + confirm the order (only if not already paid)
-    const confirmedOrder = await Order.findOneAndUpdate(
-      { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
-      {
-        orderStatus: 'confirmed',
-        'payment.razorpayPaymentId': razorpayPaymentId,
-        'payment.razorpaySignature': razorpaySignature,
-        'payment.status': 'paid',
-        'payment.paidAt': new Date(),
-        'payment.failReason': '',
-        $push: {
-          trackingHistory: {
-            status: 'confirmed',
-            comment: 'Payment verified successfully online.',
-            timestamp: new Date(),
+    outcome = await withTransaction(async (session) => {
+      // 1. Claim + confirm the order (only if not already paid)
+      // Never re-open an order that was paid, refunded or cancelled by admin
+      const confirmedOrder = await Order.findOneAndUpdate(
+        { _id: pendingOrder._id, 'payment.status': { $nin: ['paid', 'refunded'] }, orderStatus: { $ne: 'cancelled' } },
+        {
+          orderStatus: 'confirmed',
+          'payment.razorpayPaymentId': razorpayPaymentId,
+          'payment.razorpaySignature': razorpaySignature,
+          'payment.status': 'paid',
+          'payment.paidAt': new Date(),
+          'payment.failReason': '',
+          $push: {
+            trackingHistory: {
+              status: 'confirmed',
+              comment: 'Payment verified successfully online.',
+              timestamp: new Date(),
+            },
           },
         },
-      },
-      { new: true, session }
-    );
-    if (!confirmedOrder) {
-      await session.abortTransaction();
-      session.endSession();
-      const paid = await alreadyPaid();
-      if (paid) return { success: true, order: paid, alreadyPaid: true };
-      return { success: false, error: 'Order not found' };
-    }
-
-    // 2. Decrement stock atomically — single findOneAndUpdate with stock >= quantity guard
-    //    Prevents TOCTOU race condition where two concurrent payments both pass the read check
-    for (const item of pendingOrder.items) {
-      const updated = await Product.findOneAndUpdate(
-        { _id: item.product, stock: { $gte: item.quantity } },
-        { $inc: { stock: -item.quantity, sold: item.quantity } },
         { new: true, session }
       );
-      if (!updated) {
-        const p = await Product.findById(item.product).session(session).lean();
-        if (!p) throw new Error(`Product ${item.product} no longer exists`);
-        throw new Error(`Insufficient stock for "${p.name}" (available: ${p.stock})`);
+      if (!confirmedOrder) return { claimed: false };
+
+      // 2. Stock — already held at create-payment; re-take only if the hold was released
+      const { stockIssue } = await takeStockForConfirmedOrder(confirmedOrder, session);
+      if (stockIssue) {
+        await Order.updateOne(
+          { _id: confirmedOrder._id },
+          {
+            $set: { stockIssue },
+            $push: { trackingHistory: { status: 'confirmed', comment: `⚠ ${stockIssue}. Restock the item or refund the customer.`, timestamp: new Date() } },
+          },
+          { session }
+        );
+        confirmedOrder.stockIssue = stockIssue;
       }
-    }
 
-    // 3. Update Transaction to success
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId: String(razorpayOrderId) },
-      {
-        order: pendingOrder._id,
-        orderType: 'Order',
-        razorpayPaymentId,
-        razorpaySignature,
-        status: 'success',
-        gatewayResponse: { razorpayOrderId, razorpayPaymentId },
-      },
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    logger.info(`Order confirmed atomically: order=${pendingOrder._id}, payment=${razorpayPaymentId}`);
-
-    // Tax invoice number — after the commit so it can never hold up or undo a confirmed payment
-    const invoice = await assignInvoiceNumber(Order, confirmedOrder._id, confirmedOrder.payment?.paidAt);
-    if (invoice) Object.assign(confirmedOrder, invoice);
-    return { success: true, order: confirmedOrder };
+      // 3. Update Transaction to success
+      await Transaction.findOneAndUpdate(
+        { razorpayOrderId: String(razorpayOrderId) },
+        {
+          order: pendingOrder._id,
+          orderType: 'Order',
+          razorpayPaymentId,
+          razorpaySignature,
+          status: 'success',
+          gatewayResponse: { razorpayOrderId, razorpayPaymentId },
+        },
+        { session }
+      );
+      return { claimed: true, order: confirmedOrder, stockIssue };
+    });
   } catch (err) {
-    await session.abortTransaction().catch(() => {});
-    session.endSession();
-
     // A parallel caller (webhook / second verify) may have confirmed it — that is success.
     const paid = await alreadyPaid();
-    if (paid) {
-      logger.info(`atomicConfirmOrder: order=${pendingOrder._id} already confirmed by a parallel call`);
-      return { success: true, order: paid, alreadyPaid: true };
-    }
-
-    // Genuine failure (e.g. stock ran out after payment) — record it, never touching a paid order
-    await Order.findOneAndUpdate(
+    if (paid) return { success: true, order: paid, alreadyPaid: true };
+    // Unexpected DB failure. The payment is real, so the order is NOT marked failed: it stays
+    // retryable (webhook / retry-verify); the reason is noted for support.
+    await Order.updateOne(
       { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
-      { 'payment.status': 'failed', 'payment.failReason': err.message }
-    );
-    await Transaction.findOneAndUpdate(
-      { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
-      { status: 'failed', failReason: err.message }
-    );
-
-    // The winning transaction may have committed while we were writing the failure
-    const paidLate = await alreadyPaid();
-    if (paidLate) return { success: true, order: paidLate, alreadyPaid: true };
-
-    logger.error(`atomicConfirmOrder rollback: order=${pendingOrder._id}, ${err.message}`);
+      { 'payment.failReason': `Confirmation error: ${err.message}` }
+    ).catch(() => {});
+    logger.error(`atomicConfirmOrder failed: order=${pendingOrder._id}, ${err.message}`);
     return { success: false, error: err.message };
   }
+
+  if (!outcome.claimed) {
+    const paid = await alreadyPaid();
+    if (paid) return { success: true, order: paid, alreadyPaid: true };
+    return { success: false, error: 'Order not found' };
+  }
+
+  const confirmedOrder = outcome.order;
+  logger.info(`Order confirmed atomically: order=${pendingOrder._id}, payment=${razorpayPaymentId}`);
+
+  if (outcome.stockIssue) {
+    sendAdminAlert(
+      `Action needed: paid order without stock (${confirmedOrder.orderId || confirmedOrder._id})`,
+      `<p>A payment was received after the stock hold had expired, and the item is no longer in stock.</p>
+       <p><b>Order:</b> ${confirmedOrder.orderId || confirmedOrder._id}<br/>
+       <b>Razorpay payment:</b> ${razorpayPaymentId}<br/>
+       <b>Amount:</b> ₹${confirmedOrder.totalAmount}<br/>
+       <b>Problem:</b> ${outcome.stockIssue}</p>
+       <p>Please restock the item or refund the customer from the Razorpay dashboard.</p>`
+    ).catch((e) => logger.error(`Admin alert email failed: ${e.message}`));
+  }
+
+  // Tax invoice number — after the commit so it can never hold up or undo a confirmed payment
+  const invoice = await assignInvoiceNumber(Order, confirmedOrder._id, confirmedOrder.payment?.paidAt);
+  if (invoice) Object.assign(confirmedOrder, invoice);
+  return { success: true, order: confirmedOrder };
 }
 
 // ─── Phase 1: Create Payment ─────────────────────────────────────────────────
@@ -379,46 +384,51 @@ const createPayment = async (req, res) => {
     });
   }
 
-  // --- Atomic intent record creation ---
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+  // --- Atomic intent record creation + STOCK HOLD (utils/stockHold.js) ---
+  // Stock is taken now, in the same transaction as the order: a second customer trying to buy
+  // the last piece is stopped here, before any money moves. Returned on cancel/fail/expiry.
+  // withTransaction retries write conflicts (several customers grabbing the same piece at once);
+  // after a retry the loser sees stock 0 and gets OUT_OF_STOCK.
   let pendingOrder;
   let transaction;
 
   try {
-    [pendingOrder] = await Order.create(
-      [{
-        user: req.user._id,
-        items: orderItems,
-        shippingAddress,
-        payment: { status: 'pending', method: 'razorpay' },
-        itemsPrice: pricing.itemsPrice,
-        shippingPrice: pricing.shippingPrice,
-        taxPrice: pricing.taxPrice,
-        totalAmount: pricing.totalAmount,
-        orderStatus: 'pending_payment',
-      }],
-      { session }
-    );
+    ({ pendingOrder, transaction } = await withTransaction(async (session) => {
+      await holdStock(orderItems, session);
 
-    [transaction] = await Transaction.create(
-      [{
-        order: pendingOrder._id,
-        orderType: 'Order',
-        user: req.user._id,
-        amount: pricing.totalAmount,
-        currency: 'INR',
-        status: 'pending',
-      }],
-      { session }
-    );
+      const [order] = await Order.create(
+        [{
+          user: req.user._id,
+          items: orderItems,
+          shippingAddress,
+          payment: { status: 'pending', method: 'razorpay' },
+          itemsPrice: pricing.itemsPrice,
+          shippingPrice: pricing.shippingPrice,
+          taxPrice: pricing.taxPrice,
+          totalAmount: pricing.totalAmount,
+          orderStatus: 'pending_payment',
+          stockHeldAt: new Date(),
+        }],
+        { session }
+      );
 
-    await session.commitTransaction();
-    session.endSession();
+      const [tx] = await Transaction.create(
+        [{
+          order: order._id,
+          orderType: 'Order',
+          user: req.user._id,
+          amount: pricing.totalAmount,
+          currency: 'INR',
+          status: 'pending',
+        }],
+        { session }
+      );
+      return { pendingOrder: order, transaction: tx };
+    }));
   } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
+    if (err.code === 'OUT_OF_STOCK') {
+      return res.status(409).json({ success: false, code: 'OUT_OF_STOCK', message: err.message });
+    }
     logger.error(`Failed to create payment intent records: ${err.message}`);
     return res.status(500).json({
       success: false,
@@ -439,7 +449,8 @@ const createPayment = async (req, res) => {
       },
     });
   } catch (err) {
-    // Razorpay failed — clean up intent records
+    // Razorpay failed — give the held stock back, then clean up intent records
+    await failOrderAndReleaseStock(pendingOrder._id, 'Payment gateway error').catch((e) => logger.error(`Stock release failed: ${e.message}`));
     await Order.deleteOne({ _id: pendingOrder._id });
     await Transaction.deleteOne({ _id: transaction._id });
     logger.error(`Razorpay order creation failed: ${err.message}`);
@@ -496,6 +507,32 @@ const getCheckoutQuote = async (req, res) => {
   });
 };
 
+/**
+ * replyNotCaptured — the signature is valid but Razorpay has not captured the money (yet).
+ *   pending / unreachable → 202: the order stays pending (stock still held); the webhook,
+ *     retry-verify and the stale-order cleanup confirm it as soon as the capture completes.
+ *   failed / mismatch     → 400: nothing is confirmed.
+ */
+function replyNotCaptured(res, capture, order) {
+  logger.warn(`verify-payment: order=${order._id} payment=${capture.paymentId || '-'} not confirmed — ${capture.state}: ${capture.reason || ''}`);
+  if (capture.state === 'pending' || capture.state === 'unreachable') {
+    const view = order.toObject ? order.toObject() : { ...order };
+    if (view.payment) delete view.payment.razorpaySignature;
+    return res.status(202).json({
+      success: true,
+      pending: true,
+      message: 'Payment received — we are confirming it with your bank. Your order will be confirmed automatically in a few minutes.',
+      order: view,
+    });
+  }
+  return res.status(400).json({
+    success: false,
+    message: capture.state === 'mismatch'
+      ? 'This payment could not be matched to your order. Please contact support — any amount taken will be refunded.'
+      : 'Payment was not completed. No money has been taken. Please try again.',
+  });
+}
+
 // ─── Phase 2: Verify Payment (Atomic Commit) ─────────────────────────────────
 // @route   POST /api/orders/verify-payment
 // @access  Private
@@ -531,6 +568,9 @@ const verifyPayment = async (req, res) => {
     logger.warn(`Duplicate verify-payment attempt for order=${pendingOrderId}`);
     return res.json({ success: true, message: 'Order already confirmed', order: pendingOrder });
   }
+  if (pendingOrder.orderStatus === 'cancelled') {
+    return res.status(400).json({ success: false, message: 'This order was cancelled. Please contact support.' });
+  }
 
   // --- Cross-validate razorpayOrderId against stored value (prevents payment swap attack) ---
   if (pendingOrder.payment.razorpayOrderId !== razorpayOrderId) {
@@ -547,6 +587,12 @@ const verifyPayment = async (req, res) => {
       { status: 'failed', failReason: 'Signature verification failed' }
     );
     return res.status(400).json({ success: false, message: 'Payment verification failed. Signature mismatch.' });
+  }
+
+  // --- Money check: confirm only a payment Razorpay has CAPTURED (authorized → we capture it) ---
+  const capture = await secureCapture({ razorpayOrderId, paymentId: razorpayPaymentId });
+  if (capture.state !== 'captured') {
+    return replyNotCaptured(res, capture, pendingOrder);
   }
 
   const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, razorpaySignature, razorpayOrderId);
@@ -589,6 +635,9 @@ const retryVerifyPayment = async (req, res) => {
   if (order.payment.status === 'paid') {
     return res.json({ success: true, message: 'Order is already confirmed', order });
   }
+  if (order.orderStatus === 'cancelled') {
+    return res.status(400).json({ success: false, message: 'This order was cancelled. Please contact support.' });
+  }
 
   const razorpayOrderId = order.payment.razorpayOrderId;
   if (!razorpayOrderId) {
@@ -602,35 +651,30 @@ const retryVerifyPayment = async (req, res) => {
     return res.status(503).json({ success: false, message: 'Payment gateway not configured.' });
   }
 
-  // Fetch the Razorpay order to check actual payment status
-  let rzpOrder;
-  try {
-    rzpOrder = await razorpay.orders.fetch(razorpayOrderId);
-  } catch (err) {
-    logger.error(`retry-verify: Razorpay fetch failed for order=${id}: ${err.message}`);
+  // Ask Razorpay what happened to this order's payment(s)
+  const check = await checkRazorpayOrder(razorpayOrderId);
+  if (check.state === 'unreachable') {
     return res.status(502).json({ success: false, message: 'Could not verify payment status. Please try again.' });
   }
-
-  if (rzpOrder.status !== 'paid') {
+  if (check.state !== 'captured' && check.state !== 'authorized') {
     return res.status(402).json({
       success: false,
       message: 'Payment was not captured by Razorpay. You may try paying again from the Checkout page.',
     });
   }
 
-  // Fetch the captured payment details from Razorpay
-  let payments;
-  try {
-    payments = await razorpay.orders.fetchPayments(razorpayOrderId);
-  } catch (err) {
-    logger.error(`retry-verify: fetchPayments failed for razorpayOrder=${razorpayOrderId}: ${err.message}`);
-    return res.status(502).json({ success: false, message: 'Could not retrieve payment details. Support team has been notified.' });
+  // Captured → amount/order checks; authorized → we capture it now
+  const capture = await secureCapture({ razorpayOrderId, paymentId: check.paymentId });
+  if (capture.state !== 'captured') {
+    const status = capture.state === 'mismatch' || capture.state === 'failed' ? 402 : 502;
+    return res.status(status).json({
+      success: false,
+      message: status === 402
+        ? 'This payment could not be confirmed for this order. Please contact support with your order ID.'
+        : 'Your bank approved the payment and we are still confirming it. Please try again in a few minutes.',
+    });
   }
-
-  const capturedPayment = payments?.items?.find((p) => p.status === 'captured');
-  if (!capturedPayment) {
-    return res.status(402).json({ success: false, message: 'No captured payment found.' });
-  }
+  const capturedPayment = { id: capture.paymentId };
 
   logger.info(`retry-verify: Payment confirmed via Razorpay API for order=${id}, payment=${capturedPayment.id}`);
 
@@ -671,35 +715,21 @@ const failPayment = async (req, res) => {
     return res.status(403).json({ success: false, message: 'Not authorized' });
   }
 
-  // Skip if already paid (race condition guard)
-  if (order.payment.status === 'paid') {
+  // Skip if already paid / refunded / cancelled (race condition guard)
+  if (['paid', 'refunded'].includes(order.payment.status) || order.orderStatus === 'cancelled') {
     return res.json({ success: true, message: 'Order is already paid' });
   }
 
-  const failReason = reason || 'Payment cancelled by user';
-
-  const failSession = await mongoose.startSession();
-  failSession.startTransaction();
+  const failReason = String(typeof reason === 'string' && reason ? reason : 'Payment cancelled by user').slice(0, 300);
 
   try {
-    // Conditional: never flip an order that was confirmed in the meantime (webhook/verify race)
-    await Order.findOneAndUpdate(
-      { _id: pendingOrderId, 'payment.status': { $ne: 'paid' } },
-      { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': failReason },
-      { session: failSession }
-    );
-
+    // Marks the order failed (never a paid one) and returns its held stock exactly once
+    await failOrderAndReleaseStock(pendingOrderId, failReason);
     await Transaction.findOneAndUpdate(
       { order: new mongoose.Types.ObjectId(pendingOrderId), status: 'pending' },
-      { status: 'failed', failReason },
-      { session: failSession }
+      { status: 'failed', failReason }
     );
-
-    await failSession.commitTransaction();
-    failSession.endSession();
   } catch (err) {
-    await failSession.abortTransaction();
-    failSession.endSession();
     logger.error(`Failed to record payment failure for order=${pendingOrderId}: ${err.message}`);
     return res.status(500).json({ success: false, message: 'Failed to record payment failure. Please retry.' });
   }
@@ -736,8 +766,8 @@ async function reconcileCustomOrderPayment(payment) {
     via: 'webhook',
     anyRazorpayOrder: true,
   });
-  if (result.ok) logger.info(`Webhook: custom order ${target.customOrderId} ${target.phase} payment reconciled`);
-  else logger.error(`Webhook: custom order ${target.customOrderId} reconcile failed: ${result.error}`);
+  if (!result.ok) throw new Error(`custom order ${target.customOrderId} reconcile failed: ${result.error}`);
+  logger.info(`Webhook: custom order ${target.customOrderId} ${target.phase} payment reconciled`);
   return true;
 }
 
@@ -761,6 +791,16 @@ async function processWebhookCaptured(payment) {
   const razorpayOrderId = payment.order_id;
   const razorpayPaymentId = payment.id;
 
+  // Amount / order / currency check; an 'authorized' payment is captured here
+  const capture = await secureCapture({ razorpayOrderId, payment });
+  if (capture.state === 'mismatch' || capture.state === 'failed') {
+    logger.warn(`Webhook: payment ${razorpayPaymentId} not confirmed — ${capture.state}: ${capture.reason || ''}`);
+    return; // 200: nothing to retry
+  }
+  if (capture.state !== 'captured') {
+    throw new Error(`payment ${razorpayPaymentId} not captured yet (${capture.state})`); // 500 → Razorpay retries
+  }
+
   const pendingOrder = await Order.findOne({ 'payment.razorpayOrderId': String(razorpayOrderId) });
   if (!pendingOrder) {
     // Not a shop order — maybe a custom-order advance/final payment
@@ -769,17 +809,14 @@ async function processWebhookCaptured(payment) {
     return;
   }
 
-  if (pendingOrder.payment.status === 'paid') {
-    logger.info(`Webhook: Order ${pendingOrder._id} already confirmed — skipping`);
+  if (pendingOrder.payment.status === 'paid' || pendingOrder.payment.status === 'refunded' || pendingOrder.orderStatus === 'cancelled') {
+    logger.info(`Webhook: Order ${pendingOrder._id} already ${pendingOrder.orderStatus === 'cancelled' ? 'cancelled' : 'confirmed'} — skipping`);
     return;
   }
 
   const result = await atomicConfirmOrder(pendingOrder, razorpayPaymentId, '', razorpayOrderId);
-  if (result.success) {
-    logger.info(`Webhook: Order ${pendingOrder._id} confirmed via payment.captured event`);
-  } else {
-    logger.error(`Webhook: atomicConfirmOrder failed: ${result.error}`);
-  }
+  if (!result.success) throw new Error(`order ${pendingOrder._id} confirm failed: ${result.error}`);
+  logger.info(`Webhook: Order ${pendingOrder._id} confirmed via payment.${payment.status === 'authorized' ? 'authorized' : 'captured'} event`);
 }
 
 async function processWebhookFailed(payment) {
@@ -792,14 +829,12 @@ async function processWebhookFailed(payment) {
     return;
   }
 
-  if (pendingOrder.payment.status === 'paid') return;
+  if (['paid', 'refunded'].includes(pendingOrder.payment.status) || pendingOrder.orderStatus === 'cancelled') return;
 
-  // Conditional: a later 'captured' event for the same Razorpay order may already have won
-  const flipped = await Order.findOneAndUpdate(
-    { _id: pendingOrder._id, 'payment.status': { $ne: 'paid' } },
-    { orderStatus: 'failed', 'payment.status': 'failed', 'payment.failReason': failReason }
-  );
-  if (!flipped) return;
+  // Conditional: a later 'captured' event for the same Razorpay order may already have won.
+  // Also returns the held stock (once).
+  const { failed } = await failOrderAndReleaseStock(pendingOrder._id, failReason);
+  if (!failed) return;
   await Transaction.findOneAndUpdate(
     { razorpayOrderId: String(razorpayOrderId), status: { $ne: 'success' } },
     { status: 'failed', failReason }
@@ -814,87 +849,64 @@ async function processWebhookFailed(payment) {
  * @route  POST /api/webhook/razorpay
  * @access Public — BUT only Razorpay can pass signature verification
  *
- * SIGNATURE VERIFICATION (HMAC-SHA256):
- *   Razorpay signs the raw request body with RAZORPAY_WEBHOOK_SECRET.
- *   We recompute HMAC-SHA256 over the raw body and compare using
- *   crypto.timingSafeEqual — NOT ===.
+ * REPLY AFTER PROCESSING (not before):
+ *   The event is fully processed (order confirmed / failed, stock settled) BEFORE we answer.
+ *     200 → processed (or nothing to do)      → Razorpay stops sending it
+ *     500 → processing failed (DB hiccup, restart mid-request…) → Razorpay RETRIES the same
+ *           event automatically (for up to 24 h), so a paid order is never lost.
+ *   Retries are safe: every handler is idempotent (an already-paid order is left as is).
+ *   Processing is a few DB writes — far inside Razorpay's response timeout.
  *
- *   WHY timingSafeEqual, not ===:
- *     JavaScript === short-circuits on first mismatching character.
- *     Response time therefore leaks how many bytes of the signature matched.
- *     An attacker sending thousands of crafted requests can measure timing
- *     to deduce the correct signature byte-by-byte (timing side-channel attack).
- *     timingSafeEqual always compares all bytes in constant time — no leak.
- *
- *   BUFFER LENGTH GUARD:
- *     timingSafeEqual throws if buffers differ in length. We check length first
- *     and short-circuit with a safe rejection — no timing information leaked
- *     because a length mismatch is structurally invalid, not a partial match.
- *
- * RESPONSE ORDER:
- *   200 is sent BEFORE processing — Razorpay considers any non-200 a failure
- *   and retries. Processing happens asynchronously after ACK.
+ * SIGNATURE VERIFICATION (HMAC-SHA256 over the raw body, timing-safe compare):
+ *   bad / missing signature → 400 (forged or wrong secret; nothing is processed)
+ *   RAZORPAY_WEBHOOK_SECRET not set → 503 (Razorpay keeps retrying until it is configured)
  *
  * EVENTS HANDLED:
- *   payment.captured → atomicConfirmOrder (marks order paid, sends confirmation)
- *   payment.failed   → marks order + transaction as failed
- *   All others       → silently ignored (logged)
- *
- * IDEMPOTENCY:
- *   processWebhookCaptured checks if order is already confirmed before writing.
- *   Safe to receive duplicate events (Razorpay retries on timeout).
+ *   payment.captured   → amount check → atomicConfirmOrder / custom-order confirm
+ *   payment.authorized → amount check → WE capture it → confirm (optional event; see paymentCapture.js)
+ *   payment.failed   → order failed + held stock returned
+ *   All others       → 200, ignored
  */
 const handleWebhook = async (req, res) => {
-  // 1. Always acknowledge immediately — Razorpay retries on non-200
-  res.status(200).json({ received: true });
-
   const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    logger.error('RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook event');
-    return;
+    logger.error('RAZORPAY_WEBHOOK_SECRET not set — webhook event not processed (Razorpay will retry)');
+    return res.status(503).json({ received: false });
   }
 
-  // 2. Verify webhook signature — timing-safe HMAC comparison
-  const signature = req.headers['x-razorpay-signature'] || '';
-  const expectedSig = crypto
-    .createHmac('sha256', webhookSecret)
-    .update(req.body) // raw Buffer from express.raw() — must not be parsed
-    .digest('hex');
-
-  // Length check first: timingSafeEqual throws on unequal-length buffers.
-  // A length mismatch is always invalid — reject immediately (no timing leak).
-  const expectedBuf  = Buffer.from(expectedSig, 'hex');
-  const receivedBuf  = Buffer.from(signature,   'hex');
-  const sigValid =
-    expectedBuf.length === receivedBuf.length &&
-    crypto.timingSafeEqual(expectedBuf, receivedBuf);
-
+  // 1. Verify webhook signature — timing-safe HMAC comparison
+  const signature = String(req.headers['x-razorpay-signature'] || '');
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from('');
+  const expectedBuf = Buffer.from(crypto.createHmac('sha256', webhookSecret).update(rawBody).digest('hex'), 'hex');
+  const receivedBuf = Buffer.from(signature, 'hex');
+  const sigValid = expectedBuf.length === receivedBuf.length && crypto.timingSafeEqual(expectedBuf, receivedBuf);
   if (!sigValid) {
     logger.warn('Webhook signature mismatch — request rejected (possible forgery or wrong secret).');
-    return;
+    return res.status(400).json({ received: false });
   }
 
   let event;
   try {
-    event = JSON.parse(req.body.toString());
+    event = JSON.parse(rawBody.toString());
   } catch {
     logger.error('Failed to parse webhook body');
-    return;
+    return res.status(400).json({ received: false });
   }
 
   const eventType = event.event;
+  const payment = event.payload?.payment?.entity;
   logger.info(`Razorpay webhook received: ${eventType}`);
 
-  if (eventType === 'payment.captured') {
-    const payment = event.payload?.payment?.entity;
-    if (payment) await processWebhookCaptured(payment);
-    return;
+  // 2. Process FIRST, then answer
+  try {
+    if ((eventType === 'payment.captured' || eventType === 'payment.authorized') && payment) await processWebhookCaptured(payment);
+    else if (eventType === 'payment.failed' && payment) await processWebhookFailed(payment);
+  } catch (err) {
+    logger.error(`Webhook ${eventType} processing failed (Razorpay will retry): ${err.message}`);
+    return res.status(500).json({ received: false });
   }
 
-  if (eventType === 'payment.failed') {
-    const payment = event.payload?.payment?.entity;
-    if (payment) await processWebhookFailed(payment);
-  }
+  return res.status(200).json({ received: true });
 };
 
 // ─── Get User's Orders ───────────────────────────────────────────────────────
@@ -905,6 +917,7 @@ const getMyOrders = async (req, res) => {
     user: req.user._id,
     $or: [
       { 'payment.status': 'paid' },
+      { 'payment.status': 'refunded' },
       { 'payment.status': 'pending' },
       { 'payment.status': 'failed', 'payment.razorpayOrderId': { $exists: true, $ne: '' } },
     ],
@@ -970,9 +983,10 @@ const getAllOrders = async (req, res) => {
     } else if (paymentStatus === 'failed') {
       filter['payment.status'] = 'failed';
     } else {
-      // Default: exclude in-flight pending-payment orders — only show confirmed (paid) orders.
+      // Default: exclude in-flight pending-payment orders — only show paid orders
+      // (incl. cancelled ones whose payment was later refunded manually).
       // Pending orders are transient records created during Razorpay checkout flow.
-      filter['payment.status'] = 'paid';
+      filter['payment.status'] = { $in: ['paid', 'refunded'] };
     }
   }
 
@@ -1212,12 +1226,164 @@ async function writeOrderSnapshot(order) {
   });
 }
 
+// ─── Admin: Cancel a paid order (final) ───────────────────────────────────────
+// @route   POST /api/orders/:id/cancel
+// @access  Admin
+// Body: { reason (required, 5–500 chars), confirmText: 'CANCEL' }
+// Rare, admin-only. The shop has no online refunds: money is returned manually by the client and
+// recorded later with POST /:id/refund. Cancelling is FINAL (no restore): the customer buys again.
+//   • paid orders that are Confirmed / Ready to ship / Shipped only (never Delivered)
+//   • stock goes back to the shop (not for "stock issue" orders — that stock was never taken)
+//   • removed from active / delivery lists and revenue; payment shows "Refund pending"
+const CANCELLABLE_STATUSES = ['confirmed', 'ready_to_ship', 'shipped'];
+
+const cancelOrder = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+  const reason = typeof req.body.reason === 'string' ? req.body.reason.trim() : '';
+  if (reason.length < 5 || reason.length > 500) {
+    return res.status(400).json({ success: false, message: 'Please write the reason for cancelling (5–500 characters).' });
+  }
+  if (req.body.confirmText !== 'CANCEL') {
+    return res.status(400).json({ success: false, message: 'Type CANCEL to confirm.' });
+  }
+
+  const order = await Order.findById(req.params.id).lean();
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  if (order.orderStatus === 'cancelled') return res.status(409).json({ success: false, message: 'Order is already cancelled.' });
+  if (!CANCELLABLE_STATUSES.includes(order.orderStatus) || order.payment?.status !== 'paid') {
+    return res.status(400).json({ success: false, message: `Only paid orders that are not yet delivered can be cancelled (current: ${order.orderStatus}).` });
+  }
+
+  const now = new Date();
+  const returnStock = !order.stockIssue; // "stock issue" orders never took stock
+  const updated = await withTransaction(async (session) => {
+    const claimed = await Order.findOneAndUpdate(
+      { _id: order._id, orderStatus: { $in: CANCELLABLE_STATUSES }, 'payment.status': 'paid' },
+      {
+        $set: {
+          orderStatus: 'cancelled',
+          cancellation: {
+            cancelledAt: now,
+            cancelledBy: req.user._id,
+            cancelledByName: req.user.name || '',
+            reason,
+            previousStatus: order.orderStatus,
+            stockReturned: returnStock,
+            refundStatus: 'pending',
+          },
+        },
+        $push: { trackingHistory: { status: 'cancelled', comment: `Order cancelled by admin. Reason: ${reason}`, updatedBy: req.user._id, timestamp: now } },
+      },
+      { new: true, session }
+    );
+    if (!claimed) return null;
+    if (returnStock) {
+      for (const [productId, qty] of qtyByProduct(claimed.items)) {
+        await Product.updateOne({ _id: productId }, { $inc: { stock: qty } }, { session });
+        await Product.updateOne({ _id: productId, sold: { $gte: qty } }, { $inc: { sold: -qty } }, { session });
+      }
+    }
+    return claimed;
+  });
+  if (!updated) {
+    return res.status(409).json({ success: false, message: 'This order was just updated by someone else. Refresh and try again.' });
+  }
+
+  // Off the delivery dashboard
+  const Delivery = require('../models/Delivery');
+  await Delivery.deleteOne({ sourceId: updated._id, sourceType: 'order' }).catch((e) => logger.error(`Delivery record cleanup failed: ${e.message}`));
+
+  logger.warn(`Order ${updated.orderId || updated._id} CANCELLED by admin ${req.user._id}: ${reason}`);
+  res.json({ success: true, order: updated, message: 'Order cancelled. Refund is now pending — mark it refunded once the money is sent.' });
+};
+
+// ─── Admin: Record the manual refund of a cancelled order ─────────────────────
+// @route   POST /api/orders/:id/refund
+// @access  Admin
+// Body: { note (required, 5–500), reference? (UTR, ≤100), amount? (default = order total), confirmText: 'REFUNDED' }
+// Records money already sent back by the client (bank transfer / UPI / Razorpay dashboard).
+// Stored on the order (cancellation.*) AND as a 'refund' Transaction. Final.
+const markOrderRefunded = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'Invalid order ID' });
+  }
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  if (note.length < 5 || note.length > 500) {
+    return res.status(400).json({ success: false, message: 'Please write a refund note (5–500 characters): how and when the money was sent.' });
+  }
+  const reference = typeof req.body.reference === 'string' ? req.body.reference.trim().slice(0, 100) : '';
+  if (req.body.confirmText !== 'REFUNDED') {
+    return res.status(400).json({ success: false, message: 'Type REFUNDED to confirm.' });
+  }
+
+  const order = await Order.findById(req.params.id).lean();
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  if (order.orderStatus !== 'cancelled') return res.status(400).json({ success: false, message: 'Only cancelled orders can be marked as refunded.' });
+  if (order.cancellation?.refundStatus === 'refunded') return res.status(409).json({ success: false, message: 'Refund is already recorded for this order.' });
+
+  let amount = order.totalAmount;
+  if (req.body.amount !== undefined && req.body.amount !== '' && req.body.amount !== null) {
+    amount = Number(req.body.amount);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > order.totalAmount) {
+      return res.status(400).json({ success: false, message: `Refund amount must be between ₹1 and the order total ₹${order.totalAmount}.` });
+    }
+    amount = Math.round(amount * 100) / 100;
+  }
+
+  const now = new Date();
+  const updated = await withTransaction(async (session) => {
+    const refPart = reference ? ` (ref ${reference})` : '';
+    const claimed = await Order.findOneAndUpdate(
+      { _id: order._id, orderStatus: 'cancelled', 'cancellation.refundStatus': 'pending' },
+      {
+        $set: {
+          'payment.status': 'refunded',
+          'cancellation.refundStatus': 'refunded',
+          'cancellation.refundAmount': amount,
+          'cancellation.refundReference': reference,
+          'cancellation.refundNote': note,
+          'cancellation.refundedAt': now,
+          'cancellation.refundedBy': req.user._id,
+          'cancellation.refundedByName': req.user.name || '',
+        },
+        $push: { trackingHistory: { status: 'cancelled', comment: `Refund of ₹${amount} sent manually${refPart}. ${note}`, updatedBy: req.user._id, timestamp: now } },
+      },
+      { new: true, session }
+    );
+    if (!claimed) return null;
+    await Transaction.create(
+      [{
+        order: claimed._id,
+        orderType: 'Order',
+        user: claimed.user,
+        type: 'refund',
+        amount,
+        currency: 'INR',
+        status: 'refunded',
+        failReason: '',
+        razorpayOrderId: claimed.payment?.razorpayOrderId,
+        gatewayResponse: { razorpayOrderId: claimed.payment?.razorpayOrderId || '', razorpayPaymentId: claimed.payment?.razorpayPaymentId || '' },
+      }],
+      { session }
+    );
+    return claimed;
+  });
+  if (!updated) {
+    return res.status(409).json({ success: false, message: 'This order was just updated by someone else. Refresh and try again.' });
+  }
+
+  logger.warn(`Order ${updated.orderId || updated._id} REFUND ₹${amount} recorded by admin ${req.user._id}`);
+  res.json({ success: true, order: updated, message: 'Refund recorded.' });
+};
+
 // ─── Admin Stats ─────────────────────────────────────────────────────────────
 // @route   GET /api/orders/stats
 // @access  Admin
 const getStats = async (req, res) => {
   // Only count orders with successful payment — exclude transient pending-payment records
-  const validOrderQuery = { 'payment.status': 'paid', orderStatus: { $ne: 'failed' } };
+  const validOrderQuery = { 'payment.status': 'paid', orderStatus: { $nin: ['failed', 'cancelled'] } };
 
   const [totalOrders, revenueAgg, statusCounts, recentOrders, pendingCount] = await Promise.all([
     Order.countDocuments(validOrderQuery),
@@ -1312,6 +1478,7 @@ const getDeliveryStats = async (req, res) => {
 };
 
 module.exports = {
+  atomicConfirmOrder, // used by utils/paymentReconcile.js (auto-recovery of lost confirmations)
   createPayment,
   getCheckoutQuote,
   getShippingZones,
@@ -1323,6 +1490,8 @@ module.exports = {
   getOrder,
   getAllOrders,
   updateOrderStatus,
+  cancelOrder,
+  markOrderRefunded,
   getStats,
   getDeliveryStats,
   // internal helper shared with adminController.adminConfirmDelivery

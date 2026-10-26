@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FiShield, FiLock, FiDatabase, FiMail, FiCheckCircle, FiUsers } from 'react-icons/fi';
 
@@ -55,9 +54,7 @@ function Item({ label, children }) {
 
 export default function PrivacyPolicy() {
 
-  useEffect(() => {
-    document.title = 'Privacy Policy — M.B. JEWELLERS';
-  }, []);
+  // Page title / description / canonical: components/common/RouteSeo.jsx
 
 
   return (
